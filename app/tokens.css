@@ -1,0 +1,169 @@
+/* iCITY 113Н — дизайн-система D «Фритта»
+   Путь в проекте: app/tokens.css
+   Импортируется первой строкой app/globals.css
+   Значения не переопределять в компонентах. */
+
+:root {
+  /* --- цвет: снят с фасада, не с интерьера --------------------------- */
+  --white:      #FFFFFF;
+  --paper:      #F2F4F5;   /* фон страницы, холодный светлый */
+  --paper-2:    #E6EAEC;   /* подложка секций */
+  --alu:        #B7BFC4;   /* алюминий: линии, импосты, рамки */
+  --ink:        #101619;   /* графит: весь текст и заголовки */
+  --ink-60:     #566065;   /* вторичный текст, контраст 5,6:1 */
+
+  --frit:       #ED1C29;   /* чистый iCITY. ТОЛЬКО растр и линии 1–2 px */
+  --frit-deep:  #C4141C;   /* заливки, кнопки, красный текст. Белый на нём 6,1:1 */
+  --frit-press: #A81016;
+
+  /* Белый на чистом #ED1C29 даёт 4,4:1 — ниже AA.
+     Все заливки идут на --frit-deep. Исключений нет. */
+
+  /* --- растр фритты: три плотности и ни одной между ------------------ */
+  --frit-dense:  radial-gradient(circle, #ED1C29 1.4px, transparent 1.5px) 0 0 / 8px 8px;
+  --frit-mid:    radial-gradient(circle, #ED1C29 1.1px, transparent 1.2px) 0 0 / 12px 12px;
+  --frit-sparse: radial-gradient(circle, #ED1C29 0.9px, transparent 1px)   0 0 / 18px 18px;
+
+  /* фон под секвенцией: отдельный слой, не canvas */
+  --sky: linear-gradient(180deg, #FFFFFF 0%, #F2F4F5 55%, #E6EAEC 100%);
+
+  /* --- типографика --------------------------------------------------- */
+  --sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --display-xl: 600 clamp(40px, 6.4vw, 86px) / 0.96 var(--sans);
+  --display-l:  600 clamp(30px, 3.6vw, 50px) / 1.02 var(--sans);
+  --heading:    500 clamp(20px, 1.6vw, 25px) / 1.22 var(--sans);
+  --lead:       400 clamp(18px, 1.35vw, 21px) / 1.50 var(--sans);
+  --body:       400 17px / 1.55 var(--sans);
+  --small:      400 15px / 1.50 var(--sans);
+  --num-xl:     500 clamp(42px, 5.0vw, 70px) / 1.0 var(--mono);
+  --num-m:      500 clamp(26px, 2.4vw, 34px) / 1.0 var(--mono);
+  --label:      500 12px / 1.0 var(--mono);
+
+  --tr-xl:    -0.045em;
+  --tr-l:     -0.035em;
+  --tr-head:  -0.02em;
+  --tr-lead:  -0.01em;
+  --tr-num:   -0.04em;
+  --tr-label:  0.10em;
+
+  /* --- сетка ---------------------------------------------------------- */
+  --container: 1440px;
+  --pad-x: 64px;
+  --cols: 12;
+  --gutter: 24px;
+
+  /* --- ритм ----------------------------------------------------------- */
+  --s-1: 4px;   --s-2: 8px;   --s-3: 12px;  --s-4: 16px;
+  --s-5: 24px;  --s-6: 32px;  --s-7: 48px;  --s-8: 64px;
+  --s-9: 96px;  --s-10: 120px; --s-11: 168px;
+
+  --section-y: 120px;
+  --radius: 2px;
+
+  /* --- движение ------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.30, 1);
+  --t-micro:  140ms;
+  --t-reveal: 380ms;
+  --t-scene:  620ms;
+
+  /* --- жест удержания: единые параметры, дублируются в TowerSequence.tsx */
+  --hold-engage:      120ms;
+  --hold-full:       5000ms;
+  --hold-release:     900ms;
+  --hold-idle-hero:  6500ms;
+  --hold-idle-window: 3000ms;
+}
+
+@media (max-width: 1023px) {
+  :root { --pad-x: 40px; --cols: 8; --gutter: 20px; --section-y: 92px; }
+}
+
+@media (max-width: 767px) {
+  :root { --pad-x: 20px; --cols: 4; --gutter: 16px; --section-y: 68px; }
+  /* мелкий растр на телефоне муарит и дорого стоит по отрисовке */
+  :root { --frit-dense: var(--frit-mid); --frit-sparse: var(--frit-mid); }
+}
+
+/* --- база ------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--body);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+h1 { font: var(--display-xl); letter-spacing: var(--tr-xl);   margin: 0; }
+h2 { font: var(--display-l);  letter-spacing: var(--tr-l);    margin: 0; }
+h3 { font: var(--heading);    letter-spacing: var(--tr-head); margin: 0; }
+
+.label {
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-60);
+}
+
+.num-xl { font: var(--num-xl); letter-spacing: var(--tr-num); }
+.num-m  { font: var(--num-m);  letter-spacing: var(--tr-num); }
+
+.btn {
+  appearance: none;
+  border: 0;
+  height: 54px;
+  padding: 0 32px;
+  border-radius: var(--radius);
+  background: var(--frit-deep);
+  color: var(--white);
+  font: 500 17px/1 var(--sans);
+  cursor: pointer;
+  transition: background var(--t-micro) var(--ease-out);
+}
+.btn:hover { background: var(--frit-press); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--alu);
+}
+.btn-secondary:hover { background: var(--white); border-color: var(--ink); }
+
+.field {
+  height: 54px;
+  padding: 0 16px;
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  font: var(--body);
+  width: 100%;
+}
+.field::placeholder { color: var(--ink-60); }
+.field:focus {
+  outline: none;
+  border-color: var(--frit-deep);
+  box-shadow: 0 0 0 2px rgba(237, 28, 41, 0.18);
+}
+
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--t-micro) !important;
+  }
+}
