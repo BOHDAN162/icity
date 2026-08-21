@@ -1,31 +1,21 @@
 /* Путь в проекте: components/TowerSequence.module.css
-   Версия 3: touch-action снимается после завершения подъёма. */
+   Версия 4: высокая секция + нативный sticky, без пиннинга. */
 
-.stage {
+.wrap {
   position: relative;
-  width: 100%;
+  /* экран плюс дистанция прокрутки. 150 кадров на 300svh — около 18 px
+     прокрутки на кадр при вьюпорте 900, ход получается плотный, но не рваный */
+  height: calc(100svh + 300svh);
+}
+
+.sticky {
+  position: sticky;
+  top: 0;
   /* ПРАВИЛО 11: 100svh, не 100vh — иначе адресная строка iOS режет низ */
   height: 100svh;
-  min-height: 100svh;
   overflow: hidden;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  cursor: grab;
-  /* пока идёт подъём, палец принадлежит секвенции, а не скроллу */
-  touch-action: none;
 }
 
-.stage:active { cursor: grabbing; }
-
-/* подъём дошёл до конца — отпускаем страницу, иначе с телефона
-   невозможно уйти на следующий экран */
-.stage[data-done='true'] {
-  touch-action: auto;
-  cursor: default;
-}
-
-/* фон под canvas — заменяемый слой. Позже сюда ляжет панорама Москва-Сити */
 .sky {
   position: absolute;
   inset: 0;
@@ -46,7 +36,7 @@
   right: var(--pad-x);
   bottom: clamp(48px, 9vh, 104px);
   max-width: 46rem;
-  pointer-events: none;
+  will-change: opacity;
 }
 
 .eyebrow {
@@ -72,29 +62,29 @@
   max-width: 30em;
 }
 
-.hint {
+.actions {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-5);
+  flex-wrap: wrap;
 }
 
-.dots {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 5px;
+.scrollHint {
+  color: var(--ink-60);
 }
 
-.dot,
-.dotOn {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--alu);
-  transition: background var(--t-micro) var(--ease-out);
+/* при отключённой анимации секция не растягивается: один кадр и текст */
+@media (prefers-reduced-motion: reduce) {
+  .wrap { height: 100svh; }
+  .overlay { opacity: 1 !important; visibility: visible !important; }
 }
 
-.dotOn { background: var(--frit); }
+@media (max-width: 1023px) {
+  .wrap { height: calc(100svh + 260svh); }
+}
 
 @media (max-width: 767px) {
+  .wrap { height: calc(100svh + 220svh); }
   .overlay { bottom: clamp(32px, 7vh, 72px); }
+  .actions { gap: var(--s-4); }
 }
