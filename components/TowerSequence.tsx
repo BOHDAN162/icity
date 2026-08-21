@@ -2,23 +2,24 @@
 
 /* iCITY 113Н — экран 1. Герой и подъём вдоль башни.
    Путь в проекте: components/TowerSequence.tsx
+   Версия 3. См. блок ИСТОРИЯ внизу файла.
 
    ЧТО ЭТО. Полноэкранное состояние, НЕ ScrollTrigger-пиннинг. На свежих iOS
    адресная строка дёргает закреплённые секции, и авторы GSAP считают это
    неустранимым. Нет пиннинга — нечему прыгать. Поэтому здесь нет ни GSAP,
-   ни Lenis: на этом экране скролл не участвует вообще.
+   ни Lenis: на этом экране скролл не участвует.
 
-   Кадры прозрачные, фон — отдельный слой под canvas (позже туда ляжет
-   панорама Москва-Сити с параллаксом).
+   Кадры прозрачные, фон — отдельный слой под canvas.
 
-   ПАМЯТЬ — главный риск. Декодированный кадр занимает ширина×высота×4 байта
-   независимо от веса файла. 1600×900 = 5,76 МБ при файле в 30 КБ.
-   Лимит canvas-памяти на iOS: 224 МБ (iOS 12) — 384 МБ (iOS 15).
-   Превышение не тормозит, а убивает вкладку.
-   Десктоп: скользящее окно ±20. Мобильный: 90 × 828×466×4 ≈ 132 МБ, держим всё.
-   Если на реальном айфоне вкладка падает — поставить MOBILE.window = 12. */
+   ПАМЯТЬ. Декодированный кадр занимает ширина×высота×4 байта независимо
+   от веса файла: 1600×900 = 5,76 МБ при файле в 30 КБ. Лимит canvas-памяти
+   на iOS — от 224 МБ. Превышение не тормозит, а убивает вкладку.
+   Десктоп: держим PRELOAD_AHEAD впереди и RELEASE_BEHIND позади плейхеда,
+   резидентных около 33 кадров ≈ 190 МБ. Мобильный: 90 × 828×466×4 ≈ 132 МБ,
+   держим целиком. Если на живом айфоне вкладка падает — поставить
+   MOBILE.windowed = true. */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import styles from './TowerSequence.module.css';
 
 type Variant = {
@@ -26,51 +27,75 @@ type Variant = {
   count: number;
   width: number;
   height: number;
-  /** null = держим все кадры; число = скользящее окно ±N */
-  window: number | null;
+  /** true = работает скользящее окно; false = держим все кадры */
+  windowed: boolean;
 };
 
-const DESKTOP: Variant = { dir: '/sequence/desktop', count: 150, width: 1600, height: 900, window: 20 };
-const MOBILE: Variant = { dir: '/sequence/mobile', count: 90, width: 828, height: 466, window: null };
+const DESKTOP: Variant = { dir: '/sequence/desktop', count: 150, width: 1600, height: 900, windowed: true };
+const MOBILE: Variant = { dir: '/sequence/mobile', count: 90, width: 828, height: 466, windowed: false };
 
 const MOBILE_MAX_WIDTH = 828;
 
+const PRELOAD_AHEAD = 24;    // кадров впереди плейхеда
+const RELEASE_BEHIND = 8;    // кадров позади плейхеда, дальше освобождаем
+const PRIME_FRAMES = 24;     // сколько нужно подряд с начала, чтобы разблокировать удержание
+
 const HOLD_FULL = 5000;      // полный проход при удержании, мс
 const HOLD_RELEASE = 900;    // торможение после отпускания, мс
-const IDLE_START = 6500;     // автостарт, если не тронули. На герое есть текст — 3 с мало
-const IDLE_SPEED = 0.6;      // автостарт идёт медленнее ручного
-const READY_RATIO = 0.4;     // доля буфера, после которой разблокируется удержание
-const DOTS = 6;              // точек в индикаторе
+const IDLE_START = 6500;     // автостарт. На герое есть заголовок — 3 с мало
+const IDLE_SPEED = 0.6;
+const STALL_AFTER = 700;     // столько упираемся в границу буфера, прежде чем сказать об этом
+const DOTS = 6;
 
 const frameSrc = (v: Variant, i: number) =>
   `${v.dir}/f_${String(i + 1).padStart(4, '0')}.webp`;
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
+/* Системная настройка анимации — внешний источник, а не состояние React.
+   useSyncExternalStore даёт корректный серверный снапшот и подхватывает
+   изменение настройки на лету. setState в теле эффекта здесь не нужен. */
+const MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+const subscribeMotion = (onChange: () => void) => {
+  const mq = window.matchMedia(MOTION_QUERY);
+  mq.addEventListener('change', onChange);
+  return () => mq.removeEventListener('change', onChange);
+};
+const getMotionSnapshot = () => window.matchMedia(MOTION_QUERY).matches;
+const getMotionServerSnapshot = () => false;
+
 export default function TowerSequence({ onComplete }: { onComplete?: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  const reduced = useSyncExternalStore(
+    subscribeMotion,
+    getMotionSnapshot,
+    getMotionServerSnapshot,
+  );
+
   const [ready, setReady] = useState(false);
   const [loadedRatio, setLoadedRatio] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [reduced, setReduced] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  const [done, setDone] = useState(false);
 
-  // всё, что меняется каждый кадр, живёт в ref — состояние не трогаем
   const imagesRef = useRef<HTMLImageElement[]>([]);
+  const seenRef = useRef<Uint8Array>(new Uint8Array(0));
+  const frontierRef = useRef(-1);       // докуда кадры загружены подряд от нуля
   const variantRef = useRef<Variant>(DESKTOP);
   const progressRef = useRef(0);
   const lastDrawnRef = useRef(-1);
   const holdingRef = useRef(false);
   const releaseAtRef = useRef(0);
-  const releaseFromSpeedRef = useRef(0);
   const touchedRef = useRef(false);
   const mountedAtRef = useRef(0);
+  const stalledSinceRef = useRef(0);
   const rafRef = useRef(0);
-  const windowTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const doneRef = useRef(false);
 
-  /* --- отрисовка: contain, DPR капим двойкой ------------------------- */
+  /* --- отрисовка. DPR капим двойкой ---------------------------------- */
   const draw = useCallback((index: number) => {
     const canvas = canvasRef.current;
     const img = imagesRef.current[index];
@@ -109,36 +134,53 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
     if (frame >= 0) draw(frame);
   }, [draw]);
 
-  /* --- инициализация ------------------------------------------------- */
+  /* --- инициализация -------------------------------------------------- */
   useEffect(() => {
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const isReduced = motionQuery.matches;
-    setReduced(isReduced);
-
     // ПРАВИЛО 7: две секвенции, мобильная до 828 px
     const v = window.innerWidth <= MOBILE_MAX_WIDTH ? MOBILE : DESKTOP;
     variantRef.current = v;
     mountedAtRef.current = performance.now();
 
-    // ПРАВИЛО 1: Image создаются ОДИН раз. Ни одного new Image() ниже по коду
+    // ПРАВИЛО 1: Image создаются ОДИН раз. Ни одного new Image() ниже
     const images: HTMLImageElement[] = Array.from({ length: v.count }, () => new Image());
     imagesRef.current = images;
 
-    let loaded = 0;
+    const seen = new Uint8Array(v.count);
+    seenRef.current = seen;
+    frontierRef.current = -1;
+
+    let loadedOnce = 0;
     let cancelled = false;
 
     const assign = (i: number) => {
+      if (i < 0 || i >= v.count) return;
       const img = images[i];
       if (img.src) return;
       img.decoding = 'async';
       img.onload = () => {
-        loaded += 1;
-        if (!cancelled) setLoadedRatio(loaded / v.count);
+        if (cancelled) return;
+        if (!seen[i]) {
+          seen[i] = 1;
+          loadedOnce += 1;
+          setLoadedRatio(loadedOnce / v.count);
+        }
+        // граница подряд загруженного от нуля — она только растёт
+        let f = frontierRef.current;
+        while (f + 1 < v.count && seen[f + 1]) f += 1;
+        frontierRef.current = f;
+        if (f + 1 >= PRIME_FRAMES) setReady(true);
       };
       img.src = frameSrc(v, i);
     };
 
-    // ПРАВИЛО 9: первый кадр с приоритетом и сразу на экран, пустой canvas — никогда
+    const release = (i: number) => {
+      const img = images[i];
+      if (!img.src) return;
+      img.onload = null;
+      img.src = '';   // seen[i] не сбрасываем: плейхед сюда уже не вернётся
+    };
+
+    // ПРАВИЛО 9: первый кадр с приоритетом и сразу на экран
     const boot = async () => {
       resize();
       const first = images[0];
@@ -147,54 +189,54 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
       try {
         await first.decode();
       } catch {
-        /* Safari иногда падает на decode() при отменённой загрузке — не критично */
+        /* Safari иногда падает на decode() при отменённой загрузке */
       }
       if (cancelled) return;
-      loaded = Math.max(loaded, 1);
-      setLoadedRatio(loaded / v.count);
+      if (!seen[0]) {
+        seen[0] = 1;
+        loadedOnce += 1;
+        setLoadedRatio(loadedOnce / v.count);
+      }
+      frontierRef.current = Math.max(frontierRef.current, 0);
       draw(0);
 
-      if (isReduced) {
-        // ПРАВИЛО 10: три статичных кадра, без анимации. Текст и числа сохраняются
-        [v.count - 1, Math.floor(v.count / 2)].forEach(assign);
+      if (reduced) {
+        // ПРАВИЛО 10: три статичных кадра. Текст и числа сохраняются
+        assign(Math.floor(v.count / 2));
+        assign(v.count - 1);
         setReady(true);
+        setDone(true);
+        doneRef.current = true;
         return;
       }
 
-      // порядок прогрева: последний → 50% → 25% → 75% → всё подряд
-      const order = [
-        v.count - 1,
-        Math.floor(v.count * 0.5),
-        Math.floor(v.count * 0.25),
-        Math.floor(v.count * 0.75),
-      ];
-      order.forEach(assign);
-
-      const upTo = v.window ? Math.min(v.window * 2, v.count) : v.count;
-      for (let i = 1; i < upTo; i += 1) assign(i);
+      // прогрев: сплошной блок от начала, дальше окно доберёт остальное
+      const prime = v.windowed ? Math.min(PRIME_FRAMES + PRELOAD_AHEAD, v.count) : v.count;
+      for (let i = 1; i < prime; i += 1) assign(i);
     };
 
     void boot();
 
     // ПРАВИЛО 8: окно живёт в собственном таймере, а НЕ в цикле отрисовки
-    if (v.window && !isReduced) {
-      windowTimerRef.current = setInterval(() => {
+    if (v.windowed && !reduced) {
+      timerRef.current = setInterval(() => {
         const center = Math.round(progressRef.current * (v.count - 1));
-        const lo = Math.max(0, center - v.window!);
-        const hi = Math.min(v.count - 1, center + v.window!);
-        for (let i = lo; i <= hi; i += 1) assign(i);
-      }, 150);
+        for (let i = center; i <= center + PRELOAD_AHEAD; i += 1) assign(i);
+        for (let i = 0; i < center - RELEASE_BEHIND; i += 1) release(i);
+      }, 120);
     }
 
     const onResize = () => resize();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
 
+    const canvasAtMount = canvasRef.current;
+
     return () => {
       cancelled = true;
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
-      if (windowTimerRef.current) clearInterval(windowTimerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
 
       // ПРАВИЛО 6: Safari не отпускает canvas-память без обнуления размеров
       images.forEach((img) => {
@@ -202,20 +244,14 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
         img.src = '';
       });
       imagesRef.current = [];
-      const canvas = canvasRef.current;
-      if (canvas) {
-        canvas.width = 0;
-        canvas.height = 0;
+      if (canvasAtMount) {
+        canvasAtMount.width = 0;
+        canvasAtMount.height = 0;
       }
     };
-  }, [draw, resize]);
+  }, [draw, resize, reduced]);
 
-  /* --- разблокировка удержания по буферу ----------------------------- */
-  useEffect(() => {
-    if (!ready && loadedRatio >= READY_RATIO) setReady(true);
-  }, [loadedRatio, ready]);
-
-  /* --- цикл: единственный rAF на весь экран -------------------------- */
+  /* --- цикл: единственный rAF на весь экран --------------------------- */
   useEffect(() => {
     if (reduced) return;
     const v = variantRef.current;
@@ -232,18 +268,27 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
         speed = base;
       } else if (releaseAtRef.current > 0) {
         const t = (now - releaseAtRef.current) / HOLD_RELEASE;
-        speed = t >= 1 ? 0 : releaseFromSpeedRef.current * (1 - easeOutCubic(t));
+        speed = t >= 1 ? 0 : base * (1 - easeOutCubic(t));
         if (t >= 1) releaseAtRef.current = 0;
-      } else if (
-        ready &&
-        !touchedRef.current &&
-        now - mountedAtRef.current > IDLE_START
-      ) {
+      } else if (ready && !touchedRef.current && now - mountedAtRef.current > IDLE_START) {
         speed = base * IDLE_SPEED;
       }
 
       if (speed > 0) {
-        progressRef.current = Math.min(1, progressRef.current + speed * dt);
+        // прогресс не убегает за границу загруженного — иначе замирание на пустых кадрах
+        const ceiling = frontierRef.current / (v.count - 1);
+        const wanted = progressRef.current + speed * dt;
+        const next = Math.min(1, Math.min(wanted, ceiling));
+
+        if (wanted > ceiling + 1e-6 && ceiling < 1) {
+          if (stalledSinceRef.current === 0) stalledSinceRef.current = now;
+          if (now - stalledSinceRef.current > STALL_AFTER) setStalled(true);
+        } else if (stalledSinceRef.current !== 0) {
+          stalledSinceRef.current = 0;
+          setStalled(false);
+        }
+
+        progressRef.current = next;
       }
 
       // ПРАВИЛО 2: drawImage только если индекс кадра сменился
@@ -255,6 +300,8 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
 
       if (progressRef.current >= 1 && !doneRef.current) {
         doneRef.current = true;
+        holdingRef.current = false;
+        setDone(true);        // снимает перехват тача, дальше страница скроллится
         onComplete?.();
       }
 
@@ -265,37 +312,37 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
     return () => cancelAnimationFrame(rafRef.current);
   }, [draw, ready, reduced, onComplete]);
 
-  /* --- ввод: указатель, клавиатура, первый скролл -------------------- */
+  /* --- ввод ------------------------------------------------------------ */
   const engage = useCallback(() => {
-    if (!ready || reduced) return;
+    if (!ready || reduced || doneRef.current) return;
     touchedRef.current = true;
     holdingRef.current = true;
     releaseAtRef.current = 0;
   }, [ready, reduced]);
 
-  const release = useCallback(() => {
+  const stop = useCallback(() => {
     if (!holdingRef.current) return;
     holdingRef.current = false;
-    releaseFromSpeedRef.current = 1 / HOLD_FULL;
     releaseAtRef.current = performance.now();
   }, []);
 
   useEffect(() => {
     if (reduced) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (doneRef.current) return;
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
         engage();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space' || e.code === 'Enter') release();
+      if (e.code === 'Space' || e.code === 'Enter') stop();
     };
     // кто-то рефлекторно крутит колесо вместо удержания — тоже запускаем
     const onWheel = () => {
-      if (touchedRef.current) return;
+      if (touchedRef.current || doneRef.current) return;
       engage();
-      window.setTimeout(release, 400);
+      window.setTimeout(stop, 400);
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -305,18 +352,29 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('wheel', onWheel);
     };
-  }, [engage, release, reduced]);
+  }, [engage, stop, reduced]);
 
   const litDots = Math.round(progress * DOTS);
+
+  const hint = reduced
+    ? 'Анимация отключена в системе'
+    : !ready
+      ? `Загрузка ${Math.round(loadedRatio * 100)} %`
+      : done
+        ? 'Листайте дальше'
+        : stalled
+          ? 'Догружаем кадры…'
+          : 'Держите, чтобы подняться';
 
   return (
     <section
       ref={wrapRef}
       className={styles.stage}
+      data-done={done ? 'true' : 'false'}
       onPointerDown={engage}
-      onPointerUp={release}
-      onPointerCancel={release}
-      onPointerLeave={release}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onPointerLeave={stop}
     >
       <div className={styles.sky} aria-hidden="true" />
       <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
@@ -329,27 +387,64 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
           въезжают завтра
         </h1>
         <p className={styles.lead}>
-          Потолки 3,8 метра. Окна открываются. Отделка и мебель уже внутри.
+          Потолки 3,8 метра. Окна открываются.
+          <br />
+          Отделка PRIDEX и мебель уже внутри.
         </p>
 
         <div className={styles.hint} aria-live="polite">
           <span className={styles.dots} aria-hidden="true">
             {Array.from({ length: DOTS }, (_, i) => (
-              <span
-                key={i}
-                className={i < litDots ? styles.dotOn : styles.dot}
-              />
+              <span key={i} className={i < litDots ? styles.dotOn : styles.dot} />
             ))}
           </span>
-          <span className="label">
-            {reduced
-              ? 'Анимация отключена в системе'
-              : ready
-                ? 'Держите, чтобы подняться'
-                : `Загрузка ${Math.round(loadedRatio * 100)}%`}
-          </span>
+          <span className="label">{hint}</span>
         </div>
       </div>
     </section>
   );
 }
+
+/* ИСТОРИЯ
+
+   v2 → v3.
+
+   3. ЛИНТЕР БЫЛ ПРАВ. setReduced() в теле эффекта — это ошибка по существу,
+      а не придирка нового правила: системная настройка анимации является
+      внешним источником, а не состоянием React. Переписано на
+      useSyncExternalStore, который для того и сделан. Побочно исчез
+      риск рассинхрона при SSR и появилась реакция на смену настройки
+      на лету, без перезагрузки страницы.
+
+   4. ПЕРЕХВАТ ТАЧА СНИМАЕТСЯ ПОСЛЕ ФИНИША. У секции стоит
+      touch-action: none, иначе удержание пальцем скроллило бы страницу.
+      Пока экран один, это незаметно. Как только под героем появится
+      экран 2, с телефона стало бы невозможно уйти вниз. Теперь после
+      завершения подъёма выставляется data-done="true", touch-action
+      возвращается в auto, а подсказка меняется на «Листайте дальше».
+      При отключённой анимации done выставляется сразу.
+
+   v1 → v2.
+
+   1. ДЕДЛОК. Разблокировка удержания висела на доле загруженных кадров
+      (READY_RATIO = 0,4, то есть 60 кадров), а прогрев грузил только 43.
+      Таймер окна центрировался на progress = 0, и добирать ему было нечего:
+      прогресс не двигался без ready, ready не наступал без прогресса.
+      Экран навсегда застревал на «Загрузка 29 %». Мобильная ветка выживала
+      случайно — там окна нет, грузились все 90.
+      Теперь готовность считается по границе подряд загруженного от нуля
+      (PRIME_FRAMES), и то же число управляет прогревом. Порог физически
+      не может оказаться недостижимым. Плюс прогресс ограничен этой
+      границей: на медленной сети подъём притормаживает, а не рвётся.
+
+   2. ОКНО НЕ ОСВОБОЖДАЛО ПАМЯТЬ. Таймер только назначал src и никогда
+      его не снимал — за полный проход резидентными становились все
+      150 кадров, около 864 МБ декодированного. Файл, написанный ради
+      контроля памяти, память не контролировал.
+      Теперь есть release(): всё, что дальше RELEASE_BEHIND позади
+      плейхеда, освобождается. Прогресс монотонный, назад не ходит,
+      поэтому освобождённые кадры больше не понадобятся.
+      Резидентных ≈ PRELOAD_AHEAD + RELEASE_BEHIND + 1 ≈ 33 ≈ 190 МБ.
+
+   Проверять на реальном iPhone обязательно. Ни один инструмент лимит
+   canvas-памяти iOS не измеряет — только расчёт и живое устройство. */

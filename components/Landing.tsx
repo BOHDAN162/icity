@@ -1,0 +1,62 @@
+/* iCITY 113Н — экран 2. Приземление.
+   Путь в проекте: components/Landing.tsx
+
+   Тексты — docs/copy.md, раздел «2 · Приземление», дословно.
+   Числа — docs/facts.md. Ничего сверх этих двух файлов здесь нет.
+
+   Красное на экране ровно одно: четвёртое число «0» и полоса растра
+   под ним (design-system.md §4, «Ряд чисел»). Больше --frit и --frit-deep
+   на этом экране не появляются нигде. */
+
+import styles from './Landing.module.css';
+
+type Figure = { value: string; caption: string; accent?: boolean };
+
+const FIGURES: Figure[] = [
+  { value: '244,1', caption: 'М²' },
+  { value: '23 / 61', caption: 'ЭТАЖ' },
+  { value: '3,8', caption: 'ПОТОЛКИ, М' },
+  { value: '0', caption: 'КАПЗАТРАТ', accent: true },
+];
+
+export default function Landing() {
+  return (
+    <section className={styles.section} id="landing" aria-labelledby="landing-eyebrow">
+      <div className={styles.inner}>
+        <p className={`label ${styles.eyebrow}`} id="landing-eyebrow">
+          ПОМЕЩЕНИЕ 113Н
+        </p>
+
+        {/* dt перед dd — семантика пары «имя—значение».
+            Визуальный порядок переворачивает column-reverse,
+            порядок чтения скринридером остаётся правильным. */}
+        <dl className={styles.figures}>
+          {FIGURES.map((f) => (
+            <div
+              key={f.caption}
+              className={f.accent ? `${styles.item} ${styles.itemAccent}` : styles.item}
+            >
+              <dt className={`label ${styles.caption}`}>{f.caption}</dt>
+              <dd className={styles.value}>{f.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <p className={styles.para}>
+          244,1 м² с отделкой, мебелью и открывающимися окнами.
+          Прямая аренда от собственника — без посредников и без
+          ожидания. Показ в день обращения.
+        </p>
+
+        <div className={styles.actions}>
+          <a className={`btn ${styles.action}`} href="#contact">
+            Записаться на просмотр
+          </a>
+          <a className={`btn btn-secondary ${styles.action}`} href="tel:+79093798015">
+            Позвонить
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}

@@ -1,0 +1,48 @@
+/* Путь в проекте: components/StickyBar.module.css */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+
+  /* 64 px — ступень ритма --s-8. box-sizing: border-box стоит глобально,
+     поэтому линия сверху входит в высоту, а не добавляется к ней. */
+  height: var(--s-8);
+  padding-inline: var(--pad-x);
+
+  /* design-system.md §4: сплошная --paper, сверху линия 1 px --alu.
+     Растра на панели нет — она висит через весь сайт, и растр на ней
+     стал бы фоновой текстурой. Список мест для растра — §1 и правило 2
+     в AGENTS.md, панели там нет.
+     backdrop-filter снят: --paper непрозрачный, размывать нечего. */
+  background: var(--paper);
+  border-top: 1px solid var(--alu);
+}
+
+.facts {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  flex-shrink: 0;
+  /* ЕДИНСТВЕННОЕ место в проекте, где кнопка ниже стандартных 54 px
+     из design-system.md §4. 44 px — минимальная цель нажатия по
+     доступности, и только с ней панель укладывается в 64 px.
+     В остальных местах .btn берётся как есть. */
+  height: 44px;
+}
+
+@media (max-width: 767px) {
+  .facts { display: none; }
+  .action { flex: 1; }
+}

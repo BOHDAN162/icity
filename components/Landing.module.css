@@ -1,0 +1,117 @@
+/* Путь в проекте: components/Landing.module.css
+   Все значения — переменные из app/tokens.css. Литералов цвета,
+   кегля, отступов и радиусов здесь нет. */
+
+.section {
+  background: var(--paper);
+  padding: var(--section-y) var(--pad-x);
+}
+
+.inner {
+  max-width: var(--container);
+  margin: 0 auto;
+}
+
+.eyebrow {
+  margin: 0 0 var(--s-7);
+}
+
+/* --- ряд чисел ------------------------------------------------------- */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0 0 var(--s-9);
+}
+
+.item {
+  /* column-reverse: в DOM dt→dd, на экране число сверху, подпись снизу */
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s-3);
+  padding-inline: var(--s-5);
+  min-width: 0;
+}
+
+.item:first-child { padding-inline-start: 0; }
+.item:last-child  { padding-inline-end: 0; }
+
+/* вертикальные разделители — --alu 1 px, design-system.md §4 */
+.item + .item {
+  border-inline-start: 1px solid var(--alu);
+}
+
+.value {
+  font: var(--num-xl);
+  letter-spacing: var(--tr-num);
+  color: var(--ink);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.caption {
+  margin: 0;
+}
+
+/* --- единственное красное место на экране ---------------------------- */
+
+.itemAccent .value {
+  color: var(--frit-deep);
+}
+
+/* полоса растра под четвёртым числом: 6 px, --frit-dense.
+   На ≤767 px токен сам подменяется на --frit-mid — мелкий растр муарит. */
+.itemAccent .value::after {
+  content: '';
+  display: block;
+  /* 6 px — design-system.md §4, «Ряд чисел». Токена на 6 нет,
+     как нет его и на height:54px у .btn в tokens.css. */
+  height: 6px;
+  margin-top: var(--s-2);
+  background: var(--frit-dense);
+}
+
+/* --- абзац и кнопки -------------------------------------------------- */
+
+.para {
+  font: var(--lead);
+  letter-spacing: var(--tr-lead);
+  color: var(--ink-60);
+  max-width: 34em;
+  margin: 0 0 var(--s-7);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+}
+
+/* .btn/.btn-secondary живут в tokens.css. Здесь только раскладка:
+   на <a> нужен inline-flex, иначе height из токена не центрирует текст. */
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+@media (max-width: 1023px) {
+  .figures { column-gap: var(--gutter); }
+}
+
+@media (max-width: 767px) {
+  .figures {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: var(--s-7);
+    column-gap: 0;
+  }
+  .item { padding-inline: var(--s-4); }
+  /* «23 / 61» — 7 знаков Mono. На --num-xl (минимум 42 px) это 176 px
+     при колонке 175 px, число выезжает за контейнер. --num-m — тот же
+     ряд токенов, роль «число», просто на ступень ниже. */
+  .value { font: var(--num-m); letter-spacing: var(--tr-num); }
+  .item:nth-child(odd)  { padding-inline-start: 0; border-inline-start: 0; }
+  .item:nth-child(even) { padding-inline-end: 0; }
+  .actions { flex-direction: column; align-items: stretch; }
+}

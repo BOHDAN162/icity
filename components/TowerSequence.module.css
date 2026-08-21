@@ -1,4 +1,5 @@
-/* Путь в проекте: components/TowerSequence.module.css */
+/* Путь в проекте: components/TowerSequence.module.css
+   Версия 3: touch-action снимается после завершения подъёма. */
 
 .stage {
   position: relative;
@@ -7,13 +8,22 @@
   height: 100svh;
   min-height: 100svh;
   overflow: hidden;
-  touch-action: none;      /* удержание не должно скроллить страницу */
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   cursor: grab;
+  /* пока идёт подъём, палец принадлежит секвенции, а не скроллу */
+  touch-action: none;
 }
+
 .stage:active { cursor: grabbing; }
+
+/* подъём дошёл до конца — отпускаем страницу, иначе с телефона
+   невозможно уйти на следующий экран */
+.stage[data-done='true'] {
+  touch-action: auto;
+  cursor: default;
+}
 
 /* фон под canvas — заменяемый слой. Позже сюда ляжет панорама Москва-Сити */
 .sky {
