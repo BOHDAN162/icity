@@ -48,9 +48,8 @@ const PRIME_FRAMES = 20;      // сплошной блок с начала, гр
 
 const SMOOTH_TAU = 90;        // постоянная времени сглаживания, мс
 const GLASS_START = 0.93;     // с этой доли начинается вход в стекло
-const RETURN_TO = 0.9;        // куда возвращает кнопка «назад» из офиса
 const ENTER_RESET = 0.96;     // ниже этой отметки офис снова готов открыться
-const RETURN_MS = 900;
+const RETURN_MS = 3500;       // обратный вылет из офиса на самый верх
 const TEXT_FADE_END = 0.14;   // на этой доле прогресса заголовок исчезает
 const TRAVEL_MS = 4200;       // автопроход по кнопке
 
@@ -95,7 +94,6 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
 
   const [primed, setPrimed] = useState(false);
   const [loadedRatio, setLoadedRatio] = useState(0);
-  const [travelling, setTravelling] = useState(false);
 
   const imagesRef = useRef<HTMLImageElement[]>([]);
   const seenRef = useRef<Uint8Array>(new Uint8Array(0));
@@ -111,6 +109,7 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
   const overlayShownRef = useRef(true);
   const rafRef = useRef(0);
   const travelRafRef = useRef(0);
+  const travelOffRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const doneRef = useRef(false);
 
@@ -350,70 +349,70 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
     return () => cancelAnimationFrame(rafRef.current);
   }, [draw, reduced, onEnterOffice]);
 
-  /* --- возврат из офиса: плавно ставим камеру на RETURN_TO -------------- */
-  useEffect(() => {
-    if (!returnRequestId) return;
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-
-    const travelPx = wrap.offsetHeight - window.innerHeight;
-    const from = window.scrollY;
-    const to = wrap.offsetTop + travelPx * RETURN_TO;
-    const start = performance.now();
-    let raf = 0;
-
-    const step = (now: number) => {
-      const t = clamp01((now - start) / RETURN_MS);
-      window.scrollTo(0, from + (to - from) * easeInOutCubic(t));
-      if (t < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [returnRequestId]);
-
-  /* --- кнопка: сама доводит до конца секции ---------------------------- */
+  /* --- проезд камерой: один механизм на оба направления ----------------
+     Вперёд — кнопка «Подняться на 23 этаж», до конца секции за TRAVEL_MS.
+     Назад — «К башне» из офиса, до самого верха страницы за RETURN_MS:
+     камера вылетает через стекло, идёт вниз вдоль фасада, уходит в облака
+     и останавливается на стартовом экране с заголовком и кнопкой.
+     Отличаются только целью и временем, поэтому код общий: отмена по
+     действию пользователя одинаково работает для обоих. */
+  /* Слушатели отмены вешаются и снимаются здесь же, а не через состояние
+     React: setState в теле эффекта — ошибка линтера, а сам факт «едем
+     или нет» рендеру не нужен, на экране от него ничего не зависит. */
   const cancelTravel = useCallback(() => {
     cancelAnimationFrame(travelRafRef.current);
     travelRafRef.current = 0;
-    setTravelling(false);
+    const off = travelOffRef.current;
+    travelOffRef.current = null;
+    off?.();
   }, []);
 
-  const travel = useCallback(() => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
+  const startTravel = useCallback((to: number, ms: number) => {
     const from = window.scrollY;
-    const to = wrap.offsetTop + wrap.offsetHeight - window.innerHeight;
-    if (to <= from) return;
+    if (Math.abs(to - from) < 1) return;
 
-    setTravelling(true);
+    cancelTravel();
+
+    // любое действие пользователя прерывает проезд — в обе стороны
+    const stop = () => cancelTravel();
+    window.addEventListener('wheel', stop, { passive: true });
+    window.addEventListener('touchstart', stop, { passive: true });
+    window.addEventListener('keydown', stop);
+    travelOffRef.current = () => {
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchstart', stop);
+      window.removeEventListener('keydown', stop);
+    };
+
     const start = performance.now();
-
     const step = (now: number) => {
-      const t = clamp01((now - start) / TRAVEL_MS);
+      const t = clamp01((now - start) / ms);
       window.scrollTo(0, from + (to - from) * easeInOutCubic(t));
       if (t < 1) {
         travelRafRef.current = requestAnimationFrame(step);
       } else {
-        travelRafRef.current = 0;
-        setTravelling(false);
+        cancelTravel();
       }
     };
     travelRafRef.current = requestAnimationFrame(step);
-  }, []);
+  }, [cancelTravel]);
 
+  const travel = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    startTravel(wrap.offsetTop + wrap.offsetHeight - window.innerHeight, TRAVEL_MS);
+  }, [startTravel]);
+
+  /* Обратный вылет. Офис к этому моменту уже закрыт — его гасит ActOne
+     тем же действием, поэтому человек смотрит на полёт, а не на
+     застывший офис. */
   useEffect(() => {
-    if (!travelling) return;
-    const off = () => cancelTravel();
-    window.addEventListener('wheel', off, { passive: true });
-    window.addEventListener('touchstart', off, { passive: true });
-    window.addEventListener('keydown', off);
-    return () => {
-      window.removeEventListener('wheel', off);
-      window.removeEventListener('touchstart', off);
-      window.removeEventListener('keydown', off);
-      cancelAnimationFrame(travelRafRef.current);
-    };
-  }, [travelling, cancelTravel]);
+    if (!returnRequestId) return;
+    startTravel(0, RETURN_MS);
+  }, [returnRequestId, startTravel]);
+
+  // при размонтировании проезд гасим вместе со слушателями
+  useEffect(() => cancelTravel, [cancelTravel]);
 
   return (
     <section ref={wrapRef} className={styles.wrap}>

@@ -36,6 +36,31 @@ type Zone = {
   lines: string[];
   /** первая карточка несёт единственное красное на экране — ноль капзатрат */
   zero?: { before: string; after: string };
+  /** куда можно уйти отсюда и в какую сторону это на плане */
+  exits: Exit[];
+};
+
+/* Направления взяты от лица человека, который стоит в зоне и смотрит
+   вперёд по ходу обхода. Обратный переход — зеркало прямого: если сюда
+   пришли «вперёд-налево», то назад это «назад-направо». */
+type Dir = 'forward-left' | 'forward' | 'forward-right' | 'back-right' | 'back';
+type Exit = { dir: Dir; to: string };
+
+/** Поворот стрелки в градусах. Базовая стрелка смотрит вверх. */
+const DIR_ANGLE: Record<Dir, number> = {
+  'forward-left': -45,
+  forward: 0,
+  'forward-right': 45,
+  'back-right': 135,
+  back: 180,
+};
+
+const IS_BACK: Record<Dir, boolean> = {
+  'forward-left': false,
+  forward: false,
+  'forward-right': false,
+  'back-right': true,
+  back: true,
 };
 
 const ZONES: Zone[] = [
@@ -47,6 +72,7 @@ const ZONES: Zone[] = [
     side: 'left',
     lines: ['Отделка PRIDEX.'],
     zero: { before: 'Капитальных затрат до въезда', after: '₽' },
+    exits: [{ dir: 'forward-left', to: 'corridor' }],
   },
   {
     id: 'corridor',
@@ -55,6 +81,15 @@ const ZONES: Zone[] = [
     alt: 'Проход вдоль опенспейса со стеклянными перегородками и дубовым полом',
     side: 'right',
     lines: ['Стеклянные перегородки, дубовый пол.', 'Проект и согласования сделаны.'],
+    /* Развилка обхода: кухня раньше по ходу и левее, переговорная прямо
+       по курсу, опенспейс идёт справа вдоль всего прохода. Ресепшн
+       остался позади и правее — зеркало входа «вперёд-налево». */
+    exits: [
+      { dir: 'forward-left', to: 'kitchen' },
+      { dir: 'forward', to: 'meeting' },
+      { dir: 'forward-right', to: 'openspace' },
+      { dir: 'back-right', to: 'reception' },
+    ],
   },
   {
     id: 'openspace',
@@ -63,6 +98,7 @@ const ZONES: Zone[] = [
     alt: 'Опенспейс на 26 рабочих мест с панорамным остеклением',
     side: 'left',
     lines: ['26 рабочих мест.', 'Мебель входит в аренду, докупать нечего.'],
+    exits: [{ dir: 'back', to: 'corridor' }],
   },
   {
     id: 'meeting',
@@ -71,6 +107,7 @@ const ZONES: Zone[] = [
     alt: 'Переговорная на шесть человек с круглым дубовым столом',
     side: 'right',
     lines: ['На 6–8 человек.', 'Срок до въезда: день обращения, а не месяцы.'],
+    exits: [{ dir: 'back', to: 'corridor' }],
   },
   {
     id: 'kitchen',
@@ -79,8 +116,11 @@ const ZONES: Zone[] = [
     alt: 'Кухня-столовая с барной стойкой на пять мест',
     side: 'left',
     lines: ['Барная группа на пять мест, техника установлена.'],
+    exits: [{ dir: 'back', to: 'corridor' }],
   },
 ];
+
+const BY_ID = new Map(ZONES.map((z) => [z.id, z]));
 
 /* Строка обязательная. Она стоит ноль и снимает риск целиком: ЛПР приедет
    смотреть в тот же день, и если картинка окажется красивее реальности,
@@ -89,19 +129,17 @@ const DISCLAIMER =
   'Визуализация по дизайн-проекту. Помещение готово — приезжайте и сверьте с оригиналом.';
 
 export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () => void }) {
-  const [index, setIndex] = useState(0);
+  const [zoneId, setZoneId] = useState('reception');
   const [planOpen, setPlanOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const go = useCallback((dir: 1 | -1) => {
-    setIndex((i) => (i + dir + ZONES.length) % ZONES.length);
-  }, []);
+  const go = useCallback((to: string) => setZoneId(to), []);
 
   /* Обход всегда начинается от двери. Сбрасываем на выходе, а не эффектом
      на open: setState в теле эффекта — ошибка линтера и лишний рендер. */
   const exit = useCallback(() => {
     setPlanOpen(false);
-    setIndex(0);
+    setZoneId('reception');
     onExit();
   }, [onExit]);
 
@@ -111,20 +149,31 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (planOpen) return;
-      if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
-      else if (e.key === 'Escape') { e.preventDefault(); exit(); }
+      if (e.key === 'Escape') { e.preventDefault(); exit(); return; }
+
+      /* Стрелки повторяют пространственные направления, а не ленту:
+         вверх — прямо, влево и вправо — по диагоналям вперёд,
+         вниз — любой из обратных выходов. */
+      const exits = BY_ID.get(zoneId)?.exits ?? [];
+      const pick = (...dirs: Dir[]) => exits.find((x) => dirs.includes(x.dir));
+      const hit =
+        e.key === 'ArrowUp' ? pick('forward')
+        : e.key === 'ArrowLeft' ? pick('forward-left')
+        : e.key === 'ArrowRight' ? pick('forward-right')
+        : e.key === 'ArrowDown' ? pick('back', 'back-right')
+        : undefined;
+      if (hit) { e.preventDefault(); go(hit.to); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, planOpen, go, exit]);
+  }, [open, planOpen, go, exit, zoneId]);
 
   // фокус переносим внутрь, иначе клавиатура остаётся на странице под офисом
   useEffect(() => {
     if (open) rootRef.current?.focus();
   }, [open]);
 
-  const zone = ZONES[index];
+  const zone = BY_ID.get(zoneId) ?? ZONES[0];
 
   return (
     <div
@@ -139,21 +188,24 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
     >
       {/* Кадры лежат стопкой и переключаются прозрачностью — без сдвигов */}
       <div className={styles.stage}>
-        {ZONES.map((z, i) => (
-          <Image
-            key={z.id}
-            className={`${styles.shot} ${i === index ? styles.shotOn : ''}`}
-            src={z.src}
-            alt={i === index ? z.alt : ''}
-            aria-hidden={i !== index}
-            draggable={false}
-            fill
-            sizes="100vw"
-            style={{ objectFit: 'cover' }}
-            /* первый кадр нужен сразу, остальные — по мере надобности */
-            loading={i === 0 ? 'eager' : 'lazy'}
-          />
-        ))}
+        {ZONES.map((z) => {
+          const on = z.id === zoneId;
+          return (
+            <Image
+              key={z.id}
+              className={`${styles.shot} ${on ? styles.shotOn : ''}`}
+              src={z.src}
+              alt={on ? z.alt : ''}
+              aria-hidden={!on}
+              draggable={false}
+              fill
+              sizes="100vw"
+              style={{ objectFit: 'cover' }}
+              /* ресепшн нужен сразу, остальные — по мере надобности */
+              loading={z.id === 'reception' ? 'eager' : 'lazy'}
+            />
+          );
+        })}
       </div>
 
       <div className={styles.ui}>
@@ -172,9 +224,7 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
 
         <div className={`${styles.body} ${zone.side === 'right' ? styles.bodyRight : ''}`}>
           <div className={styles.card} key={zone.id}>
-            <p className={`label ${styles.counter}`}>
-              {index + 1} / {ZONES.length} · Помещение 113Н
-            </p>
+            <p className={`label ${styles.counter}`}>Помещение 113Н</p>
             <h2 className={styles.zoneLabel}>{zone.label}</h2>
 
             {zone.zero && (
@@ -201,28 +251,42 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
         <div className={styles.bottomRow}>
           <p className={styles.disclaimer}>{DISCLAIMER}</p>
 
-          <div className={styles.nav}>
-            <button
-              type="button"
-              className={styles.arrow}
-              onClick={() => go(-1)}
-              aria-label={`Предыдущая зона: ${ZONES[(index - 1 + ZONES.length) % ZONES.length].label}`}
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="1.6" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={styles.arrow}
-              onClick={() => go(1)}
-              aria-label={`Следующая зона: ${ZONES[(index + 1) % ZONES.length].label}`}
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" strokeWidth="1.6" />
-              </svg>
-            </button>
-          </div>
+          {/* Направления, а не лента: стрелка повёрнута туда, где зона
+              лежит на плане, рядом — куда именно ведёт кнопка. */}
+          <nav className={styles.nav} aria-label="Переходы по помещению">
+            {zone.exits.map((ex) => {
+              const dest = BY_ID.get(ex.to);
+              if (!dest) return null;
+              const back = IS_BACK[ex.dir];
+              return (
+                <button
+                  key={ex.to}
+                  type="button"
+                  className={`${styles.move} ${back ? styles.moveBack : ''}`}
+                  onClick={() => go(ex.to)}
+                >
+                  <span className={styles.moveArrow} aria-hidden="true">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="18"
+                      height="18"
+                      style={{ transform: `rotate(${DIR_ANGLE[ex.dir]}deg)` }}
+                    >
+                      <path
+                        d="M12 19V5m0 0-6 6m6-6 6 6"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  {dest.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </div>
 

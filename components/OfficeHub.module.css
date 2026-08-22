@@ -196,10 +196,13 @@
 
 /* --- низ: оговорка и стрелки ------------------------------------------ */
 
+/* Три колонки, а не space-between: кнопки перехода должны стоять ровно
+   по центру экрана, а не по центру остатка после оговорки. Третья колонка
+   пустая и нужна только чтобы держать симметрию. */
 .bottomRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: end;
-  justify-content: space-between;
   gap: var(--s-5);
 }
 
@@ -212,31 +215,63 @@
   border: 1px solid var(--alu);
   padding: var(--s-3) var(--s-4);
   margin: 0;
-  max-width: 42em;
+  max-width: 34em;
+  justify-self: start;
 }
 
+/* Переходы. Кнопки стоят внизу по центру в ряд, каждая несёт стрелку,
+   повёрнутую туда, где зона лежит на плане, и имя этой зоны: человек
+   должен понимать, куда ведёт кнопка, до нажатия, а не после. */
 .nav {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: var(--s-3);
   flex-shrink: 0;
 }
 
-.arrow {
-  width: 56px;
+.move {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
   height: 56px;
-  border-radius: 50%;
+  padding: 0 var(--s-5);
   border: 1px solid var(--alu);
+  border-radius: var(--radius);
   background: var(--paper);
   color: var(--ink);
-  display: grid;
-  place-items: center;
+  font: 500 15px/1 var(--sans);
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background var(--t-micro) var(--ease-out),
     border-color var(--t-micro) var(--ease-out);
 }
 
-.arrow:hover { background: var(--white); border-color: var(--ink); }
+.move:hover { background: var(--white); border-color: var(--ink); }
+
+/* Стрелка сидит в круге — форма осталась от прежней пары стрелок,
+   единственное место в системе с радиусом, отличным от 2 px и 0. */
+.moveArrow {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--alu);
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+/* Возврат тише прямых ходов: тоньше набор и вторичный цвет. */
+.moveBack {
+  font-weight: 400;
+  color: var(--ink-60);
+}
+
+.moveBack .moveArrow { color: var(--ink-60); }
+.moveBack:hover { color: var(--ink); }
+.moveBack:hover .moveArrow { color: var(--ink); }
 
 @media (max-width: 1023px) {
   .card { width: min(26rem, 100%); padding: var(--s-5); }
@@ -254,9 +289,11 @@
   .card { width: 100%; padding: var(--s-4); }
   .zoneLabel { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-4); }
   .line { font: var(--body); margin-bottom: var(--s-2); }
-  .bottomRow { flex-direction: column; align-items: stretch; gap: var(--s-3); }
-  .nav { justify-content: center; }
-  .arrow { width: 48px; height: 48px; }
+  .bottomRow { grid-template-columns: 1fr; align-items: stretch; gap: var(--s-3); }
+  .disclaimer { max-width: none; }
+  .nav { justify-content: center; gap: var(--s-2); }
+  .move { height: 48px; padding: 0 var(--s-4); font-size: 14px; gap: var(--s-2); }
+  .moveArrow { width: 28px; height: 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
