@@ -25,6 +25,7 @@
    Мобильный: 90 × 828×466×4 ≈ 132 МБ, держим целиком. */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import CloudLayer, { type CloudApi } from './CloudLayer';
 import styles from './TowerSequence.module.css';
 
 type Variant = {
@@ -46,6 +47,10 @@ const WINDOW_RADIUS = 16;
 const PRIME_FRAMES = 20;      // сплошной блок с начала, грузится сразу
 
 const SMOOTH_TAU = 90;        // постоянная времени сглаживания, мс
+const GLASS_START = 0.93;     // с этой доли начинается вход в стекло
+const RETURN_TO = 0.9;        // куда возвращает кнопка «назад» из офиса
+const ENTER_RESET = 0.96;     // ниже этой отметки офис снова готов открыться
+const RETURN_MS = 900;
 const TEXT_FADE_END = 0.14;   // на этой доле прогресса заголовок исчезает
 const TRAVEL_MS = 4200;       // автопроход по кнопке
 
@@ -66,11 +71,21 @@ const subscribeMotion = (onChange: () => void) => {
 const getMotionSnapshot = () => window.matchMedia(MOTION_QUERY).matches;
 const getMotionServerSnapshot = () => false;
 
-export default function TowerSequence({ onComplete }: { onComplete?: () => void }) {
+type Props = {
+  /** вызывается один раз, когда камера вошла в стекло — открывается офис */
+  onEnterOffice?: () => void;
+  /** увеличивается снаружи, когда из офиса просят вернуться на экран 1 */
+  returnRequestId?: number;
+};
+
+export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Props) {
   const wrapRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const glassRef = useRef<HTMLDivElement>(null);
+  const cloudFarRef = useRef<CloudApi | null>(null);
+  const cloudNearRef = useRef<CloudApi | null>(null);
 
   const reduced = useSyncExternalStore(
     subscribeMotion,
@@ -84,6 +99,10 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
 
   const imagesRef = useRef<HTMLImageElement[]>([]);
   const seenRef = useRef<Uint8Array>(new Uint8Array(0));
+  /* Состояние слота НЕЛЬЗЯ читать через img.src: присваивание пустой строки
+     резолвится в URL документа, и img.src навсегда остаётся истинным.
+     Отсюда отдельный массив: 1 — на слоте висит настоящий src. */
+  const assignedRef = useRef<Uint8Array>(new Uint8Array(0));
   const variantRef = useRef<Variant>(DESKTOP);
   const targetRef = useRef(0);        // прогресс по позиции скролла
   const smoothRef = useRef(0);        // прогресс с инерцией, по нему и рисуем
@@ -107,7 +126,9 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
     const v = variantRef.current;
     const cw = canvas.width;
     const ch = canvas.height;
-    const scale = Math.min(cw / v.width, ch / v.height);
+    /* cover, а не contain: Math.min оставлял фоновые полосы сверху и снизу
+       на широких вьюпортах. Кадр закрывает экран целиком, лишнее срезается. */
+    const scale = Math.max(cw / v.width, ch / v.height);
     const dw = v.width * scale;
     const dh = v.height * scale;
 
@@ -146,6 +167,8 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
 
     const seen = new Uint8Array(v.count);
     seenRef.current = seen;
+    const assigned = new Uint8Array(v.count);
+    assignedRef.current = assigned;
 
     let loadedOnce = 0;
     let cancelled = false;
@@ -153,7 +176,8 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
     const assign = (i: number) => {
       if (i < 0 || i >= v.count) return;
       const img = images[i];
-      if (img.src) return;
+      if (assigned[i]) return;   // НЕ `if (img.src)` — см. комментарий у assignedRef
+      assigned[i] = 1;
       img.decoding = 'async';
       img.onload = () => {
         if (cancelled) return;
@@ -170,11 +194,12 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
     };
 
     const release = (i: number) => {
+      if (!assigned[i]) return;
       const img = images[i];
-      if (!img.src) return;
       img.onload = null;
       img.src = '';
-      seen[i] = 0;   // кадр снова придётся загрузить, если вернёмся
+      assigned[i] = 0;   // слот снова свободен и его можно переназначить
+      seen[i] = 0;       // кадр придётся загрузить заново, если вернёмся
       loadedOnce = Math.max(0, loadedOnce - 1);
     };
 
@@ -183,6 +208,7 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
       resize();
       const first = images[0];
       first.decoding = 'sync';
+      assigned[0] = 1;
       first.src = frameSrc(v, 0);
       try {
         await first.decode();
@@ -216,7 +242,7 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
         const lo = Math.max(0, center - WINDOW_RADIUS);
         const hi = Math.min(v.count - 1, center + WINDOW_RADIUS);
         for (let i = lo; i <= hi; i += 1) assign(i);
-        for (let i = 0; i < lo; i += 1) release(i);
+        for (let i = 1; i < lo; i += 1) release(i);   // кадр 0 держим всегда
         for (let i = hi + 1; i < v.count; i += 1) release(i);
       }, 120);
     }
@@ -272,6 +298,18 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
           : smoothRef.current + diff * k;
 
         const p = smoothRef.current;
+
+        // облака ведёт тот же единственный rAF — своего цикла у них нет
+        cloudFarRef.current?.setProgress(p);
+        cloudNearRef.current?.setProgress(p);
+
+        /* вход в стекло: последние проценты засвечиваются, чтобы переход
+           в офис читался как проход сквозь фасад, а не как срез */
+        const glass = glassRef.current;
+        if (glass) {
+          const g = clamp01((p - GLASS_START) / (1 - GLASS_START));
+          glass.style.opacity = String(g);
+        }
         const index = Math.round(p * (v.count - 1));
         desiredIndexRef.current = index;
 
@@ -291,9 +329,18 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
           }
         }
 
-        if (targetRef.current >= 0.999 && !doneRef.current) {
-          doneRef.current = true;
-          onComplete?.();
+        /* Вход в офис с гистерезисом. Сбрасывать флаг сразу при выходе нельзя:
+           страница в этот момент ещё стоит на 100 %, и ближайший же кадр
+           открыл бы офис заново — со стороны выглядело бы так, будто кнопка
+           «К башне» не работает. Флаг снимается, только когда камера
+           действительно отъехала. */
+        if (targetRef.current >= 0.999) {
+          if (!doneRef.current) {
+            doneRef.current = true;
+            onEnterOffice?.();
+          }
+        } else if (targetRef.current < ENTER_RESET && doneRef.current) {
+          doneRef.current = false;
         }
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -301,7 +348,28 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [draw, reduced, onComplete]);
+  }, [draw, reduced, onEnterOffice]);
+
+  /* --- возврат из офиса: плавно ставим камеру на RETURN_TO -------------- */
+  useEffect(() => {
+    if (!returnRequestId) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+
+    const travelPx = wrap.offsetHeight - window.innerHeight;
+    const from = window.scrollY;
+    const to = wrap.offsetTop + travelPx * RETURN_TO;
+    const start = performance.now();
+    let raf = 0;
+
+    const step = (now: number) => {
+      const t = clamp01((now - start) / RETURN_MS);
+      window.scrollTo(0, from + (to - from) * easeInOutCubic(t));
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [returnRequestId]);
 
   /* --- кнопка: сама доводит до конца секции ---------------------------- */
   const cancelTravel = useCallback(() => {
@@ -351,7 +419,11 @@ export default function TowerSequence({ onComplete }: { onComplete?: () => void 
     <section ref={wrapRef} className={styles.wrap}>
       <div ref={stickyRef} className={styles.sticky}>
         <div className={styles.sky} aria-hidden="true" />
+        {/* облака стоят по обе стороны от canvas: за башней и перед ней */}
+        <CloudLayer variant="far" apiRef={cloudFarRef} />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+        <CloudLayer variant="near" apiRef={cloudNearRef} />
+        <div ref={glassRef} className={styles.glass} aria-hidden="true" />
 
         <div ref={overlayRef} className={styles.overlay}>
           <p className={styles.eyebrow}>iCITY · Space Tower · 23 этаж</p>

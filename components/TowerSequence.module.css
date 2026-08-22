@@ -19,7 +19,22 @@
 .sky {
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: var(--sky);
+}
+
+/* Вход в стекло. Последние проценты секции засвечиваются холодным белым,
+   чтобы переход в офис читался как проход сквозь фасад, а не как срез.
+   Прозрачность ведёт единый rAF, анимации в CSS нет. */
+.glass {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+  background:
+    radial-gradient(120% 90% at 50% 52%, #FFFFFF 0%, rgba(255,255,255,.88) 46%, rgba(242,244,245,.72) 100%);
 }
 
 .canvas {
@@ -28,10 +43,12 @@
   display: block;
   width: 100%;
   height: 100%;
+  z-index: 2;
 }
 
 .overlay {
   position: absolute;
+  z-index: 5;
   left: var(--pad-x);
   right: var(--pad-x);
   bottom: clamp(48px, 9vh, 104px);

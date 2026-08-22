@@ -1,0 +1,264 @@
+/* Путь в проекте: components/OfficeHub.module.css
+   Значения — из app/tokens.css. Теней нет ни одной.
+   Радиус 2 px на кнопках; круглые стрелки — единственное исключение,
+   оно задано брифом как форма элемента. */
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--paper);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--t-scene) var(--ease-out),
+    visibility 0s linear var(--t-scene);
+}
+
+.open {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity var(--t-scene) var(--ease-out),
+    visibility 0s linear 0s;
+}
+
+/* --- кадры зон -------------------------------------------------------- */
+
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--paper-2);
+}
+
+.shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--t-scene) var(--ease-out);
+  user-select: none;
+}
+
+.shotOn { opacity: 1; }
+
+/* --- каркас интерфейса ------------------------------------------------ */
+
+.ui {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: var(--s-5) var(--pad-x);
+  gap: var(--s-5);
+  pointer-events: none;
+}
+
+.ui > * { pointer-events: auto; }
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 44px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 15px/1 var(--sans);
+  cursor: pointer;
+  transition:
+    background var(--t-micro) var(--ease-out),
+    border-color var(--t-micro) var(--ease-out);
+}
+
+.back:hover { background: var(--white); border-color: var(--ink); }
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 var(--s-5);
+  text-decoration: none;
+  font-size: 15px;
+}
+
+/* --- карточка зоны ---------------------------------------------------- */
+
+.body {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 0;
+}
+
+.bodyRight { justify-content: flex-end; }
+
+.card {
+  width: min(29rem, 100%);
+  padding: var(--s-6);
+  background: var(--paper);
+  border: 1px solid var(--alu);
+  /* прямые углы: радиус живёт только на кнопках и полях */
+  animation: cardIn var(--t-reveal) var(--ease-out) both;
+}
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.counter {
+  margin: 0 0 var(--s-4);
+}
+
+.zoneLabel {
+  font: var(--display-l);
+  letter-spacing: var(--tr-l);
+  color: var(--ink);
+  margin: 0 0 var(--s-5);
+}
+
+.line {
+  font: var(--lead);
+  letter-spacing: var(--tr-lead);
+  color: var(--ink-60);
+  margin: 0 0 var(--s-3);
+}
+
+.line:last-of-type { margin-bottom: var(--s-5); }
+
+/* Единственное красное на экране: ноль капзатрат и полоса растра под ним.
+   Место разрешено списком в design-system.md §1 — «полоса под ключевым
+   числом». Растр --frit-dense, на ≤767 px токен сам становится --frit-mid. */
+/* Ключевое число карточки: подпись сверху, число под ней, полоса растра
+   во всю ширину блока. Полоса по ширине самой цифры вырождается в семь
+   точек и читается как мусор, поэтому она идёт по колонке — так же, как
+   в ряду чисел на экране «Приземление». */
+.zeroRow {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-5);
+}
+
+.zeroCaption {
+  margin: 0;
+}
+
+.zero {
+  font: var(--num-xl);
+  letter-spacing: var(--tr-num);
+  color: var(--frit-deep);
+  line-height: 1;
+}
+
+.zeroStrip {
+  display: block;
+  height: 6px;
+  margin-top: var(--s-1);
+  background: var(--frit-dense);
+}
+
+.zeroUnit {
+  font: var(--num-m);
+  letter-spacing: var(--tr-num);
+  color: var(--frit-deep);
+  margin-left: var(--s-2);
+}
+
+.planLink {
+  appearance: none;
+  border: 0;
+  border-bottom: 1px solid var(--alu);
+  background: none;
+  padding: 0 0 2px;
+  color: var(--ink);
+  font: 500 15px/1.2 var(--sans);
+  cursor: pointer;
+  transition: border-color var(--t-micro) var(--ease-out);
+}
+
+.planLink:hover { border-bottom-color: var(--ink); }
+
+/* --- низ: оговорка и стрелки ------------------------------------------ */
+
+.bottomRow {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--s-5);
+}
+
+/* Оговорка стоит на плотной подложке: рендеры светлые, и текст на них
+   напрямую не набирается — контраст не гарантируется. */
+.disclaimer {
+  font: var(--small);
+  color: var(--ink-60);
+  background: var(--paper);
+  border: 1px solid var(--alu);
+  padding: var(--s-3) var(--s-4);
+  margin: 0;
+  max-width: 42em;
+}
+
+.nav {
+  display: flex;
+  gap: var(--s-3);
+  flex-shrink: 0;
+}
+
+.arrow {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--alu);
+  background: var(--paper);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    background var(--t-micro) var(--ease-out),
+    border-color var(--t-micro) var(--ease-out);
+}
+
+.arrow:hover { background: var(--white); border-color: var(--ink); }
+
+@media (max-width: 1023px) {
+  .card { width: min(26rem, 100%); padding: var(--s-5); }
+}
+
+@media (max-width: 767px) {
+  .ui {
+    padding: var(--s-4) var(--pad-x);
+    grid-template-rows: auto 1fr auto;
+    gap: var(--s-4);
+  }
+  .topRow { flex-wrap: wrap; gap: var(--s-3); }
+  .cta { flex: 1; }
+  .body, .bodyRight { align-items: flex-end; justify-content: stretch; }
+  .card { width: 100%; padding: var(--s-4); }
+  .zoneLabel { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-4); }
+  .line { font: var(--body); margin-bottom: var(--s-2); }
+  .bottomRow { flex-direction: column; align-items: stretch; gap: var(--s-3); }
+  .nav { justify-content: center; }
+  .arrow { width: 48px; height: 48px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; }
+}

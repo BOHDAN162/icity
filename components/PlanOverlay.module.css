@@ -1,0 +1,94 @@
+/* Путь в проекте: components/PlanOverlay.module.css */
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--paper);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  animation: fade var(--t-reveal) var(--ease-out) both;
+}
+
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--pad-x);
+  background: var(--paper);
+  border-bottom: 1px solid var(--alu);
+}
+
+.title { margin: 0; }
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.tool {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 19px/1 var(--sans);
+  cursor: pointer;
+  transition: background var(--t-micro) var(--ease-out), border-color var(--t-micro) var(--ease-out);
+}
+
+.tool:hover:not(:disabled) { background: var(--white); border-color: var(--ink); }
+.tool:disabled { color: var(--alu); cursor: default; }
+
+.zoomValue {
+  min-width: 5ch;
+  text-align: center;
+}
+
+.close {
+  height: 44px;
+  padding: 0 var(--s-5);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 15px/1 var(--sans);
+  cursor: pointer;
+  transition: background var(--t-micro) var(--ease-out), border-color var(--t-micro) var(--ease-out);
+}
+
+.close:hover { background: var(--white); border-color: var(--ink); }
+
+.view {
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: var(--s-5) var(--pad-x);
+  background: var(--paper-2);
+  overscroll-behavior: contain;
+}
+
+.grab { cursor: grab; }
+.grab:active { cursor: grabbing; }
+
+.sheet {
+  display: block;
+  max-width: none;
+  height: auto;
+  background: var(--white);
+  user-select: none;
+}
+
+@media (max-width: 767px) {
+  .bar { flex-wrap: wrap; gap: var(--s-2); }
+  .view { padding: var(--s-4) var(--s-4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root { animation: none; }
+}
