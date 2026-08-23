@@ -25,7 +25,9 @@
   --frit-mid:    radial-gradient(circle, #ED1C29 1.1px, transparent 1.2px) 0 0 / 12px 12px;
   --frit-sparse: radial-gradient(circle, #ED1C29 0.9px, transparent 1px)   0 0 / 18px 18px;
 
-  /* фон под секвенцией: отдельный слой, не canvas */
+  /* СЕЙЧАС НЕ ИСПОЛЬЗУЕТСЯ. Облака, небо и соседние башни запечены
+     в кадры секвенции, под canvas лежит сплошная --paper. Токен оставлен
+     на случай фона под другой сценой; см. docs/design-system.md. */
   --sky: linear-gradient(180deg, #FFFFFF 0%, #F2F4F5 55%, #E6EAEC 100%);
 
   /* --- типографика --------------------------------------------------- */

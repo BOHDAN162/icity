@@ -18,6 +18,11 @@
    нативный скролл. Когда он появится на других экранах, этот файл менять
    не придётся. Сглаживание здесь и сглаживание Lenis не конфликтуют.
 
+   КАДРЫ. Облака, небо и соседние башни Москва-Сити запечены в кадры,
+   альфа-канала нет. Отдельного слоя облаков и градиентного неба под canvas
+   больше нет: под холстом лежит сплошная заливка --paper и нужна ровно
+   для одного — не мигнуть белым до отрисовки первого кадра.
+
    ПАМЯТЬ. Декодированный кадр занимает ширина×высота×4 байта независимо
    от веса файла: 1600×900 = 5,76 МБ при файле в 30 КБ. Лимит canvas-памяти
    на iOS — от 224 МБ. Превышение не тормозит, а убивает вкладку.
@@ -25,7 +30,6 @@
    Мобильный: 90 × 828×466×4 ≈ 132 МБ, держим целиком. */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import CloudLayer, { type CloudApi } from './CloudLayer';
 import styles from './TowerSequence.module.css';
 
 type Variant = {
@@ -83,8 +87,6 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const glassRef = useRef<HTMLDivElement>(null);
-  const cloudFarRef = useRef<CloudApi | null>(null);
-  const cloudNearRef = useRef<CloudApi | null>(null);
 
   const reduced = useSyncExternalStore(
     subscribeMotion,
@@ -131,7 +133,8 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
     const dw = v.width * scale;
     const dh = v.height * scale;
 
-    ctx.clearRect(0, 0, cw, ch);
+    /* clearRect не нужен: кадры непрозрачные, а cover гарантирует, что
+       отрисованный кадр закрывает холст целиком. Чистить нечего. */
     ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
     lastDrawnRef.current = index;
   }, []);
@@ -298,10 +301,6 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
 
         const p = smoothRef.current;
 
-        // облака ведёт тот же единственный rAF — своего цикла у них нет
-        cloudFarRef.current?.setProgress(p);
-        cloudNearRef.current?.setProgress(p);
-
         /* вход в стекло: последние проценты засвечиваются, чтобы переход
            в офис читался как проход сквозь фасад, а не как срез */
         const glass = glassRef.current;
@@ -417,11 +416,8 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
   return (
     <section ref={wrapRef} className={styles.wrap}>
       <div ref={stickyRef} className={styles.sticky}>
-        <div className={styles.sky} aria-hidden="true" />
-        {/* облака стоят по обе стороны от canvas: за башней и перед ней */}
-        <CloudLayer variant="far" apiRef={cloudFarRef} />
+        <div className={styles.backdrop} aria-hidden="true" />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-        <CloudLayer variant="near" apiRef={cloudNearRef} />
         <div ref={glassRef} className={styles.glass} aria-hidden="true" />
 
         <div ref={overlayRef} className={styles.overlay}>
