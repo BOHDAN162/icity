@@ -1,7 +1,9 @@
 /* Путь в проекте: components/OfficeHub.module.css
-   Значения — из app/tokens.css. Теней нет ни одной.
-   Радиус 2 px на кнопках; круглые стрелки — единственное исключение,
-   оно задано брифом как форма элемента. */
+
+   Плашек под текстом нет. Вместо них вуали — градиент от кромки кадра
+   в прозрачность. Это единственное разрешённое отступление от запрета
+   на градиенты, и оно служебное: вуаль держит контраст, а не украшает.
+   Условие записано в design-system.md, раздел «Вуаль». */
 
 .root {
   position: fixed;
@@ -45,15 +47,88 @@
 
 .shotOn { opacity: 1; }
 
-/* --- каркас интерфейса ------------------------------------------------ */
+/* --- вуали ------------------------------------------------------------ */
+
+/* Верхняя вуаль держит только «К башне» слева: справа стоит залитая
+   кнопка, ей подложка не нужна. Поэтому вуаль обрезана маской по
+   горизонтали — центр и правая часть кадра остаются чистыми. */
+/* Верхняя вуаль держит только «К башне» слева: справа стоит залитая
+   кнопка, ей подложка не нужна. Маска срезает вуаль по горизонтали,
+   центр и правая часть кадра остаются чистыми. */
+.scrimTop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 18%;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(242, 244, 245, 0.94) 0%,
+    rgba(242, 244, 245, 0.82) 38%,
+    rgba(242, 244, 245, 0.42) 70%,
+    rgba(242, 244, 245, 0) 100%
+  );
+  mask-image: linear-gradient(to right, #000 0%, #000 28%, transparent 58%);
+}
+
+/* Полоса под мелким шрифтом и кругами перехода. Низкая: держит две
+   строки, а не треть кадра. */
+.scrimBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26%;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(242, 244, 245, 0.95) 0%,
+    rgba(242, 244, 245, 0.82) 34%,
+    rgba(242, 244, 245, 0.45) 64%,
+    rgba(242, 244, 245, 0.12) 86%,
+    rgba(242, 244, 245, 0) 100%
+  );
+}
+
+/* Вуаль под текстом зоны. Плотность задаётся по вертикали, маска срезает
+   её по горизонтали: противоположная половина кадра остаётся нетронутой.
+   Два наложенных градиента дали бы объединение альф и размыли бы полкадра,
+   маска даёт произведение. */
+.scrimInfo {
+  position: absolute;
+  bottom: 0;
+  width: 62%;
+  height: 72%;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(242, 244, 245, 0.96) 0%,
+    rgba(242, 244, 245, 0.92) 46%,
+    rgba(242, 244, 245, 0.74) 68%,
+    rgba(242, 244, 245, 0.34) 86%,
+    rgba(242, 244, 245, 0) 100%
+  );
+}
+
+.scrimInfoLeft {
+  left: 0;
+  mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 100%);
+}
+
+.scrimInfoRight {
+  right: 0;
+  mask-image: linear-gradient(to left, #000 0%, #000 48%, transparent 100%);
+}
+
+/* --- каркас ----------------------------------------------------------- */
 
 .ui {
   position: absolute;
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  padding: var(--s-5) var(--pad-x);
-  gap: var(--s-5);
+  padding: var(--s-5) var(--pad-x) var(--s-6);
   pointer-events: none;
 }
 
@@ -66,111 +141,112 @@
   gap: var(--s-4);
 }
 
+/* «К башне» — не ровня главной кнопке: текстовый возврат без плашки */
 .back {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
-  height: 44px;
-  padding: 0 var(--s-4);
-  border: 1px solid var(--alu);
-  border-radius: var(--radius);
-  background: var(--paper);
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: var(--s-2) 0;
+  /* Подчинён целевой кнопке формой, а не цветом: без заливки, без рамки,
+     начертание 400. Прозрачностью гасить нельзя — она съедает контраст,
+     а замер этого не увидит, он читает объявленный color. */
   color: var(--ink);
-  font: 500 15px/1 var(--sans);
+  font: 400 15px/1 var(--sans);
   cursor: pointer;
-  transition:
-    background var(--t-micro) var(--ease-out),
-    border-color var(--t-micro) var(--ease-out);
+  transition: color var(--t-micro) var(--ease-out);
 }
 
-.back:hover { background: var(--white); border-color: var(--ink); }
+.back:hover { color: var(--frit-deep); }
 
+/* Целевое действие. Осталось залитой кнопкой, но спокойнее по весу. */
 .cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 44px;
   padding: 0 var(--s-5);
+  border-radius: var(--radius);
+  background: var(--frit-deep);
+  color: var(--white);
+  font: 500 15px/1 var(--sans);
   text-decoration: none;
-  font-size: 15px;
+  transition: background var(--t-micro) var(--ease-out);
 }
 
-/* --- карточка зоны ---------------------------------------------------- */
+.cta:hover { background: var(--frit-press); }
 
-.body {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  min-height: 0;
+/* --- низ: текст зоны, переходы, мелкий шрифт -------------------------- */
+
+.bottom {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: var(--s-6);
+  align-content: end;
 }
 
-.bodyRight { justify-content: flex-end; }
-
-.card {
-  width: min(29rem, 100%);
-  padding: var(--s-6);
-  background: var(--paper);
-  border: 1px solid var(--alu);
-  /* прямые углы: радиус живёт только на кнопках и полях */
-  animation: cardIn var(--t-reveal) var(--ease-out) both;
+.info {
+  max-width: 34rem;
+  justify-self: start;
+  animation: infoIn var(--t-reveal) var(--ease-out) both;
 }
 
-@keyframes cardIn {
+.infoRight { justify-self: end; }
+
+@keyframes infoIn {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: none; }
 }
 
-.counter {
-  margin: 0 0 var(--s-4);
+/* Микро-лейбл. Тише он кеглем, трекингом и капителью, а не цветом:
+   12 px в --ink-60 поверх кадра не держит 4,5:1 без вуали, которая
+   съедает полкадра. */
+.eyebrow {
+  margin: 0 0 var(--s-3);
+  color: var(--ink);
 }
 
-.zoneLabel {
+/* Название зоны — самое крупное на экране после самого кадра */
+.zoneName {
   font: var(--display-l);
   letter-spacing: var(--tr-l);
   color: var(--ink);
-  margin: 0 0 var(--s-5);
+  margin: 0 0 var(--s-4);
 }
 
+/* Тише заголовка не цветом, а кеглем и начертанием. Серый --ink-60
+   поверх кадра требует такой плотной вуали, что от рендера ничего
+   не остаётся; --ink проходит контраст почти без вуали. */
 .line {
   font: var(--lead);
   letter-spacing: var(--tr-lead);
-  color: var(--ink-60);
-  margin: 0 0 var(--s-3);
+  color: var(--ink);
+  margin: 0 0 var(--s-2);
 }
 
 .line:last-of-type { margin-bottom: var(--s-5); }
 
-/* Единственное красное на экране: ноль капзатрат и полоса растра под ним.
+/* Единственное красное: ноль капзатрат и полоса растра под ним.
    Место разрешено списком в design-system.md §1 — «полоса под ключевым
    числом». Растр --frit-dense, на ≤767 px токен сам становится --frit-mid. */
-/* Ключевое число карточки: подпись сверху, число под ней, полоса растра
-   во всю ширину блока. Полоса по ширине самой цифры вырождается в семь
-   точек и читается как мусор, поэтому она идёт по колонке — так же, как
-   в ряду чисел на экране «Приземление». */
 .zeroRow {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: var(--s-2);
   margin: 0 0 var(--s-5);
+  max-width: 22rem;
 }
 
-.zeroCaption {
-  margin: 0;
-}
+.zeroCaption { margin: 0; }
 
 .zero {
   font: var(--num-xl);
   letter-spacing: var(--tr-num);
   color: var(--frit-deep);
   line-height: 1;
-}
-
-.zeroStrip {
-  display: block;
-  height: 6px;
-  margin-top: var(--s-1);
-  background: var(--frit-dense);
 }
 
 .zeroUnit {
@@ -180,12 +256,20 @@
   margin-left: var(--s-2);
 }
 
+.zeroStrip {
+  display: block;
+  height: 6px;
+  margin-top: var(--s-1);
+  background: var(--frit-dense);
+}
+
+/* Текстовый контрол с волосяной линией, не кнопка в коробке */
 .planLink {
   appearance: none;
   border: 0;
   border-bottom: 1px solid var(--alu);
   background: none;
-  padding: 0 0 2px;
+  padding: 0 0 3px;
   color: var(--ink);
   font: 500 15px/1.2 var(--sans);
   cursor: pointer;
@@ -194,108 +278,98 @@
 
 .planLink:hover { border-bottom-color: var(--ink); }
 
-/* --- низ: оговорка и стрелки ------------------------------------------ */
+/* --- переходы: только круг со стрелкой -------------------------------- */
 
-/* Три колонки, а не space-between: кнопки перехода должны стоять ровно
-   по центру экрана, а не по центру остатка после оговорки. Третья колонка
-   пустая и нужна только чтобы держать симметрию. */
-.bottomRow {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: end;
-  gap: var(--s-5);
-}
-
-/* Оговорка стоит на плотной подложке: рендеры светлые, и текст на них
-   напрямую не набирается — контраст не гарантируется. */
-.disclaimer {
-  font: var(--small);
-  color: var(--ink-60);
-  background: var(--paper);
-  border: 1px solid var(--alu);
-  padding: var(--s-3) var(--s-4);
-  margin: 0;
-  max-width: 34em;
-  justify-self: start;
-}
-
-/* Переходы. Кнопки стоят внизу по центру в ряд, каждая несёт стрелку,
-   повёрнутую туда, где зона лежит на плане, и имя этой зоны: человек
-   должен понимать, куда ведёт кнопка, до нажатия, а не после. */
 .nav {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--s-3);
-  flex-shrink: 0;
+  gap: var(--s-5);
+  justify-self: center;
 }
 
 .move {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-3);
+  position: relative;
+  width: 56px;
   height: 56px;
-  padding: 0 var(--s-5);
+  border-radius: 50%;
   border: 1px solid var(--alu);
-  border-radius: var(--radius);
   background: var(--paper);
   color: var(--ink);
-  font: 500 15px/1 var(--sans);
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  white-space: nowrap;
   transition:
     background var(--t-micro) var(--ease-out),
-    border-color var(--t-micro) var(--ease-out);
+    border-color var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out);
 }
 
 .move:hover { background: var(--white); border-color: var(--ink); }
 
-/* Стрелка сидит в круге — форма осталась от прежней пары стрелок,
-   единственное место в системе с радиусом, отличным от 2 px и 0. */
-.moveArrow {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--alu);
+/* Возврат туда, откуда только что пришли, — тише прямых ходов */
+.moveReturn { color: var(--ink-60); border-color: var(--alu); }
+.moveReturn:hover { color: var(--ink); }
+
+/* Подпись появляется по наведению и по фокусу. Для скринридера имя
+   кнопки несёт aria-label, поэтому подпись помечена aria-hidden. */
+.moveLabel {
+  position: absolute;
+  bottom: calc(100% + var(--s-3));
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  white-space: nowrap;
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
   color: var(--ink);
-  flex-shrink: 0;
+  background: var(--paper);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--t-micro) var(--ease-out),
+    transform var(--t-micro) var(--ease-out);
 }
 
-/* Возврат тише прямых ходов: тоньше набор и вторичный цвет. */
-.moveBack {
-  font-weight: 400;
+.move:hover .moveLabel,
+.move:focus-visible .moveLabel {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* --- мелкий шрифт ----------------------------------------------------- */
+
+/* Юридически обязательная строка. Должна выглядеть как мелкий шрифт:
+   одна строка, тихий цвет, никакой собственной поверхности. */
+.fine {
+  font: var(--small);
   color: var(--ink-60);
+  margin: 0;
+  justify-self: center;
+  text-align: center;
 }
-
-.moveBack .moveArrow { color: var(--ink-60); }
-.moveBack:hover { color: var(--ink); }
-.moveBack:hover .moveArrow { color: var(--ink); }
 
 @media (max-width: 1023px) {
-  .card { width: min(26rem, 100%); padding: var(--s-5); }
+  .info { max-width: 28rem; }
 }
 
 @media (max-width: 767px) {
-  .ui {
-    padding: var(--s-4) var(--pad-x);
-    grid-template-rows: auto 1fr auto;
-    gap: var(--s-4);
-  }
-  .topRow { flex-wrap: wrap; gap: var(--s-3); }
-  .cta { flex: 1; }
-  .body, .bodyRight { align-items: flex-end; justify-content: stretch; }
-  .card { width: 100%; padding: var(--s-4); }
-  .zoneLabel { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-4); }
-  .line { font: var(--body); margin-bottom: var(--s-2); }
-  .bottomRow { grid-template-columns: 1fr; align-items: stretch; gap: var(--s-3); }
-  .disclaimer { max-width: none; }
-  .nav { justify-content: center; gap: var(--s-2); }
-  .move { height: 48px; padding: 0 var(--s-4); font-size: 14px; gap: var(--s-2); }
-  .moveArrow { width: 28px; height: 28px; }
+  .ui { padding: var(--s-4) var(--pad-x) var(--s-5); }
+  .cta { flex: 1; margin-left: var(--s-4); }
+  .bottom { gap: var(--s-5); }
+  .info, .infoRight { justify-self: stretch; max-width: none; }
+  .zoneName { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-3); }
+  .line { font: var(--body); }
+  .nav { gap: var(--s-4); }
+  .move { width: 52px; height: 52px; }
+  .fine { text-align: left; justify-self: stretch; }
+  .scrimBottom { height: 40%; }
+  .scrimInfo { width: 100%; height: 78%; }
+  .scrimTop { mask-image: linear-gradient(to right, #000 0%, #000 46%, transparent 82%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card { animation: none; }
+  .info { animation: none; }
 }
