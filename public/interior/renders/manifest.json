@@ -1,0 +1,127 @@
+{
+ "openspace": {
+  "native": [
+   1664,
+   936
+  ],
+  "src": "IMG_3547.PNG",
+  "variants": {
+   "640": {
+    "webp": 26,
+    "avif": 21
+   },
+   "900": {
+    "webp": 44,
+    "avif": 34
+   },
+   "1280": {
+    "webp": 74,
+    "avif": 57
+   },
+   "1664": {
+    "webp": 111,
+    "avif": 79
+   }
+  }
+ },
+ "corridor": {
+  "native": [
+   1664,
+   936
+  ],
+  "src": "IMG_3548.PNG",
+  "variants": {
+   "640": {
+    "webp": 23,
+    "avif": 19
+   },
+   "900": {
+    "webp": 39,
+    "avif": 32
+   },
+   "1280": {
+    "webp": 68,
+    "avif": 54
+   },
+   "1664": {
+    "webp": 103,
+    "avif": 78
+   }
+  }
+ },
+ "kitchen": {
+  "native": [
+   1672,
+   940
+  ],
+  "src": "IMG_3544.PNG",
+  "variants": {
+   "640": {
+    "webp": 20,
+    "avif": 15
+   },
+   "900": {
+    "webp": 36,
+    "avif": 26
+   },
+   "1280": {
+    "webp": 65,
+    "avif": 47
+   },
+   "1672": {
+    "webp": 100,
+    "avif": 71
+   }
+  }
+ },
+ "reception": {
+  "native": [
+   2731,
+   1536
+  ],
+  "src": "render_2_reception.jpg",
+  "variants": {
+   "700": {
+    "webp": 17,
+    "avif": 13
+   },
+   "1100": {
+    "webp": 35,
+    "avif": 25
+   },
+   "1600": {
+    "webp": 64,
+    "avif": 45
+   },
+   "2400": {
+    "webp": 116,
+    "avif": 81
+   }
+  }
+ },
+ "meeting_lg": {
+  "native": [
+   1664,
+   936
+  ],
+  "src": "IMG_3550.PNG",
+  "variants": {
+   "640": {
+    "webp": 13,
+    "avif": 10
+   },
+   "900": {
+    "webp": 22,
+    "avif": 17
+   },
+   "1280": {
+    "webp": 39,
+    "avif": 29
+   },
+   "1664": {
+    "webp": 59,
+    "avif": 44
+   }
+  }
+ }
+}

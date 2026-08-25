@@ -34,15 +34,23 @@
   background: var(--paper-2);
 }
 
+/* Кадр — <picture>, а не <img>: рендеры отдаются в AVIF с запасным WebP
+   в четырёх ширинах. Сам <picture> не заменяемый элемент, поэтому
+   object-fit висит на вложенном <img>, иначе кадр не кадрируется. */
 .shot {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  display: block;
   opacity: 0;
   transition: opacity var(--t-scene) var(--ease-out);
   user-select: none;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .shotOn { opacity: 1; }

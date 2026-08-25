@@ -26,15 +26,25 @@
    раздел «Вуаль». */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
-import PlanOverlay from './PlanOverlay';
+import dynamic from 'next/dynamic';
+import {
+  RENDER_NATIVE, prefetchPlan, renderSmallest, renderSrcSet, type RenderKey,
+} from '@/lib/interior';
 import styles from './OfficeHub.module.css';
 
-type ZoneId = 'reception' | 'corridor' | 'openspace' | 'kitchen' | 'meeting';
+/* Кукольный дом тянет за собой three.js. Импорт динамический и без SSR:
+   до плана добираются кликом внутри офиса, и на первый экран сайта его
+   вес не влияет вообще. */
+const PlanDollhouse = dynamic(() => import('./PlanDollhouse'), { ssr: false });
+
+/* Ключ зоны один на весь проект: здесь, в public/interior/zones_cameras.json
+   и в именах файлов рендеров. Поэтому переговорная — `meeting_lg`, как
+   в выгрузке из модели, а не `meeting`: переименовать сорок файлов дороже,
+   чем принять чужое имя. */
+type ZoneId = RenderKey;
 
 type Zone = {
   id: ZoneId;
-  src: string;
   label: string;
   alt: string;
   /** сторона, с которой встаёт текстовый блок */
@@ -51,7 +61,7 @@ type Zone = {
 const CENTROID: Record<ZoneId, readonly [number, number]> = {
   reception: [495, 195],
   kitchen: [670, 630],
-  meeting: [1280, 630],
+  meeting_lg: [1280, 630],
   corridor: [1000, 850],
   openspace: [840, 1100],
 };
@@ -59,10 +69,10 @@ const CENTROID: Record<ZoneId, readonly [number, number]> = {
 /** Связи двусторонние: куда можно уйти, оттуда можно и вернуться. */
 const EXITS: Record<ZoneId, readonly ZoneId[]> = {
   reception: ['corridor', 'openspace'],
-  corridor: ['reception', 'kitchen', 'openspace', 'meeting'],
+  corridor: ['reception', 'kitchen', 'openspace', 'meeting_lg'],
   kitchen: ['corridor', 'openspace'],
-  openspace: ['reception', 'corridor', 'kitchen', 'meeting'],
-  meeting: ['corridor', 'openspace'],
+  openspace: ['reception', 'corridor', 'kitchen', 'meeting_lg'],
+  meeting_lg: ['corridor', 'openspace'],
 };
 
 /** Азимут от зоны к зоне: 0° — север, дальше по часовой. */
@@ -75,7 +85,6 @@ const bearing = (from: ZoneId, to: ZoneId) => {
 const ZONES: Record<ZoneId, Zone> = {
   reception: {
     id: 'reception',
-    src: '/renders/render_2_reception.jpg',
     label: 'Ресепшн',
     alt: 'Ресепшн с рифлёной плиткой и отделкой из светлого дуба',
     side: 'left',
@@ -84,7 +93,6 @@ const ZONES: Record<ZoneId, Zone> = {
   },
   corridor: {
     id: 'corridor',
-    src: '/renders/render_3_corridor.jpg',
     label: 'Коридор',
     alt: 'Коридор со стеклянными перегородками и дубовым полом',
     side: 'right',
@@ -92,15 +100,13 @@ const ZONES: Record<ZoneId, Zone> = {
   },
   openspace: {
     id: 'openspace',
-    src: '/renders/render_1_openspace.jpg',
     label: 'Опенспейс',
     alt: 'Опенспейс на 26 рабочих мест с панорамным остеклением',
     side: 'left',
     lines: ['26 рабочих мест.', 'Мебель входит в аренду, докупать нечего.'],
   },
-  meeting: {
-    id: 'meeting',
-    src: '/renders/render_5_meeting.jpg',
+  meeting_lg: {
+    id: 'meeting_lg',
     label: 'Переговорная',
     alt: 'Переговорная на шесть человек с круглым дубовым столом',
     side: 'right',
@@ -108,7 +114,6 @@ const ZONES: Record<ZoneId, Zone> = {
   },
   kitchen: {
     id: 'kitchen',
-    src: '/renders/render_4_kitchen.jpg',
     label: 'Кухня-лаунж',
     alt: 'Кухня-столовая с барной стойкой на пять мест',
     side: 'left',
@@ -116,7 +121,7 @@ const ZONES: Record<ZoneId, Zone> = {
   },
 };
 
-const ORDER: ZoneId[] = ['reception', 'corridor', 'openspace', 'meeting', 'kitchen'];
+const ORDER: ZoneId[] = ['reception', 'corridor', 'openspace', 'meeting_lg', 'kitchen'];
 
 /* Строка обязательная. Она стоит ноль и снимает риск целиком: ЛПР приедет
    смотреть в тот же день, и если картинка окажется красивее реальности,
@@ -128,9 +133,13 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
   const [cameFrom, setCameFrom] = useState<ZoneId | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
+  /* Какие кадры уже стоят в стопке. Зона попадает сюда в момент перехода
+     и больше не уходит: второй визит не должен ничего грузить. */
+  const [seen, setSeen] = useState<ReadonlySet<ZoneId>>(() => new Set<ZoneId>(['reception']));
   const rootRef = useRef<HTMLDivElement>(null);
 
   const go = useCallback((to: ZoneId) => {
+    setSeen((prev) => (prev.has(to) ? prev : new Set(prev).add(to)));
     setZoneId((current) => { setCameFrom(current); return to; });
   }, []);
 
@@ -138,6 +147,8 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
      на open: setState в теле эффекта — ошибка линтера и лишний рендер. */
   const exit = useCallback(() => {
     setPlanOpen(false);
+    // seen не трогаем: уже скачанные кадры при возврате в офис
+    // должны стоять на месте, а не грузиться заново
     setZoneId('reception');
     setCameFrom(null);
     onExit();
@@ -190,24 +201,34 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
       role="dialog"
       aria-label="Помещение 113Н, обход по зонам"
     >
-      {/* Кадры лежат стопкой и переключаются прозрачностью — без сдвигов */}
+      {/* Кадры лежат стопкой и переключаются прозрачностью — без сдвигов.
+          В стопке только те зоны, где зритель уже побывал: все пять
+          занимают весь экран, то есть формально видимы, и loading="lazy"
+          их не удержал бы — браузер потянул бы 2 МБ сразу. Побывал —
+          кадр остался в DOM, возврат мгновенный.
+
+          next/image здесь не нужен: рендеры уже нарезаны на четыре ширины
+          в WebP и AVIF (см. public/interior/renders/manifest.json), и
+          прогонять готовые файлы через оптимизатор второй раз — это
+          лишний проход и потеря AVIF. */}
       <div className={styles.stage}>
-        {ORDER.map((id) => {
+        {ORDER.filter((id) => seen.has(id)).map((id) => {
           const z = ZONES[id];
           const on = id === zoneId;
           return (
-            <Image
-              key={id}
-              className={`${styles.shot} ${on ? styles.shotOn : ''}`}
-              src={z.src}
-              alt={on ? z.alt : ''}
-              aria-hidden={!on}
-              draggable={false}
-              fill
-              sizes="100vw"
-              style={{ objectFit: 'cover' }}
-              loading={id === 'reception' ? 'eager' : 'lazy'}
-            />
+            <picture key={id} className={`${styles.shot} ${on ? styles.shotOn : ''}`}>
+              <source type="image/avif" srcSet={renderSrcSet(id, 'avif')} sizes="100vw" />
+              <source type="image/webp" srcSet={renderSrcSet(id, 'webp')} sizes="100vw" />
+              <img
+                src={renderSmallest(id)}
+                alt={on ? z.alt : ''}
+                width={RENDER_NATIVE[id][0]}
+                height={RENDER_NATIVE[id][1]}
+                draggable={false}
+                decoding="async"
+                fetchPriority={id === 'reception' ? 'high' : 'auto'}
+              />
+            </picture>
           );
         })}
       </div>
@@ -251,7 +272,15 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
 
             {zone.lines.map((line) => <p key={line} className={styles.line}>{line}</p>)}
 
-            <button type="button" className={styles.planLink} onClick={() => setPlanOpen(true)}>
+            {/* Модель и JSON тянем уже по наведению: к клику они в кэше,
+                и план открывается без паузы на загрузку. */}
+            <button
+              type="button"
+              className={styles.planLink}
+              onClick={() => setPlanOpen(true)}
+              onPointerEnter={prefetchPlan}
+              onFocus={prefetchPlan}
+            >
               Открыть планировку
             </button>
           </div>
@@ -281,7 +310,13 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
         </div>
       </div>
 
-      <PlanOverlay open={planOpen} onClose={() => setPlanOpen(false)} />
+      {/* Кукольный дом сам решит, показать объёмный план или плоский,
+          и сам переключит офис на выбранную зону — пока оверлей ещё
+          закрывает экран, поэтому шва не видно. */}
+      {/* Монтируем по клику, а не прячем пропом: у dynamic() чанк едет
+          в момент отрисовки, и постоянно висящий в дереве план утащил бы
+          свой код на первый экран. Пустой кадр — пустой запрос. */}
+      {planOpen && <PlanDollhouse onClose={() => setPlanOpen(false)} onEnterZone={go} />}
     </div>
   );
 }

@@ -1,0 +1,400 @@
+/* Путь в проекте: components/PlanDollhouse.module.css
+
+   Стили общие для трёх файлов: оболочки PlanDollhouse, объёмного плана
+   PlanScene и плоского PlanFlat. Информационный слой обязан выглядеть
+   одинаково в обеих версиях — держать его в одном месте дешевле, чем
+   потом сверять два.
+
+   Вуали здесь нет и быть не должно. Она разрешена только поверх кадров
+   зон, где под текстом лежит фотография (design-system.md, «Вуаль»).
+   Под планом лежит сплошная --paper-2, контраст берётся с неё напрямую.
+
+   Теней нет, радиусы 2 px на кнопках и 0 везде остальном. */
+
+/* Высота нижнего блока — чисел, строки про фасад и ряда зон. Её же
+   вычитает поле плана, чтобы чертёж не подлезал под текст. На десктопе
+   блок стоит в углу и места не отнимает. */
+.root {
+  --info-space: 0px;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--paper);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  animation: fade var(--t-reveal) var(--ease-out) both;
+}
+
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- панель ----------------------------------------------------------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--pad-x);
+  background: var(--paper);
+  border-bottom: 1px solid var(--alu);
+}
+
+.title { margin: 0; }
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+/* Чертёж — вход в соседнее окно, а не действие. Текст с волосяной
+   линией, как .planLink в офисе. */
+.sheetLink {
+  appearance: none;
+  border: 0;
+  border-bottom: 1px solid var(--alu);
+  background: none;
+  min-height: 44px;
+  padding: 0 var(--s-1) 3px;
+  color: var(--ink);
+  font: 500 15px/1.2 var(--sans);
+  cursor: pointer;
+  transition: border-color var(--t-micro) var(--ease-out);
+}
+
+.sheetLink:hover { border-bottom-color: var(--ink); }
+
+.close {
+  height: 44px;
+  padding: 0 var(--s-5);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 15px/1 var(--sans);
+  cursor: pointer;
+  transition: background var(--t-micro) var(--ease-out), border-color var(--t-micro) var(--ease-out);
+}
+
+.close:hover { background: var(--white); border-color: var(--ink); }
+
+/* --- поле плана ------------------------------------------------------- */
+
+.view {
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-2);
+  display: grid;
+  place-items: center;
+}
+
+.loading {
+  margin: 0;
+  color: var(--ink-60);
+}
+
+/* Никакого центрирования: и холст, и SVG занимают клетку целиком и
+   вписывают содержимое сами. Центрирование гридом делало элемент
+   нерастянутым, и холст получал высоту не от области, а от содержимого. */
+.canvasWrap {
+  position: absolute;
+  inset: 0 0 var(--info-space) 0;
+  display: block;
+  touch-action: pan-y;
+}
+
+.grabbable { cursor: grab; }
+.grabbable:active { cursor: grabbing; }
+
+/* --- плоский план ----------------------------------------------------- */
+
+.flat {
+  display: block;
+  margin: 0 auto;
+  /* Отдаём SVG всю клетку и позволяем ему самому вписаться:
+     preserveAspectRatio по умолчанию — meet, то есть чертёж садится
+     целиком и центруется. Считать высоту через height: auto нельзя —
+     она берётся из пропорций viewBox и вылезает за экран на широком окне. */
+  width: 100%;
+  height: 100%;
+  /* Потолок ширины держит типографику в рамках: при 1100 px метр плана
+     равен ~48 px, и подпись в 0,26 единицы попадает ровно в 12 px —
+     тот же кегль, что у --label в CSS. */
+  max-width: 1100px;
+  /* Низ отдан ряду чисел: он лежит поверх поля плана, и чертёж
+     не должен под него подлезать. */
+  padding: var(--s-5) var(--pad-x) 128px;
+  box-sizing: border-box;
+}
+
+.flatZone {
+  stroke: var(--alu);
+  stroke-width: 0.05;
+  transition: fill var(--t-micro) var(--ease-out), stroke var(--t-micro) var(--ease-out);
+}
+
+.flatLive {
+  fill: var(--white);
+  cursor: pointer;
+}
+
+.flatQuiet {
+  fill: var(--paper-3);
+}
+
+/* Активная зона на плане — растр фритты. Одно из четырёх мест, где
+   растр вообще разрешён (design-system.md §1). Плоской красной заливки
+   здесь быть не может — ни здесь, ни в объёмной версии. */
+.flatOn.flatLive {
+  fill: url(#frit);
+  stroke: var(--frit);
+  stroke-width: 0.08;
+}
+
+.flatOn.flatQuiet {
+  fill: var(--alu);
+  stroke: var(--ink-60);
+}
+
+/* Обводку фокуса рисуем штрихом по самой фигуре: outline у SVG ложится
+   по габаритному прямоугольнику, и на скошенном опенспейсе это читается
+   как ошибка отрисовки, а не как фокус. */
+.flatZone:focus { outline: none; }
+
+.flatZone:focus-visible {
+  outline: none;
+  stroke: var(--ink);
+  stroke-width: 0.12;
+}
+
+.flatLabel {
+  font-family: var(--mono);
+  font-size: 0.26px;
+  font-weight: 500;
+  letter-spacing: 0.02px;
+  text-transform: uppercase;
+  fill: var(--ink-60);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Поверх растра серая подпись тонет — на активной зоне она темнеет */
+.flatLabelOn { fill: var(--ink); }
+
+/* --- подпись за курсором ---------------------------------------------- */
+
+.chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  margin: 0;
+  /* Смещение внутри самого элемента: transform занят позицией курсора */
+  margin-left: var(--s-4);
+  margin-top: var(--s-4);
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--paper);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.chipLive { border-color: var(--ink); }
+
+.chipName {
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.chipHint {
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--frit-deep);
+}
+
+/* --- прибытие: кадр зоны поверх плана --------------------------------- */
+
+.arrival {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  /* Кадр висит в DOM с первой миллисекунды перелёта, но невидим: всё это
+     время он грузится. Проявление включает .arrivalOn на 800-й мс.
+     400 мс жёстко — это вторая половина перелёта (CROSSFADE_MS
+     в lib/interior.ts). Токен --t-reveal не подходит: он 380 мс
+     и разъедется с камерой на два кадра. */
+  opacity: 0;
+}
+
+.arrivalOn {
+  animation: arrive 400ms var(--ease-out) both;
+}
+
+.arrival img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes arrive {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* --- информационный слой ---------------------------------------------- */
+
+.facts {
+  position: absolute;
+  left: var(--pad-x);
+  bottom: var(--s-6);
+  z-index: 1;
+  pointer-events: none;
+  max-width: min(46rem, calc(100% - var(--pad-x) * 2));
+}
+
+/* Ряд чисел по design-system.md §4: Mono, разделены вертикальными
+   линиями --alu. Растра под ними нет — он здесь не по списку. */
+.factRow {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 var(--s-4);
+}
+
+.fact {
+  padding: 0 var(--s-5);
+  border-left: 1px solid var(--alu);
+}
+
+.fact:first-child { padding-left: 0; border-left: 0; }
+
+.factCaption {
+  margin: 0 0 var(--s-2);
+  color: var(--ink-60);
+}
+
+.factValue {
+  margin: 0;
+  font: var(--num-m);
+  letter-spacing: var(--tr-num);
+  color: var(--ink);
+}
+
+.facade {
+  margin: 0;
+  font: var(--small);
+  color: var(--ink-60);
+  max-width: 34rem;
+}
+
+/* --- переходы с клавиатуры -------------------------------------------- */
+
+/* Мышью зону берут прямо с плана. С клавиатуры полигон не поймать,
+   поэтому рядом лежит список — невидимый, пока в нём нет фокуса.
+   Скринридеру он доступен всегда: это не display: none. */
+.doors {
+  position: absolute;
+  right: var(--pad-x);
+  bottom: var(--s-6);
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  opacity: 0;
+  transition: opacity var(--t-micro) var(--ease-out);
+}
+
+.doors:focus-within { opacity: 1; }
+
+.door {
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.door:hover { background: var(--white); border-color: var(--ink); }
+
+/* --- адаптив ---------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+  .facts { bottom: var(--s-5); }
+  .factValue { font: 500 22px/1 var(--mono); letter-spacing: var(--tr-num); }
+}
+
+@media (max-width: 767px) {
+  .root { --info-space: 232px; }
+
+  /* Панель в одну строку: перенос съедал 170 px высоты, а это на телефоне
+     пятая часть экрана. Заголовок ужимается первым — он подпись, а не
+     управление. */
+  .bar { flex-wrap: nowrap; gap: var(--s-3); min-width: 0; }
+  .title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tools { flex: 0 0 auto; }
+  .close { padding: 0 var(--s-4); }
+
+  .flat { padding: var(--s-4) var(--s-4) var(--s-4); }
+
+  /* Сетка вместо переноса flex: при переносе линия-разделитель уезжает
+     в начало второй строки и читается как ошибка вёрстки. */
+  .factRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-3) 0;
+  }
+  .fact { padding: 0 var(--s-4); border-left: 1px solid var(--alu); }
+  .fact:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .facts {
+    left: var(--pad-x);
+    right: var(--pad-x);
+    bottom: var(--s-4);
+    max-width: none;
+  }
+  /* На телефоне строка про фасад упиралась в 34rem и уезжала за экран */
+  .facade { max-width: 100%; }
+  .factValue { font: 500 19px/1 var(--mono); letter-spacing: var(--tr-num); }
+  /* Подпись за курсором на тапе бесполезна: пальца на экране уже нет */
+  .chip { display: none; }
+  /* На телефоне список зон стоит всегда: показывать его только по фокусу
+     значит спрятать навсегда — фокуса пальцем не бывает. Одна строка
+     с горизонтальной прокруткой, чтобы высота была предсказуемой. */
+  .doors {
+    left: var(--pad-x);
+    right: var(--pad-x);
+    bottom: var(--s-4);
+    opacity: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .door { flex: 0 0 auto; }
+  /* Ряд зон занимает 44 px — числа встают ровно над ним */
+  .facts { bottom: calc(var(--s-4) + 44px + var(--s-4)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root { animation: none; }
+  .arrival { animation: none; }
+}
