@@ -4,9 +4,15 @@
    Путь в проекте: components/PlanScene.tsx
 
    ЧТО ЭТО. Оболочка помещения из dollhouse.glb — плита, стены, пять
-   круглых колонн, фасадное и внутреннее остекление. Потолок в модели есть,
-   но скрыт: сверху нужно видеть этаж. Мебели в модели нет и не будет —
-   мебель показывают рендеры, а модель отвечает за форму и связи зон.
+   круглых колонн, фасадное остекление с импостами и внутренние
+   перегородки. Потолок в модели есть, но скрыт: сверху нужно видеть этаж.
+   Мебели в модели нет и не будет — мебель показывают рендеры, а модель
+   отвечает за форму и связи зон.
+
+   Стена по четырём фасадным граням прорезана насквозь — запад 11,33 м,
+   юг 15,51 м, скос 8,80 м, восток 4,82 м, всего 40,46 м, — и в проём
+   заподлицо встало остекление от пола до потолка. Глухой стены там нет
+   и быть не должно: это панорамный фасад.
 
    ЗАЧЕМ ЭТОТ ФАЙЛ ГРУЗИТСЯ ОТДЕЛЬНО. Здесь three.js. Чанк подтягивается
    динамически и только когда план открыли, поэтому на первый экран сайта
@@ -172,9 +178,48 @@ const fitPose = (plan: Plan, aspect: number, azDeg: number, elDeg: number): Pose
 
 /* --- оболочка помещения ---------------------------------------------- */
 
-/* Тени запрещены системой, и это не мешает: объём здесь держат рёбра,
-   а не подложенная под мебель серость. Свет ровный, рёбра алюминиевые —
-   ровно тот язык, на котором нарисован сам фасад. */
+/* Материалы мешей — таблицей, а не перечислением по одному. Дело не
+   в красоте: в модели уже появился новый меш (импосты), и при ручном
+   перечислении такой меш молча исчезает со сцены, а при `else` по
+   умолчанию — молча становится стеклом. Таблица закрывает оба конца:
+   имя либо описано здесь, либо честно названо скрытым, либо в разработке
+   о нём кричат в консоль.
+
+   Потолок в модели есть и намеренно не рисуется: сверху нужно видеть этаж.
+
+   Стекло не пишет в буфер глубины (`depthWrite: false`) — иначе ближняя
+   грань фасада закрывает собой то, что за ней, и этаж превращается
+   в матовую коробку. И рисуется только лицевыми гранями: стеклопакеты
+   в модели объёмные, при `DoubleSide` зритель смотрит сквозь четыре слоя
+   альфы вместо двух, и панорамный фасад сереет до бетонного парапета. */
+type ShellPart = {
+  name: string;
+  /** стекло или непрозрачная поверхность. Импосты — алюминий, не стекло */
+  glass?: boolean;
+  color: string;
+  opacity?: number;
+  /** обводить рёбрами: объём в сцене держат линии, а не тени */
+  edges?: boolean;
+};
+
+const SHELL: readonly ShellPart[] = [
+  { name: 'floor', color: '#CBD3D7' },
+  { name: 'walls', color: '#FFFFFF', edges: true },
+  { name: 'columns', color: '#E6EAEC', edges: true },
+  // Импосты: 16 стоек делят фасад на 20 стеклопакетов примерно по 2 м.
+  // Алюминий, непрозрачный. Без них сорок метров стекла читаются аквариумом.
+  { name: 'mullions', color: '#AEB8BE', edges: true },
+  /* Рёбер у стеклопакетов нет сознательно: вертикали уже нарисованы
+     самими импостами, а контур поверх каждой панели складывался с ними
+     в двойную сетку — сорок метров фасада читались решёткой, а не стеклом.
+     Верх и низ полосы держат рёбра стены и кромка плиты. */
+  { name: 'glazing_facade', glass: true, color: '#9BA7AE', opacity: 0.16 },
+  { name: 'glazing_interior', glass: true, color: '#9BA7AE', opacity: 0.12 },
+];
+
+/** Есть в модели, но не рисуется — и это решение, а не недосмотр. */
+const SHELL_HIDDEN = new Set(['ceiling']);
+
 function Shell() {
   const gltf = useLoader(GLTFLoader, GLB_URL);
 
@@ -184,13 +229,25 @@ function Shell() {
       const m = o as THREE.Mesh;
       if (m.isMesh && m.geometry) map.set(o.name, m.geometry);
     });
+
+    if (process.env.NODE_ENV !== 'production') {
+      const known = new Set([...SHELL.map((p) => p.name), ...SHELL_HIDDEN]);
+      for (const name of map.keys()) {
+        if (!known.has(name)) {
+          // Модель обновили, код — нет. Меш не нарисуется, пока его
+          // не опишут в SHELL или не внесут в SHELL_HIDDEN осознанно.
+          console.warn(`PlanScene: меш «${name}» есть в dollhouse.glb, но не описан в SHELL`);
+        }
+      }
+    }
     return map;
   }, [gltf]);
 
   const edges = useMemo(() => {
     const out: THREE.EdgesGeometry[] = [];
-    for (const name of ['walls', 'columns', 'glazing_facade', 'glazing_interior']) {
-      const g = parts.get(name);
+    for (const part of SHELL) {
+      if (!part.edges) continue;
+      const g = parts.get(part.name);
       if (g) out.push(new THREE.EdgesGeometry(g, 24));
     }
     return out;
@@ -207,39 +264,33 @@ function Shell() {
   // иначе стена перед зоной съедает наведение на неё.
   const noHit = useCallback(() => null, []);
 
-  const floor = parts.get('floor');
-  const walls = parts.get('walls');
-  const columns = parts.get('columns');
-  const facade = parts.get('glazing_facade');
-  const inner = parts.get('glazing_interior');
-
   return (
     <group>
-      {floor && (
-        <mesh geometry={floor} raycast={noHit}>
-          <meshLambertMaterial color="#CBD3D7" />
-        </mesh>
-      )}
-      {walls && (
-        <mesh geometry={walls} raycast={noHit}>
-          <meshLambertMaterial color="#FFFFFF" />
-        </mesh>
-      )}
-      {columns && (
-        <mesh geometry={columns} raycast={noHit}>
-          <meshLambertMaterial color="#E6EAEC" />
-        </mesh>
-      )}
-      {facade && (
-        <mesh geometry={facade} raycast={noHit} renderOrder={2}>
-          <meshBasicMaterial color="#9BA7AE" transparent opacity={0.2} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-      )}
-      {inner && (
-        <mesh geometry={inner} raycast={noHit} renderOrder={2}>
-          <meshBasicMaterial color="#9BA7AE" transparent opacity={0.14} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-      )}
+      {SHELL.map((part) => {
+        const geometry = parts.get(part.name);
+        if (!geometry) return null;
+        return (
+          <mesh
+            key={part.name}
+            geometry={geometry}
+            raycast={noHit}
+            renderOrder={part.glass ? 2 : 1}
+          >
+            {part.glass ? (
+              <meshBasicMaterial
+                color={part.color}
+                transparent
+                opacity={part.opacity ?? 0.2}
+                depthWrite={false}
+                side={THREE.FrontSide}
+              />
+            ) : (
+              <meshLambertMaterial color={part.color} />
+            )}
+          </mesh>
+        );
+      })}
+
       {edges.map((g, i) => (
         <lineSegments key={i} geometry={g} raycast={noHit} renderOrder={3}>
           <lineBasicMaterial color="#8B979E" />
