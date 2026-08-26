@@ -9,10 +9,14 @@
    Мебели в модели нет и не будет — мебель показывают рендеры, а модель
    отвечает за форму и связи зон.
 
-   Стена по четырём фасадным граням прорезана насквозь — запад 11,33 м,
-   юг 15,51 м, скос 8,80 м, восток 4,82 м, всего 40,46 м, — и в проём
-   заподлицо встало остекление от пола до потолка. Глухой стены там нет
-   и быть не должно: это панорамный фасад.
+   ФАСАД. Остекления 29,73 м по четырём прогонам: юг 15,29, скос 8,45,
+   восток 3,95, запад 2,04. Запад почти весь глухой — стекло там идёт
+   только 2,04 м у южного угла. В прежней версии модели была остеклена
+   вся западная кромка на 11,33 м, и это было неверно.
+
+   В периметре три проёма без дверей: вход с запада 1,41 м и два прохода
+   из общего коридора с севера, 1,11 и 1,51 м. Это дыры, а не двери —
+   ни геометрии дверей, ни точек попадания курсора им не нужно.
 
    ЗАЧЕМ ЭТОТ ФАЙЛ ГРУЗИТСЯ ОТДЕЛЬНО. Здесь three.js. Чанк подтягивается
    динамически и только когда план открыли, поэтому на первый экран сайта
@@ -21,9 +25,9 @@
 
    ПАМЯТЬ И КОНТЕКСТ. Оверлей при закрытии размонтируется целиком (см.
    его монтируют по клику и снимают по выходу), Canvas отпускает контекст
-   сам. Геометрию, которую мы создали руками, добиваем в useEffect: у GLB
-   её отдаёт useLoader из общего кэша, а вот EdgesGeometry и полигоны зон
-   наши, и за ними никто не приберёт.
+   сам. То, что создано руками, добиваем в useEffect: геометрию и текстуры
+   GLB отдаёт useLoader из общего кэша, а полигоны зон и материалы,
+   назначенные нами, наши — за ними никто не приберёт.
 
    КАДРОВ БЕЗ НУЖДЫ НЕ РИСУЕМ. frameloop="demand": кадр считается, только
    когда что-то попросили. Праздношатание камеры, перелёт и проявление
@@ -178,44 +182,54 @@ const fitPose = (plan: Plan, aspect: number, azDeg: number, elDeg: number): Pose
 
 /* --- оболочка помещения ---------------------------------------------- */
 
-/* Материалы мешей — таблицей, а не перечислением по одному. Дело не
-   в красоте: в модели уже появился новый меш (импосты), и при ручном
-   перечислении такой меш молча исчезает со сцены, а при `else` по
-   умолчанию — молча становится стеклом. Таблица закрывает оба конца:
-   имя либо описано здесь, либо честно названо скрытым, либо в разработке
-   о нём кричат в консоль.
+/* МОДЕЛЬ ЗАПЕЧЕНА. В GLB лежит атлас 2048×2048 в WebP, один на четыре
+   меша: пол, стены, колонны, импосты. В нём весь диффузный свет — цвет,
+   прямой и отражённый, посчитанный в Cycles со снятым потолком. Мягкие
+   тени на полу и градиенты на стенах живут теперь там, а не в наших
+   источниках света.
 
-   Потолок в модели есть и намеренно не рисуется: сверху нужно видеть этаж.
+   Отсюда главное правило этого файла: **у этих четырёх мешей материал
+   берётся из GLB как есть**. Назначить им плоский цвет — значит стереть
+   запечённое одной строкой, и заметить это можно будет только сравнив
+   с эталонным рендером: модель продолжит рисоваться, просто плоско.
+
+   Таблица распоряжается только тем, что текстуры не несёт: потолком
+   и двумя стёклами. Незнакомое имя по-прежнему не рисуется и кричит
+   в консоль — ни «всё остальное стекло», ни «всё остальное из GLB».
+
+   ОБХОДИМ СЦЕНУ, А НЕ СОБИРАЕМ МЕШИ ЗАНОВО. У узлов `columns` и
+   `mullions` есть трансляция; прежняя версия модели была с запечёнными
+   трансформами, эта — нет. Вытащить голую геометрию и построить свой
+   `<mesh>` значит потерять сдвиг и уронить колонны на несколько метров
+   мимо места.
 
    Стекло не пишет в буфер глубины (`depthWrite: false`) — иначе ближняя
    грань фасада закрывает собой то, что за ней, и этаж превращается
    в матовую коробку. И рисуется только лицевыми гранями: стеклопакеты
-   в модели объёмные, при `DoubleSide` зритель смотрит сквозь четыре слоя
-   альфы вместо двух, и панорамный фасад сереет до бетонного парапета. */
-type ShellPart = {
-  name: string;
-  /** стекло или непрозрачная поверхность. Импосты — алюминий, не стекло */
-  glass?: boolean;
-  color: string;
-  opacity?: number;
-  /** обводить рёбрами: объём в сцене держат линии, а не тени */
-  edges?: boolean;
-};
+   объёмные, при `DoubleSide` зритель смотрит сквозь четыре слоя альфы
+   вместо двух, и панорамный фасад сереет до бетонного парапета. */
+type ShellPart =
+  /** материал приходит из GLB: там запечённый свет, трогать нельзя */
+  | { name: string; baked: true }
+  /** материал наш: у меша нет текстуры */
+  | {
+      name: string;
+      baked?: false;
+      glass?: boolean;
+      color: string;
+      opacity?: number;
+    };
 
 const SHELL: readonly ShellPart[] = [
-  { name: 'floor', color: '#CBD3D7' },
-  { name: 'walls', color: '#FFFFFF', edges: true },
-  { name: 'columns', color: '#E6EAEC', edges: true },
-  // Импосты: 16 стоек делят фасад на 20 стеклопакетов примерно по 2 м.
-  // Алюминий, непрозрачный. Без них сорок метров стекла читаются аквариумом.
-  { name: 'mullions', color: '#AEB8BE', edges: true },
-  /* Рёбер у стеклопакетов нет сознательно: вертикали уже нарисованы
-     самими импостами, а контур поверх каждой панели складывался с ними
-     в двойную сетку — сорок метров фасада читались решёткой, а не стеклом.
-     Верх и низ полосы держат рёбра стены и кромка плиты. */
+  { name: 'floor', baked: true },
+  { name: 'walls', baked: true },
+  { name: 'columns', baked: true },
+  { name: 'mullions', baked: true },
   { name: 'glazing_facade', glass: true, color: '#9BA7AE', opacity: 0.16 },
   { name: 'glazing_interior', glass: true, color: '#9BA7AE', opacity: 0.12 },
 ];
+
+const SHELL_BY_NAME = new Map(SHELL.map((p) => [p.name, p]));
 
 /** Есть в модели, но не рисуется — и это решение, а не недосмотр. */
 const SHELL_HIDDEN = new Set(['ceiling']);
@@ -223,81 +237,75 @@ const SHELL_HIDDEN = new Set(['ceiling']);
 function Shell() {
   const gltf = useLoader(GLTFLoader, GLB_URL);
 
-  const parts = useMemo(() => {
-    const map = new Map<string, THREE.BufferGeometry>();
-    gltf.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && m.geometry) map.set(o.name, m.geometry);
+  const scene = useMemo(() => {
+    /* Клон, а не оригинал: useLoader держит gltf в общем кэше, и правки
+       материалов на оригинале пережили бы размонтирование и достались бы
+       следующему открытию плана уже применёнными. */
+    const root = gltf.scene.clone(true);
+    const ours: THREE.Material[] = [];
+
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+
+      // Курсор ищет только зоны: стена перед зоной не должна съедать наведение
+      mesh.raycast = () => null;
+
+      if (SHELL_HIDDEN.has(mesh.name)) {
+        mesh.visible = false;
+        return;
+      }
+
+      const part = SHELL_BY_NAME.get(mesh.name);
+      if (!part) {
+        mesh.visible = false;
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`PlanScene: меш «${mesh.name}» есть в dollhouse.glb, но не описан в SHELL`);
+        }
+        return;
+      }
+
+      if (part.baked) {
+        /* Материал из GLB. Единственная правка — металличность у импостов:
+           в файле 0,85, а металл без карты окружения в three рисуется
+           чёрным, и запечённая текстура на нём просто не видна. Карту
+           окружения ради одного меша сюда не тащим: она стоит и веса,
+           и генерации PMREM на открытии плана. */
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (mat && 'metalness' in mat && mat.metalness > 0) {
+          const flat = mat.clone();
+          flat.metalness = 0;
+          mesh.material = flat;
+          ours.push(flat);
+        }
+        return;
+      }
+
+      const mat = part.glass
+        ? new THREE.MeshBasicMaterial({
+            color: part.color,
+            transparent: true,
+            opacity: part.opacity ?? 0.2,
+            depthWrite: false,
+            side: THREE.FrontSide,
+          })
+        : new THREE.MeshLambertMaterial({ color: part.color });
+      mesh.material = mat;
+      mesh.renderOrder = part.glass ? 2 : 1;
+      ours.push(mat);
     });
 
-    if (process.env.NODE_ENV !== 'production') {
-      const known = new Set([...SHELL.map((p) => p.name), ...SHELL_HIDDEN]);
-      for (const name of map.keys()) {
-        if (!known.has(name)) {
-          // Модель обновили, код — нет. Меш не нарисуется, пока его
-          // не опишут в SHELL или не внесут в SHELL_HIDDEN осознанно.
-          console.warn(`PlanScene: меш «${name}» есть в dollhouse.glb, но не описан в SHELL`);
-        }
-      }
-    }
-    return map;
+    return { root, ours };
   }, [gltf]);
 
-  const edges = useMemo(() => {
-    const out: THREE.EdgesGeometry[] = [];
-    for (const part of SHELL) {
-      if (!part.edges) continue;
-      const g = parts.get(part.name);
-      if (g) out.push(new THREE.EdgesGeometry(g, 24));
-    }
-    return out;
-  }, [parts]);
-
-  useEffect(() => () => edges.forEach((g) => g.dispose()), [edges]);
+  useEffect(() => () => scene.ours.forEach((m) => m.dispose()), [scene]);
 
   /* Модель приезжает через Suspense, то есть уже после первого кадра.
      Сам по себе на frameloop="demand" второй кадр не случится, и план
      останется пустым холстом. Просим его руками — ровно один раз. */
-  useEffect(() => { invalidate(); }, [parts]);
+  useEffect(() => { invalidate(); }, [scene]);
 
-  // Всё, что не зона, из рейкаста убрано: курсор ищет только зоны,
-  // иначе стена перед зоной съедает наведение на неё.
-  const noHit = useCallback(() => null, []);
-
-  return (
-    <group>
-      {SHELL.map((part) => {
-        const geometry = parts.get(part.name);
-        if (!geometry) return null;
-        return (
-          <mesh
-            key={part.name}
-            geometry={geometry}
-            raycast={noHit}
-            renderOrder={part.glass ? 2 : 1}
-          >
-            {part.glass ? (
-              <meshBasicMaterial
-                color={part.color}
-                transparent
-                opacity={part.opacity ?? 0.2}
-                depthWrite={false}
-                side={THREE.FrontSide}
-              />
-            ) : (
-              <meshLambertMaterial color={part.color} />
-            )}
-          </mesh>
-        );
-      })}
-
-      {edges.map((g, i) => (
-        <lineSegments key={i} geometry={g} raycast={noHit} renderOrder={3}>
-          <lineBasicMaterial color="#8B979E" />
-        </lineSegments>
-      ))}
-    </group>
-  );
+  return <primitive object={scene.root} />;
 }
 
 /* --- зона ------------------------------------------------------------- */
@@ -601,12 +609,25 @@ export default function PlanScene({ plan, hovered, onHover, onPick, flyTo, onPha
         camera={{ fov: HOME_FOV, near: 0.4, far: 220 }}
         onCreated={() => invalidate()}
       >
-        {/* Света ровно столько, чтобы читались плоскости. Больше — и
-            всё сваливается в белое: палитра сайта холодная и светлая,
-            пересветить её нечем. Теней нет, объём держат рёбра. */}
-        <hemisphereLight args={['#ffffff', '#9fabb2', 1.25]} />
-        <directionalLight position={[16, 26, 8]} intensity={1.05} />
-        <directionalLight position={[-12, 14, -10]} intensity={0.35} />
+        {/* СВЕТ ЗДЕСЬ СИЛЬНЕЕ, ЧЕМ ПОЛОЖЕНО ПРИ ЗАПЕЧЁННОЙ МОДЕЛИ, и это
+            вынужденно. Атлас в текущей сборке GLB пересвечен и обрезан:
+            72 % ненулевых текселей стоят ровно на 255, медиана по каждому
+            из четырёх мешей 252–255. Для сравнения, эталонный рендер
+            dollhouse_iso.png нигде не доходит до белого — медиана 196,
+            максимум 246. То есть на большей части поверхностей запечённой
+            светотени просто не осталось, вытягивать нечего.
+
+            При честном для запечёнки освещении (ambient = π, то есть
+            ровно единица для диффузной карты) модель выходит белой
+            и плоской. Направленная лампа даёт форму там, где текстура
+            её потеряла. Двойного освещения тут нет: нечего удваивать.
+
+            Когда атлас пересоберут с нормальной экспозицией, вернуть
+            надо ambient ≈ π и одну слабую направленную на стекло —
+            подробности в docs/interior.md. */}
+        <ambientLight intensity={1.6} />
+        <directionalLight position={[16, 26, 8]} intensity={1.0} />
+        <directionalLight position={[-12, 14, -10]} intensity={0.3} />
 
         <Suspense fallback={null}>
           <Shell />
