@@ -48,8 +48,8 @@ import {
   type Plan, type PlanCamera, type PlanZone, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
 import {
-  PLAN_DRAG_EL_MAX, PLAN_DRAG_EL_MIN, PLAN_DRAG_SLOP, PLAN_HOME_EL,
-  PLAN_IDLE_AMP, PLAN_IDLE_PERIOD, orbitStep, planOrbit,
+  PLAN_DRAG_SLOP, PLAN_HOME_EL, PLAN_IDLE_AMP, PLAN_IDLE_PERIOD,
+  orbitStep, planOrbit,
 } from '@/lib/motion';
 import styles from './PlanDollhouse.module.css';
 
@@ -416,12 +416,63 @@ function Zone({ zone, active, frit, onHover, onPick, interactive }: ZoneProps) {
   );
 }
 
+/* --- наклон плиты ------------------------------------------------------ */
+
+/* План — плита на центральной оси. Указатель притягивает ближнюю к себе
+   кромку: она опускается, противоположная поднимается. Камера при этом
+   стоит: облёт читался бы наоборот — уводя камеру влево, мы показываем
+   больше правой стороны, и левая кромка кажется поднявшейся.
+
+   ОСИ БЕРУТСЯ ОТ КАМЕРЫ. Экранное «влево» при азимуте 61° не совпадает
+   ни с осью X, ни с осью Z: наклон вокруг мировых осей поехал бы вкось.
+   Берём горизонтальную проекцию правого вектора камеры (R) и направление
+   «в глубину экрана» по земле (F) — и наклоняем вокруг них.
+
+   ЗНАКИ ВЫВОДЯТСЯ, А НЕ ПОДБИРАЮТСЯ. Поворот вокруг оси A на малый угол
+   a даёт точке p скорость a·(A × p). Нужно, чтобы при курсоре справа
+   правая кромка (p = R) поехала вниз, то есть скорость была −Y. Отсюда
+   знак и берётся — через знак (F × R)·Y. Подобранный на глаз минус
+   развалился бы при первом же изменении HOME_AZ.
+
+   Порядок сомножителей в векторном произведении здесь имеет значение:
+   перепутанный даёт наклон ОТ курсора, а не к нему, и на четырёх
+   градусах это не разглядеть на глаз — только сравнив проекции углов
+   плана до и после. */
+const tiltAxes = (() => {
+  const right = new THREE.Vector3();
+  const fwd = new THREE.Vector3();
+  const spin = new THREE.Quaternion();
+
+  return (camera: THREE.Camera, az: number, el: number, out: THREE.Quaternion) => {
+    right.setFromMatrixColumn(camera.matrixWorld, 0);
+    right.y = 0;
+    right.normalize();
+
+    // Третий столбец матрицы камеры смотрит НАЗАД, отсюда negate
+    fwd.setFromMatrixColumn(camera.matrixWorld, 2);
+    fwd.y = 0;
+    fwd.normalize().negate();
+
+    // (F × R)·Y — именно в этом порядке: обратный даёт наклон от курсора
+    const k = Math.sign(fwd.z * right.x - fwd.x * right.z) || 1;
+
+    // Влево-вправо: вокруг F. Курсор правее — правая кромка вниз.
+    out.setFromAxisAngle(fwd, -k * az * DEG);
+    // Ближе-дальше: вокруг R. Курсор ниже центра — ближняя кромка вниз.
+    spin.setFromAxisAngle(right, -k * el * DEG);
+    out.multiply(spin);
+    return out;
+  };
+})();
+
 /* --- камера ----------------------------------------------------------- */
 
 type Flight = { key: RenderKey; cam: PlanCamera };
 
 type RigProps = {
   plan: Plan;
+  /** группа, которую наклоняем; камера при этом неподвижна */
+  tilt: React.RefObject<THREE.Group | null>;
   flight: Flight | null;
   onPhase: (phase: 'crossfade' | 'done') => void;
   /** праздношатание: выключено на телефоне и при просьбе убрать движение */
@@ -432,7 +483,7 @@ type RigProps = {
    не трогает. Причина не в чистоте: эффект и кадр пишут в один объект
    в разном порядке, и на первом кадре перелёта камера успевает прыгнуть
    домой. Одна рука на штурвале — одна траектория. */
-function Rig({ plan, flight, onPhase, wobble }: RigProps) {
+function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
   const size = useThree((s) => s.size);
   const aspect = size.width / size.height;
 
@@ -489,11 +540,15 @@ function Rig({ plan, flight, onPhase, wobble }: RigProps) {
     keyRef.current = null;
     fromRef.current = null;
 
-    /* Два слагаемых: доворот за вводом и праздношатание с весом. Вес
-       гаснет, пока указатель в секции, и возвращается, когда он ушёл, —
-       поэтому уход курсора не замораживает план, а возвращает его
-       к покою. Палец и курсор пишут в одну и ту же цель, потому и
-       ощущаются одним поведением. */
+    /* Два движения, и они разной природы. Праздношатание — это по-прежнему
+       медленный облёт камерой: он ничего не обещает про направление
+       и читается как «сцена живая». Ответ на указатель — наклон самой
+       плиты: он обещает направление, и облётом его изображать нельзя.
+
+       Вес покоя гаснет, пока указатель в секции, и возвращается, когда
+       он ушёл, — поэтому уход курсора не замораживает план, а возвращает
+       его к покою. Палец и курсор пишут в одну цель, потому и ощущаются
+       одним поведением. */
     const o = planOrbit;
     const settling = orbitStep(o);
 
@@ -501,16 +556,20 @@ function Rig({ plan, flight, onPhase, wobble }: RigProps) {
       ? Math.sin((performance.now() / PLAN_IDLE_PERIOD) * Math.PI * 2) * PLAN_IDLE_AMP * o.idle
       : 0;
 
-    const pose = fitPose(
-      plan,
-      aspect,
-      HOME_AZ + o.ptrAz + swing,
-      clamp(PLAN_HOME_EL + o.ptrEl, PLAN_DRAG_EL_MIN, PLAN_DRAG_EL_MAX),
-    );
+    const pose = fitPose(plan, aspect, HOME_AZ + swing, PLAN_HOME_EL);
     camera.position.copy(pose.pos);
     camera.fov = pose.fov;
     camera.lookAt(pose.target);
     camera.updateProjectionMatrix();
+
+    /* Наклон считаем после камеры: оси берутся из её матрицы, а она
+       только что переставлена. Иначе на первом кадре наклон уехал бы
+       по вчерашним осям. */
+    const group = tilt.current;
+    if (group) {
+      camera.updateMatrixWorld();
+      tiltAxes(camera, o.ptrAz, o.ptrEl, group.quaternion);
+    }
 
     /* Пока качание живо, оно само просит следующий кадр. Пока слежение
        догоняет — тоже. Догнало и качания нет — сцена замолкает и телефон
@@ -542,6 +601,14 @@ export type PlanSceneProps = {
 export default function PlanScene({
   plan, hovered, onHover, onPick, flyTo, onPhase, wobble, compact,
 }: PlanSceneProps) {
+
+  const tiltRef = useRef<THREE.Group>(null);
+
+  /* Центр плана в мировых координатах: вокруг него и наклоняем. */
+  const pivot = useMemo<[number, number]>(() => {
+    const [minX, minY, maxX, maxY] = plan.bounds;
+    return [(minX + maxX) / 2, (minY + maxY) / 2];
+  }, [plan]);
 
   const frit = useMemo(() => fritTexture(), []);
   useEffect(() => () => frit.dispose(), [frit]);
@@ -604,23 +671,35 @@ export default function PlanScene({
         <directionalLight position={[16, 26, 8]} intensity={1.0} />
         <directionalLight position={[-12, 14, -10]} intensity={0.3} />
 
-        <Suspense fallback={null}>
-          <Shell />
-        </Suspense>
+        {/* Две вложенные группы — это поворот вокруг центра плана,
+            а не вокруг начала координат. Внешняя стоит в центре и
+            вращается, внутренняя сдвинута обратно. Без этого плита
+            крутилась бы вокруг угла и уезжала бы из кадра.
 
-        {plan.zones.map((z) => (
-          <Zone
-            key={z.key}
-            zone={z}
-            frit={frit}
-            active={hovered === z.key}
-            interactive={z.target !== null}
-            onHover={onHover}
-            onPick={pick}
-          />
-        ))}
+            Зоны лежат ВНУТРИ той же группы. Иначе подсветка и области
+            попадания курсора остались бы на месте, а оболочка уехала
+            бы из-под них. */}
+        <group ref={tiltRef} position={[pivot[0], 0, pivot[1]]}>
+          <group position={[-pivot[0], 0, -pivot[1]]}>
+            <Suspense fallback={null}>
+              <Shell />
+            </Suspense>
 
-        <Rig plan={plan} flight={flight} onPhase={onPhase} wobble={wobble} />
+            {plan.zones.map((z) => (
+              <Zone
+                key={z.key}
+                zone={z}
+                frit={frit}
+                active={hovered === z.key}
+                interactive={z.target !== null}
+                onHover={onHover}
+                onPick={pick}
+              />
+            ))}
+          </group>
+        </group>
+
+        <Rig plan={plan} tilt={tiltRef} flight={flight} onPhase={onPhase} wobble={wobble} />
       </Canvas>
     </div>
   );

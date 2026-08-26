@@ -194,19 +194,24 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
     // Каждое открытие плана начинается с домашней позы, а не с той,
     // в которой его закрыли в прошлый раз.
     resetPlanOrbit();
-    const o = planOrbit;
 
-    /* Жест заводим только для пальца и пера. У мыши доворотом и так
+    /* Объект читаем при каждом событии, а не захватываем в замыкание.
+       Разница видна только в разработке: Fast Refresh пересоздаёт модуль,
+       и захваченная ссылка осталась бы на старом объекте — оболочка
+       писала бы в один, сцена читала другой, и план бы замер.
+
+       Жест заводим только для пальца и пера. У мыши доворотом и так
        управляет положение курсора: заведи ей ещё и перетаскивание —
        и на отпускании кнопки цель прыгнет со «смещения» на «позицию». */
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse') return;
       gesture.current = { x: e.clientX, y: e.clientY };
-      o.dragging = true;
-      o.moved = 0;
+      planOrbit.dragging = true;
+      planOrbit.moved = 0;
     };
 
     const move = (e: PointerEvent) => {
+      const o = planOrbit;
       const g = gesture.current;
       if (g) {
         /* Свайп через половину секции доворачивает ровно на столько же,
@@ -236,6 +241,7 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
     };
 
     const up = () => {
+      const o = planOrbit;
       o.dragging = false;
       /* Палец подняли — возвращаемся к покою, как и курсор, ушедший
          из секции. Иначе план застыл бы в случайном довороте. */
@@ -249,7 +255,7 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
       });
     };
 
-    const leave = () => { orbitRelease(o); o.wake?.(); };
+    const leave = () => { orbitRelease(planOrbit); planOrbit.wake?.(); };
 
     view.addEventListener('pointerdown', down, { passive: true });
     view.addEventListener('pointermove', move, { passive: true });
