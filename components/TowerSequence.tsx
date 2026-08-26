@@ -24,31 +24,27 @@
    для одного — не мигнуть белым до отрисовки первого кадра.
 
    ПАМЯТЬ. Декодированный кадр занимает ширина×высота×4 байта независимо
-   от веса файла: 1600×900 = 5,76 МБ при файле в 30 КБ. Лимит canvas-памяти
+   от веса файла: 1600×900 = 5,76 МБ при файле в 31 КБ. Лимит canvas-памяти
    на iOS — от 224 МБ. Превышение не тормозит, а убивает вкладку.
-   Десктоп: симметричное окно ±16, резидентных 33 кадра ≈ 190 МБ.
-   Мобильный: 90 × 828×466×4 ≈ 132 МБ, держим целиком. */
+   Десктоп: симметричное окно ±16, резидентных 34 кадра ≈ 196 МБ.
+   Мобильный: 144 × 828×466×4 ≈ 222 МБ, держим целиком, — и это уже
+   впритык к нижней границе лимита, см. ИСТОРИЯ, v5 → v6.
+
+   Числа не живут в этом файле: кадры, радиус окна и производные от них
+   бюджеты памяти лежат в lib/sequence.ts и считаются оттуда. */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  DESKTOP,
+  MOBILE,
+  MOBILE_MAX_WIDTH,
+  PRIME_FRAMES,
+  WINDOW_POLL_MS,
+  WINDOW_RADIUS,
+  frameSrc,
+  type Variant,
+} from '@/lib/sequence';
 import styles from './TowerSequence.module.css';
-
-type Variant = {
-  dir: string;
-  count: number;
-  width: number;
-  height: number;
-  windowed: boolean;
-};
-
-const DESKTOP: Variant = { dir: '/sequence/desktop', count: 150, width: 1600, height: 900, windowed: true };
-const MOBILE: Variant = { dir: '/sequence/mobile', count: 90, width: 828, height: 466, windowed: false };
-
-const MOBILE_MAX_WIDTH = 828;
-
-/* Окно симметричное: со скроллом плейхед ходит в обе стороны.
-   16 + 16 + 1 = 33 кадра резидентных, около 190 МБ на десктопе. */
-const WINDOW_RADIUS = 16;
-const PRIME_FRAMES = 20;      // сплошной блок с начала, грузится сразу
 
 const SMOOTH_TAU = 90;        // постоянная времени сглаживания, мс
 const GLASS_START = 0.93;     // с этой доли начинается вход в стекло
@@ -56,9 +52,6 @@ const ENTER_RESET = 0.96;     // ниже этой отметки офис сн�
 const RETURN_MS = 3500;       // обратный вылет из офиса на самый верх
 const TEXT_FADE_END = 0.14;   // на этой доле прогресса заголовок исчезает
 const TRAVEL_MS = 4200;       // автопроход по кнопке
-
-const frameSrc = (v: Variant, i: number) =>
-  `${v.dir}/f_${String(i + 1).padStart(4, '0')}.webp`;
 
 const easeInOutCubic = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -246,7 +239,7 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
         for (let i = lo; i <= hi; i += 1) assign(i);
         for (let i = 1; i < lo; i += 1) release(i);   // кадр 0 держим всегда
         for (let i = hi + 1; i < v.count; i += 1) release(i);
-      }, 120);
+      }, WINDOW_POLL_MS);
     }
 
     const onResize = () => resize();
