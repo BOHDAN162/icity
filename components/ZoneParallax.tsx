@@ -118,10 +118,16 @@ const loadImage = (src: string, srcSet?: string) =>
     img.src = src;
   });
 
-/* Кадр зоны уже висит в офисе и уже раскодирован — забираем его оттуда.
-   Свой <img> с тем же srcset выбрал бы WebP там, где <picture> взял AVIF,
-   и кадр приехал бы во второй раз: сто с лишним килобайт на пустом месте.
-   Метку ставит OfficeHub, атрибутом data-zone. */
+/* Кадр зоны уже висит в офисе — забираем текстуру оттуда. Свой <img>
+   с тем же srcset выбрал бы WebP там, где <picture> взял AVIF, и кадр
+   приехал бы во второй раз: сто с лишним килобайт на пустом месте.
+   Метку ставит OfficeHub, атрибутом data-zone.
+
+   ЖДАТЬ ОБЯЗАТЕЛЬНО. У только что вставленного <img> currentSrc пуст:
+   браузер ещё не выбрал вариант из srcset. Проверка «есть currentSrc —
+   берём, нет — качаем сами» на первом заходе в зону всегда попадала
+   в «нет» и скачивала кадр повторно. Ждём события, а сдаёмся только
+   если картинка действительно не загрузилась. */
 const adoptImage = async (
   canvas: HTMLCanvasElement,
   zone: RenderKey,
@@ -129,11 +135,24 @@ const adoptImage = async (
   const found = canvas.parentElement?.querySelector<HTMLImageElement>(
     `img[data-zone="${zone}"]`,
   );
-  if (found?.currentSrc) {
-    if (!found.complete) await new Promise((r) => { found.onload = r; found.onerror = r; });
-    try { await found.decode(); } catch { /* уже раскодирован либо не выйдет */ }
+
+  if (found) {
+    if (!found.complete) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          found.removeEventListener('load', done);
+          found.removeEventListener('error', done);
+          resolve();
+        };
+        found.addEventListener('load', done);
+        found.addEventListener('error', done);
+      });
+    }
+    // decode() на уже раскодированной картинке разрешается сразу
+    try { await found.decode(); } catch { /* не вышло — уйдём в запасной путь */ }
     if (found.naturalWidth > 0) return found;
   }
+
   return loadImage(renderSmallest(zone), renderSrcSet(zone, 'webp'));
 };
 
