@@ -37,6 +37,12 @@ import styles from './OfficeHub.module.css';
    вес не влияет вообще. */
 const PlanDollhouse = dynamic(() => import('./PlanDollhouse'), { ssr: false });
 
+/* Параллакс кадра зоны. Тоже отдельным чанком и тоже без SSR: холст
+   с картой глубины нужен только внутри открытого офиса. Компонент сам
+   решает, браться ли за дело — просьба убрать движение, медленная сеть
+   и отсутствие WebGL2 отменяют его молча, и под ним остаётся обычный кадр. */
+const ZoneParallax = dynamic(() => import('./ZoneParallax'), { ssr: false });
+
 /* Ключ зоны один на весь проект: здесь, в public/interior/zones_cameras.json
    и в именах файлов рендеров. Поэтому переговорная — `meeting_lg`, как
    в выгрузке из модели, а не `meeting`: переименовать сорок файлов дороже,
@@ -220,6 +226,9 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
               <source type="image/avif" srcSet={renderSrcSet(id, 'avif')} sizes="100vw" />
               <source type="image/webp" srcSet={renderSrcSet(id, 'webp')} sizes="100vw" />
               <img
+                /* Метка для параллакса: холст берёт текстуру прямо
+                   из этого элемента, а не качает кадр второй раз. */
+                data-zone={id}
                 src={renderSmallest(id)}
                 alt={on ? z.alt : ''}
                 width={RENDER_NATIVE[id][0]}
@@ -231,6 +240,12 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
             </picture>
           );
         })}
+
+        {/* Поверх стопки. Монтируется только когда офис открыт: за
+            закрытой дверью холст не нужен, а WebGL-контекст стоит слота.
+            Пока карта глубины не доехала, холст прозрачен и виден кадр
+            под ним, поэтому смены зоны выглядят ровно как раньше. */}
+        {open && <ZoneParallax zone={zoneId} />}
       </div>
 
       {/* Вуали. Не декор: держат контраст текста поверх светлого рендера. */}

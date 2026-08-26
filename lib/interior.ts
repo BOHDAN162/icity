@@ -210,6 +210,53 @@ export const prefetchRender = (key: RenderKey) => {
   document.head.append(link);
 };
 
+/* --- карты глубины ---------------------------------------------------- */
+
+/* Полукадровая карта обратной глубины на зону: 34–42 КБ, 8 бит, серый.
+   Считана относительной моделью Depth-Anything V2 и подрезана по p99 —
+   подробности в docs/parallax.md. Гистограмма НЕ растянута сознательно:
+   значение — это 1/Z, а экранный сдвиг при смещении камеры пропорционален
+   как раз 1/Z. Сжатая середина здесь физика, а не дефект. */
+export type DepthEntry = {
+  w: number;
+  h: number;
+  /** нормированная медиана кадра: плоскость нулевого параллакса */
+  d50: number;
+};
+
+export const depthUrl = (key: RenderKey) => `/interior/depth/${key}.webp`;
+
+const DEPTH_MANIFEST_URL = '/interior/depth/depth.json';
+
+let depthPromise: Promise<Record<RenderKey, DepthEntry>> | null = null;
+
+export const loadDepthManifest = (): Promise<Record<RenderKey, DepthEntry>> => {
+  if (!depthPromise) {
+    depthPromise = fetch(DEPTH_MANIFEST_URL)
+      .then((r) => {
+        if (!r.ok) throw new Error(`depth ${r.status}`);
+        return r.json() as Promise<Record<RenderKey, DepthEntry>>;
+      })
+      .catch((e) => {
+        depthPromise = null;
+        throw e;
+      });
+  }
+  return depthPromise;
+};
+
+/* Амплитуда сдвига в экранных пикселях. Кухня тише остальных: у неё
+   передний план сидит в 7,2 раза выше медианы кадра, и на общей
+   амплитуде ближняя перегородка ездила бы заметно сильнее всего
+   остального. Числа стартовые, крутить здесь. */
+export const PARALLAX_AMPLITUDE: Record<RenderKey, number> = {
+  openspace: 14,
+  corridor: 14,
+  kitchen: 10,
+  reception: 14,
+  meeting_lg: 14,
+};
+
 /* --- условия показа --------------------------------------------------- */
 
 /** Медленная сеть: 3D не грузим совсем, отдаём векторный план. */
@@ -218,6 +265,22 @@ export const isSlowNetwork = (): boolean => {
   const c = (navigator as Navigator & { connection?: { effectiveType?: string; saveData?: boolean } }).connection;
   if (!c) return false;
   return c.saveData === true || c.effectiveType === 'slow-2g' || c.effectiveType === '2g';
+};
+
+/** Параллаксу нужен именно WebGL2: шейдер на GLSL ES 300 и одноканальная
+    текстура R8. На WebGL1 он не соберётся, и это нормально — под холстом
+    остаётся обычный кадр. */
+export const hasWebGL2 = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) return false;
+    (gl.getExtension('WEBGL_lose_context') as { loseContext(): void } | null)?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 /** Нет WebGL — нет сцены. Контекст сразу отпускаем, иначе он занимает слот. */
