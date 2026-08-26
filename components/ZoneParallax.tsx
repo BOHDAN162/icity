@@ -32,9 +32,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  PARALLAX_AMPLITUDE, RENDER_NATIVE, depthUrl, hasWebGL2, isSlowNetwork,
+  RENDER_NATIVE, depthUrl, hasWebGL2, isSlowNetwork,
   loadDepthManifest, renderSmallest, renderSrcSet, type RenderKey,
 } from '@/lib/interior';
+import {
+  PARALLAX_AMPLITUDE, PARALLAX_EASE, TILT_EASE, TILT_RANGE,
+} from '@/lib/motion';
 import styles from './ZoneParallax.module.css';
 
 const VERT = `#version 300 es
@@ -66,16 +69,34 @@ void main() {
   fragColor = vec4(texture(uColor, uv).rgb, 1.0);
 }`;
 
-/* Сглаживание указателя. Доля, на которую текущее значение подтягивается
-   к цели за кадр: 0,08 даёт около 250 мс на установление. Оно же —
-   ограничитель: резкий мах мышью не может швырнуть картинку, потому что
-   догоняет она всегда с этой скоростью. */
-const DAMPING = 0.08;
 const SETTLED = 0.0004;        // ближе этого к цели — перестаём считать кадры
 
-/* Наклон телефона: ±18° по каждой оси считаем полным размахом. Больше —
-   и человеку приходится заваливать аппарат, чтобы увидеть край эффекта. */
-const TILT_RANGE = 18;
+/* Разрешение на датчики спрашиваем один раз за сессию и только с жеста.
+   Отказ помним: повторно клянчить доступ на странице аренды нельзя.
+   Ни localStorage, ни sessionStorage — состояние живёт в модуле
+   и умирает вместе со вкладкой. */
+type TiltGrant = 'unknown' | 'granted' | 'denied';
+let tiltGrant: TiltGrant = 'unknown';
+
+const NEEDS_PERMISSION = () =>
+  typeof DeviceOrientationEvent !== 'undefined' &&
+  typeof (DeviceOrientationEvent as unknown as { requestPermission?: unknown }).requestPermission === 'function';
+
+/** Вызывать только из обработчика жеста: iOS иначе молча откажет. */
+const askTilt = async (): Promise<boolean> => {
+  if (tiltGrant !== 'unknown') return tiltGrant === 'granted';
+  if (!NEEDS_PERMISSION()) { tiltGrant = 'granted'; return true; }
+  try {
+    const ask = (DeviceOrientationEvent as unknown as {
+      requestPermission: () => Promise<PermissionState>;
+    }).requestPermission;
+    const res = await ask();
+    tiltGrant = res === 'granted' ? 'granted' : 'denied';
+  } catch {
+    tiltGrant = 'denied';
+  }
+  return tiltGrant === 'granted';
+};
 
 const clamp = (n: number, a: number, b: number) => (n < a ? a : n > b ? b : n);
 
@@ -207,6 +228,10 @@ function ParallaxCanvas({ zone }: { zone: RenderKey }) {
      в состояние значит перерисовывать React шестьдесят раз в секунду. */
   const target = useRef({ x: 0, y: 0 });
   const cur = useRef({ x: 0, y: 0 });
+  /* Ноль наклона — то, как телефон держали при открытии зоны. */
+  const neutral = useRef<{ gamma: number; beta: number } | null>(null);
+  /* Своя плотность сглаживания у пальца и у наклона: рука шумит сильнее. */
+  const damping = useRef(PARALLAX_EASE);
   const sceneRef = useRef({ d50: 0.5, amp: 14, aspect: 16 / 9 });
 
   const draw = useCallback(() => {
@@ -330,6 +355,8 @@ function ParallaxCanvas({ zone }: { zone: RenderKey }) {
   /* --- загрузка зоны ------------------------------------------------ */
   useEffect(() => {
     let alive = true;
+    // Новая зона — новый ноль наклона: держат телефон уже иначе
+    neutral.current = null;
 
     const run = async () => {
       const g = glRef.current;
@@ -386,47 +413,77 @@ function ParallaxCanvas({ zone }: { zone: RenderKey }) {
       raf = 0;
       const dx = target.current.x - cur.current.x;
       const dy = target.current.y - cur.current.y;
-      cur.current.x += dx * DAMPING;
-      cur.current.y += dy * DAMPING;
+      cur.current.x += dx * damping.current;
+      cur.current.y += dy * damping.current;
       draw();
       if (Math.abs(dx) > SETTLED || Math.abs(dy) > SETTLED) raf = requestAnimationFrame(tick);
     };
     const wake = () => { if (!raf) raf = requestAnimationFrame(tick); };
 
     const onPointer = (e: PointerEvent) => {
+      /* Палец ведёт кадр только пока касается экрана. Наклон при этом
+         не отключаем: они складываются в одно движение, потому что
+         сглаживание у них общее. */
       target.current.x = clamp((e.clientX / window.innerWidth) * 2 - 1, -1, 1);
       target.current.y = clamp((e.clientY / window.innerHeight) * 2 - 1, -1, 1);
+      damping.current = PARALLAX_EASE;
       wake();
     };
 
-    /* Наклон телефона. Разрешения не спрашиваем: на iOS оно требует
-       отдельного жеста, а выпрашивать доступ к датчикам на странице
-       аренды — плохой размен. Где события приходят сами, параллакс
-       работает; где нет — кадр просто стоит. */
+    /* Наклон считается ОТ ТОГО ПОЛОЖЕНИЯ, в котором телефон держали
+       в момент открытия зоны, а не от абсолютного нуля. Иначе эффект
+       зависит от позы зрителя: лёжа на диване кадр уехал бы в упор
+       ещё до того, как человек шевельнулся. */
     const onTilt = (e: DeviceOrientationEvent) => {
       if (e.gamma === null || e.beta === null) return;
-      target.current.x = clamp(e.gamma / TILT_RANGE, -1, 1);
-      target.current.y = clamp((e.beta - 45) / TILT_RANGE, -1, 1);
+      if (!neutral.current) {
+        neutral.current = { gamma: e.gamma, beta: e.beta };
+        return;
+      }
+      target.current.x = clamp((e.gamma - neutral.current.gamma) / TILT_RANGE, -1, 1);
+      target.current.y = clamp((e.beta - neutral.current.beta) / TILT_RANGE, -1, 1);
+      // Рука дрожит сильнее мыши, поэтому наклон сглаживаем вдвое плотнее
+      damping.current = TILT_EASE;
       wake();
+    };
+
+    /* Разрешение просим по первому касанию внутри офиса — на iOS оно
+       обязано прийти из жеста. Отказали — молча живём на пальце,
+       второй раз не спрашиваем. */
+    const onFirstTouch = () => {
+      window.removeEventListener('pointerdown', onFirstTouch);
+      void askTilt().then((ok) => {
+        if (ok) window.addEventListener('deviceorientation', onTilt);
+      });
     };
 
     const onLeave = () => {
       target.current.x = 0;
       target.current.y = 0;
+      damping.current = PARALLAX_EASE;
       wake();
     };
 
     window.addEventListener('pointermove', onPointer, { passive: true });
     window.addEventListener('pointerleave', onLeave, { passive: true });
-    window.addEventListener('deviceorientation', onTilt);
     window.addEventListener('resize', wake, { passive: true });
+
+    /* Где разрешение не нужно (Android и всё, что не iOS) — подписываемся
+       сразу. Где нужно — ждём касания. Где уже отказали — не делаем ничего. */
+    if (tiltGrant === 'granted' || !NEEDS_PERMISSION()) {
+      tiltGrant = 'granted';
+      window.addEventListener('deviceorientation', onTilt);
+    } else if (tiltGrant === 'unknown') {
+      window.addEventListener('pointerdown', onFirstTouch, { once: true });
+    }
 
     wake();
     return () => {
       window.removeEventListener('pointermove', onPointer);
       window.removeEventListener('pointerleave', onLeave);
-      window.removeEventListener('deviceorientation', onTilt);
       window.removeEventListener('resize', wake);
+      window.removeEventListener('pointerdown', onFirstTouch);
+      window.removeEventListener('deviceorientation', onTilt);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [live, draw]);

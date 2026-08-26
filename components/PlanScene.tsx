@@ -47,6 +47,10 @@ import {
   CROSSFADE_AT, FLIGHT_MS, GLB_URL,
   type Plan, type PlanCamera, type PlanZone, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
+import {
+  PLAN_DRAG_EL_MAX, PLAN_DRAG_EL_MIN, PLAN_DRAG_SLOP, PLAN_HOME_EL,
+  PLAN_IDLE_AMP, PLAN_IDLE_PERIOD, orbitStep, planOrbit,
+} from '@/lib/motion';
 import styles from './PlanDollhouse.module.css';
 
 const DEG = Math.PI / 180;
@@ -57,22 +61,12 @@ const CEIL = 3.8;
    снаружи, и пол-кадра занимает наружная сторона фасада вместо этажа;
    выше 58° объём уходит и остаётся чертёж. */
 const HOME_AZ = 61;
-const HOME_EL = 51;
 const HOME_FOV = 30;
 const FIT_PAD = 1.02;
 
-/* Праздношатание: ±5,5° за 26 секунд. Достаточно, чтобы сцена не казалась
-   картинкой, и мало, чтобы никого не укачало. */
-const IDLE_AMP = 5.5;
-const IDLE_PERIOD = 26000;
-const IDLE_RESUME_MS = 4000;   // столько тишины после мыши — и качание вернулось
-
-/* Ручной доворот. Рамки узкие сознательно: план не должен переворачиваться
-   вверх ногами, из него надо выйти с тем же представлением, с каким вошли. */
-const DRAG_AZ_LIMIT = 28;
-const DRAG_EL_MIN = 26;
-const DRAG_EL_MAX = 64;
-const DRAG_SLOP = 6;           // сдвиг меньше — это клик, а не перетаскивание
+/* Амплитуды слежения, доворота и праздношатания — в lib/motion.ts.
+   Там же состояние PlanOrbit: его ведёт оболочка, которая слушает
+   указатель по всей секции, а сцена только читает. */
 
 const HIT_HEIGHT = 2.2;        // объём под курсор: ниже стен, выше мебели
 
@@ -424,23 +418,21 @@ function Zone({ zone, active, frit, onHover, onPick, interactive }: ZoneProps) {
 
 /* --- камера ----------------------------------------------------------- */
 
-type OrbitState = { az: number; el: number; lastInput: number; dragging: boolean };
-
 type Flight = { key: RenderKey; cam: PlanCamera };
 
 type RigProps = {
   plan: Plan;
-  orbit: React.RefObject<OrbitState>;
   flight: Flight | null;
   onPhase: (phase: 'crossfade' | 'done') => void;
-  idle: boolean;
+  /** праздношатание: выключено на телефоне и при просьбе убрать движение */
+  wobble: boolean;
 };
 
 /* Камерой правит только этот кадровый обработчик — ни один эффект её
    не трогает. Причина не в чистоте: эффект и кадр пишут в один объект
    в разном порядке, и на первом кадре перелёта камера успевает прыгнуть
    домой. Одна рука на штурвале — одна траектория. */
-function Rig({ plan, orbit, flight, onPhase, idle }: RigProps) {
+function Rig({ plan, flight, onPhase, wobble }: RigProps) {
   const size = useThree((s) => s.size);
   const aspect = size.width / size.height;
 
@@ -497,26 +489,33 @@ function Rig({ plan, orbit, flight, onPhase, idle }: RigProps) {
     keyRef.current = null;
     fromRef.current = null;
 
-    const o = orbit.current;
-    const quiet = performance.now() - o.lastInput > IDLE_RESUME_MS;
-    const wobbling = idle && quiet && !o.dragging;
-    const wobble = wobbling
-      ? Math.sin((performance.now() / IDLE_PERIOD) * Math.PI * 2) * IDLE_AMP
+    /* Два слагаемых: доворот за вводом и праздношатание с весом. Вес
+       гаснет, пока указатель в секции, и возвращается, когда он ушёл, —
+       поэтому уход курсора не замораживает план, а возвращает его
+       к покою. Палец и курсор пишут в одну и ту же цель, потому и
+       ощущаются одним поведением. */
+    const o = planOrbit;
+    const settling = orbitStep(o);
+
+    const swing = wobble && o.idle > 0.002
+      ? Math.sin((performance.now() / PLAN_IDLE_PERIOD) * Math.PI * 2) * PLAN_IDLE_AMP * o.idle
       : 0;
 
     const pose = fitPose(
       plan,
       aspect,
-      HOME_AZ + o.az + wobble,
-      clamp(HOME_EL + o.el, DRAG_EL_MIN, DRAG_EL_MAX),
+      HOME_AZ + o.ptrAz + swing,
+      clamp(PLAN_HOME_EL + o.ptrEl, PLAN_DRAG_EL_MIN, PLAN_DRAG_EL_MAX),
     );
     camera.position.copy(pose.pos);
     camera.fov = pose.fov;
     camera.lookAt(pose.target);
     camera.updateProjectionMatrix();
 
-    // Качание живёт само: пока оно включено, каждый кадр просит следующий.
-    if (wobbling) invalidate();
+    /* Пока качание живо, оно само просит следующий кадр. Пока слежение
+       догоняет — тоже. Догнало и качания нет — сцена замолкает и телефон
+       перестаёт греться на неподвижной картинке. */
+    if (settling || swing !== 0 || o.dragging) invalidate();
   });
 
   return null;
@@ -531,19 +530,32 @@ export type PlanSceneProps = {
   onPick: (k: RenderKey) => void;
   flyTo: RenderKey | null;
   onPhase: (phase: 'crossfade' | 'done') => void;
-  /** reduce или телефон: без качания и без доворота мышью */
-  calm: boolean;
+  /** праздношатание: выключено на телефоне и при просьбе убрать движение */
+  wobble: boolean;
+  /** мелкость экрана: понижаем плотность пикселей холста */
+  compact: boolean;
 };
 
-export default function PlanScene({ plan, hovered, onHover, onPick, flyTo, onPhase, calm }: PlanSceneProps) {
-  const orbit = useRef<OrbitState>({ az: 0, el: 0, lastInput: 0, dragging: false });
-  const dragRef = useRef<{ x: number; y: number; moved: number } | null>(null);
+/* Состояние доворота ведёт оболочка: слушать указатель нужно по всей
+   секции, включая пустой фон вокруг плана, а холст занимает не всю её.
+   Сцена читает общий planOrbit и отдаёт туда же ручку «нарисуй кадр». */
+export default function PlanScene({
+  plan, hovered, onHover, onPick, flyTo, onPhase, wobble, compact,
+}: PlanSceneProps) {
 
   const frit = useMemo(() => fritTexture(), []);
   useEffect(() => () => frit.dispose(), [frit]);
 
   // Наведение меняет цель прозрачности — значит, есть что дорисовать
   useEffect(() => { invalidate(); }, [hovered]);
+
+  /* Оболочка слушает указатель по всей секции и должна уметь попросить
+     кадр. Импортировать invalidate ей нельзя — она обслуживает и плоский
+     план, которому three не нужен вовсе. Оставляем ей ручку. */
+  useEffect(() => {
+    planOrbit.wake = invalidate;
+    return () => { planOrbit.wake = undefined; };
+  }, []);
 
   /* Перелёт — не состояние, а производная от пропа. Клик по зоне уходит
      наверх в оболочку, оболочка возвращает flyTo, и сцена просто читает
@@ -557,54 +569,17 @@ export default function PlanScene({ plan, hovered, onHover, onPick, flyTo, onPha
   }, [flyTo, plan]);
 
   const pick = useCallback((zone: PlanZone) => {
-    // Курсор проехал по экрану — это был доворот сцены, а не выбор зоны.
-    if ((dragRef.current?.moved ?? 0) > DRAG_SLOP) return;
+    // Палец проехал по экрану — это был доворот плана, а не выбор зоны.
+    if (planOrbit.moved > PLAN_DRAG_SLOP) return;
     if (zone.target) onPick(zone.target);
   }, [onPick]);
 
-  const down = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (calm || flight) return;
-    dragRef.current = { x: e.clientX, y: e.clientY, moved: 0 };
-    orbit.current.dragging = true;
-    orbit.current.lastInput = performance.now();
-  }, [calm, flight]);
-
-  const move = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    const o = orbit.current;
-    o.lastInput = performance.now();
-    if (!d || !o.dragging) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    d.moved = Math.max(d.moved, Math.abs(dx) + Math.abs(dy));
-    d.x = e.clientX;
-    d.y = e.clientY;
-    o.az = clamp(o.az + dx * 0.22, -DRAG_AZ_LIMIT, DRAG_AZ_LIMIT);
-    o.el = clamp(o.el - dy * 0.16, DRAG_EL_MIN - HOME_EL, DRAG_EL_MAX - HOME_EL);
-    invalidate();
-  }, []);
-
-  const up = useCallback(() => {
-    orbit.current.dragging = false;
-    orbit.current.lastInput = performance.now();
-    // moved обнуляем следующим кадром: клик прилетает сразу за pointerup
-    // и должен успеть увидеть, что это было перетаскивание.
-    requestAnimationFrame(() => { dragRef.current = null; });
-  }, []);
-
   return (
-    <div
-      className={`${styles.canvasWrap} ${calm || flight ? '' : styles.grabbable}`}
-      onPointerDown={down}
-      onPointerMove={move}
-      onPointerUp={up}
-      onPointerCancel={up}
-      onPointerLeave={up}
-    >
+    <div className={styles.canvasWrap}>
       <Canvas
         flat
         frameloop="demand"
-        dpr={[1, calm ? 1.5 : 2]}
+        dpr={[1, compact ? 1.5 : 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         camera={{ fov: HOME_FOV, near: 0.4, far: 220 }}
         onCreated={() => invalidate()}
@@ -645,7 +620,7 @@ export default function PlanScene({ plan, hovered, onHover, onPick, flyTo, onPha
           />
         ))}
 
-        <Rig plan={plan} orbit={orbit} flight={flight} onPhase={onPhase} idle={!calm} />
+        <Rig plan={plan} flight={flight} onPhase={onPhase} wobble={wobble} />
       </Canvas>
     </div>
   );

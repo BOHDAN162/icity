@@ -38,6 +38,9 @@ import {
   prefetchRender, renderSrcSet, renderSmallest,
   type Plan, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
+import {
+  PLAN_DRAG_SLOP, orbitFollow, orbitRelease, planOrbit, resetPlanOrbit,
+} from '@/lib/motion';
 import PlanOverlay from './PlanOverlay';
 import styles from './PlanDollhouse.module.css';
 
@@ -91,6 +94,17 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
   const [chip, setChip] = useState<{ x: number; y: number } | null>(null);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  /* Доворот плана ведём здесь, а не в сцене. Причина одна: палец должен
+     двигать план откуда угодно в секции, включая пустой фон вокруг него,
+     а холст занимает не всю секцию. Слушатели висят на поле плана,
+     сцена только читает состояние.
+
+     Захвата указателя нет намеренно. setPointerCapture увёл бы события
+     у холста, и клик по зоне перестал бы доходить до три. Тап остаётся
+     тапом: сцена сама смотрит, сколько жест проехал. */
+  const viewRef = useRef<HTMLDivElement>(null);
+  const gesture = useRef<{ x: number; y: number } | null>(null);
 
   const closeRef = useRef<HTMLButtonElement>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -172,6 +186,86 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
     timersRef.current.push(setTimeout(finish, CROSSFADE_MS));
   }, [mode, crossfade, finish]);
 
+  /* Слежение за указателем и перетаскивание. Оба живут на поле плана
+     целиком; на плоском SVG не нужны — там доворачивать нечего. */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || mode !== 'solid') return;
+    // Каждое открытие плана начинается с домашней позы, а не с той,
+    // в которой его закрыли в прошлый раз.
+    resetPlanOrbit();
+    const o = planOrbit;
+
+    /* Жест заводим только для пальца и пера. У мыши доворотом и так
+       управляет положение курсора: заведи ей ещё и перетаскивание —
+       и на отпускании кнопки цель прыгнет со «смещения» на «позицию». */
+    const down = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      gesture.current = { x: e.clientX, y: e.clientY };
+      o.dragging = true;
+      o.moved = 0;
+    };
+
+    const move = (e: PointerEvent) => {
+      const g = gesture.current;
+      if (g) {
+        /* Свайп через половину секции доворачивает ровно на столько же,
+           на сколько курсор, уведённый в край: палец и мышь пишут в одну
+           цель через одну огибающую. */
+        const dx = e.clientX - g.x;
+        const dy = e.clientY - g.y;
+        o.moved += Math.abs(dx) + Math.abs(dy);
+        if (o.moved > PLAN_DRAG_SLOP) {
+          const r = view.getBoundingClientRect();
+          orbitFollow(o, (dx * 2) / r.width, (dy * 2) / r.height);
+        }
+        o.wake?.();
+        return;
+      }
+      /* Слежение по положению — только для мыши. У пальца pointermove
+         приходит лишь во время касания, и план дёргался бы к точке тапа
+         вместо того, чтобы плавно идти за движением. */
+      if (e.pointerType !== 'mouse') return;
+      const r = view.getBoundingClientRect();
+      orbitFollow(
+        o,
+        ((e.clientX - r.left) / r.width) * 2 - 1,
+        ((e.clientY - r.top) / r.height) * 2 - 1,
+      );
+      o.wake?.();
+    };
+
+    const up = () => {
+      o.dragging = false;
+      /* Палец подняли — возвращаемся к покою, как и курсор, ушедший
+         из секции. Иначе план застыл бы в случайном довороте. */
+      if (gesture.current) orbitRelease(o);
+      /* Пройденное обнуляем следующим кадром: клик по зоне прилетает
+         сразу за pointerup и должен успеть увидеть, что это было
+         перетаскивание, а не тап. */
+      requestAnimationFrame(() => {
+        gesture.current = null;
+        o.moved = 0;
+      });
+    };
+
+    const leave = () => { orbitRelease(o); o.wake?.(); };
+
+    view.addEventListener('pointerdown', down, { passive: true });
+    view.addEventListener('pointermove', move, { passive: true });
+    view.addEventListener('pointerup', up, { passive: true });
+    view.addEventListener('pointercancel', up, { passive: true });
+    view.addEventListener('pointerleave', leave, { passive: true });
+
+    return () => {
+      view.removeEventListener('pointerdown', down);
+      view.removeEventListener('pointermove', move);
+      view.removeEventListener('pointerup', up);
+      view.removeEventListener('pointercancel', up);
+      view.removeEventListener('pointerleave', leave);
+    };
+  }, [mode]);
+
   const hoveredZone = useMemo(
     () => plan?.zones.find((z) => z.key === hovered) ?? null,
     [plan, hovered],
@@ -217,7 +311,10 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
         </div>
       </div>
 
-      <div className={styles.view}>
+      {/* Курсора «схватить» здесь больше нет: мышью план не таскают,
+          он и так идёт за ней. Палец тащит откуда угодно, но ему курсор
+          не нужен. */}
+      <div ref={viewRef} className={styles.view}>
         {failed && (
           <p className={`label ${styles.loading}`}>План не загрузился. Обновите страницу.</p>
         )}
@@ -234,7 +331,8 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
             onPick={pick}
             flyTo={flyTo}
             onPhase={onPhase}
-            calm={calm}
+            wobble={!calm}
+            compact={calm}
           />
         )}
 

@@ -100,11 +100,10 @@
   position: absolute;
   inset: 0 0 var(--info-space) 0;
   display: block;
+  /* Вертикальную прокрутку страницы оставляем системе, горизонтальный
+     жест забираем себе: им доворачивают план. */
   touch-action: pan-y;
 }
-
-.grabbable { cursor: grab; }
-.grabbable:active { cursor: grabbing; }
 
 /* --- плоский план ----------------------------------------------------- */
 
