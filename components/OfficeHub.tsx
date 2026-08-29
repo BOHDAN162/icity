@@ -9,9 +9,12 @@
 
    ГДЕ ОН ЖИВЁТ. Слой A липкой сцены в OfficeStop, а не оверлей поверх
    страницы: body больше не фиксируется, вниз из офиса уходят обычной
-   прокруткой. Компонент не размонтируется никогда, поэтому зона
-   переживает уход вниз и возврат — за это отвечает OfficeStop.
-   Сброс на ресепшн делает только «К башне», см. exit().
+   прокруткой. Компонент не размонтируется никогда, но памяти между
+   визитами у него больше нет: обход всегда начинается заново, от двери.
+   Сброс на ресепшн делает и «К башне», и сам уход из офиса — см. блок
+   `wasActive` ниже. В DOM в любой момент лежит кадр ровно одной зоны,
+   текущей: второй визит грузит его заново, а не берёт из памяти —
+   пять полноэкранных WebP/AVIF одновременно этого не стоили.
 
    ЧТО ПРИЕЗЖАЕТ СНАРУЖИ. Ничего. Офис — уходящий экран занавеса, а тот
    по правилу не двигается: его накрывают. Переменные --office-ui
@@ -141,8 +144,6 @@ const ZONES: Record<ZoneId, Zone> = {
   },
 };
 
-const ORDER: ZoneId[] = ['reception', 'corridor', 'openspace', 'meeting_lg', 'kitchen'];
-
 /* Строка обязательная. Она стоит ноль и снимает риск целиком: ЛПР приедет
    смотреть в тот же день, и если картинка окажется красивее реальности,
    сделка умрёт на пороге. Не удалять. */
@@ -158,27 +159,17 @@ type Props = {
 
 export default function OfficeHub({ active, onExit }: Props) {
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
-  const [cameFrom, setCameFrom] = useState<ZoneId | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
-  /* Какие кадры уже стоят в стопке. Зона попадает сюда в момент перехода
-     и больше не уходит: второй визит не должен ничего грузить. */
-  const [seen, setSeen] = useState<ReadonlySet<ZoneId>>(() => new Set<ZoneId>(['reception']));
   const rootRef = useRef<HTMLElement>(null);
 
-  const go = useCallback((to: ZoneId) => {
-    setSeen((prev) => (prev.has(to) ? prev : new Set(prev).add(to)));
-    setZoneId((current) => { setCameFrom(current); return to; });
-  }, []);
+  const go = useCallback((to: ZoneId) => setZoneId(to), []);
 
-  /* Обход всегда начинается от двери. Сброс висит ЗДЕСЬ и только здесь:
-     уход вниз по скроллу зону не трогает, иначе возврат наверх приводил бы
-     не туда, откуда ушли. */
+  /* «К башне»: закрыть план, сбросить на ресепшн, прокрутить страницу.
+     Уход по скроллу сбрасывает зону тем же способом — см. wasActive ниже,
+     он вызывает ровно эти два setState без прокрутки. */
   const exit = useCallback(() => {
     setPlanOpen(false);
-    // seen не трогаем: уже скачанные кадры при возврате в офис
-    // должны стоять на месте, а не грузиться заново
     setZoneId('reception');
-    setCameFrom(null);
     onExit();
   }, [onExit]);
 
@@ -189,9 +180,8 @@ export default function OfficeHub({ active, onExit }: Props) {
       to,
       angle: bearing(zoneId, to),
       label: ZONES[to].label,
-      isReturn: to === cameFrom,
     })),
-    [zoneId, cameFrom],
+    [zoneId],
   );
 
   /* Стрелки: ближайший по азимуту выход. Слушатель висит НА КОРНЕ офиса,
@@ -228,9 +218,13 @@ export default function OfficeHub({ active, onExit }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [active, planOpen, exit]);
 
-  /* Ушли вниз по скроллу с открытым планом — план закрываем. Он лежит
-     в position: fixed поверх всего и сам скролл не блокирует, поэтому
-     иначе висел бы над кадром вида. Зону при этом не трогаем.
+  /* Ушли из офиса — план закрываем, зону сбрасываем на ресепшн. Занавес
+     переставший быть активным (`active`) означает то же самое, что клик
+     «К башне»: обход начнётся заново при следующем визите. Плана в этот
+     момент могло не быть открыто — setPlanOpen(false) тогда просто
+     не видит перемены; план всё равно лежит в position: fixed поверх
+     всего и сам скролл не блокирует, поэтому его нельзя было бы оставить
+     висеть над кадром вида.
 
      Правка состояния прямо в рендере, а не в эффекте: это ровно тот
      случай, под который она и описана в документации React — состояние
@@ -239,7 +233,10 @@ export default function OfficeHub({ active, onExit }: Props) {
   const [wasActive, setWasActive] = useState(active);
   if (wasActive !== active) {
     setWasActive(active);
-    if (!active) setPlanOpen(false);
+    if (!active) {
+      setPlanOpen(false);
+      setZoneId('reception');
+    }
   }
 
   return (
@@ -252,41 +249,39 @@ export default function OfficeHub({ active, onExit }: Props) {
       onKeyDown={onRootKey}
       aria-label="Помещение 113Н, обход по зонам"
     >
-      {/* Кадры лежат стопкой и переключаются прозрачностью — без сдвигов.
-          В стопке только те зоны, где зритель уже побывал: все пять
-          занимают весь экран, то есть формально видимы, и loading="lazy"
-          их не удержал бы — браузер потянул бы 2 МБ сразу. Побывал —
-          кадр остался в DOM, возврат мгновенный.
+      {/* Ровно один кадр в DOM — кадр текущей зоны. Второй визит грузит
+          его заново: пять полноэкранных WebP/AVIF одновременно, из
+          которых виден один, столько памяти не стоили.
+
+          `key={zoneId}` пересоздаёт узел на каждой смене — тем же приёмом,
+          что .info ниже. Это не только чистота разметки: CSS-анимация
+          появления (.shot, см. модуль) играет только при вставке узла
+          в DOM. Обнови React лишь атрибуты того же <picture> — src,
+          srcSet, data-zone, — анимация не переиграет ни разу.
 
           next/image здесь не нужен: рендеры уже нарезаны на четыре ширины
           в WebP и AVIF (см. public/interior/renders/manifest.json), и
           прогонять готовые файлы через оптимизатор второй раз — это
           лишний проход и потеря AVIF. */}
       <div className={styles.stage}>
-        {ORDER.filter((id) => seen.has(id)).map((id) => {
-          const z = ZONES[id];
-          const on = id === zoneId;
-          return (
-            <picture key={id} className={`${styles.shot} ${on ? styles.shotOn : ''}`}>
-              <source type="image/avif" srcSet={renderSrcSet(id, 'avif')} sizes="100vw" />
-              <source type="image/webp" srcSet={renderSrcSet(id, 'webp')} sizes="100vw" />
-              <img
-                /* Метка для параллакса: холст берёт текстуру прямо
-                   из этого элемента, а не качает кадр второй раз. */
-                data-zone={id}
-                src={renderSmallest(id)}
-                alt={on ? z.alt : ''}
-                width={RENDER_NATIVE[id][0]}
-                height={RENDER_NATIVE[id][1]}
-                draggable={false}
-                decoding="async"
-                fetchPriority={id === 'reception' ? 'high' : 'auto'}
-              />
-            </picture>
-          );
-        })}
+        <picture key={zoneId} className={styles.shot}>
+          <source type="image/avif" srcSet={renderSrcSet(zoneId, 'avif')} sizes="100vw" />
+          <source type="image/webp" srcSet={renderSrcSet(zoneId, 'webp')} sizes="100vw" />
+          <img
+            /* Метка для параллакса: холст берёт текстуру прямо
+               из этого элемента, а не качает кадр второй раз. */
+            data-zone={zoneId}
+            src={renderSmallest(zoneId)}
+            alt={zone.alt}
+            width={RENDER_NATIVE[zoneId][0]}
+            height={RENDER_NATIVE[zoneId][1]}
+            draggable={false}
+            decoding="async"
+            fetchPriority="high"
+          />
+        </picture>
 
-        {/* Поверх стопки. Монтируется только когда офис открыт: за
+        {/* Поверх кадра. Монтируется только когда офис открыт: за
             офис не на экране, холст не нужен, а WebGL-контекст стоит слота.
             Пока карта глубины не доехала, холст прозрачен и виден кадр
             под ним, поэтому смены зоны выглядят ровно как раньше. */}
@@ -350,7 +345,7 @@ export default function OfficeHub({ active, onExit }: Props) {
               <button
                 key={m.to}
                 type="button"
-                className={`${styles.move} ${m.isReturn ? styles.moveReturn : ''}`}
+                className={styles.move}
                 onClick={() => go(m.to)}
                 aria-label={m.label}
               >

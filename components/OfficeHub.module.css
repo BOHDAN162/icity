@@ -34,14 +34,21 @@
 
 /* Кадр — <picture>, а не <img>: рендеры отдаются в AVIF с запасным WebP
    в четырёх ширинах. Сам <picture> не заменяемый элемент, поэтому
-   object-fit висит на вложенном <img>, иначе кадр не кадрируется. */
+   object-fit висит на вложенном <img>, иначе кадр не кадрируется.
+
+   В DOM теперь ровно один <picture> — кадр текущей зоны, не стопка всех
+   посещённых. Смена зоны — не кросс-фейд между двумя кадрами (второго
+   больше нет), а появление нового: `animation`, а не `transition`.
+   Transition не играет на вставке узла — сработал бы только при смене
+   opacity у уже существующего элемента, а `key={zoneId}` в OfficeHub.tsx
+   пересоздаёт узел каждый раз. animation же запускается любой вставкой
+   в DOM сама, тем же приёмом, что .info ниже (infoIn). */
 .shot {
   position: absolute;
   inset: 0;
   display: block;
-  opacity: 0;
-  transition: opacity var(--t-scene) var(--ease-out);
   user-select: none;
+  animation: shotIn var(--t-scene) var(--ease-out) both;
 }
 
 .shot img {
@@ -51,7 +58,10 @@
   object-fit: cover;
 }
 
-.shotOn { opacity: 1; }
+@keyframes shotIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 
 /* --- вуали ------------------------------------------------------------ */
 
@@ -313,10 +323,6 @@
 }
 
 .move:hover { background: var(--white); border-color: var(--ink); }
-
-/* Возврат туда, откуда только что пришли, — тише прямых ходов */
-.moveReturn { color: var(--ink-60); border-color: var(--alu); }
-.moveReturn:hover { color: var(--ink); }
 
 /* Подпись появляется по наведению и по фокусу. Для скринридера имя
    кнопки несёт aria-label, поэтому подпись помечена aria-hidden. */
