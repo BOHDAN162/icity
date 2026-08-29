@@ -8,7 +8,7 @@ v3 исправляет две ошибки v2:
   1. запечённый AO оставался во внутренних изображениях и терялся при экспорте
   2. 62 отдельных объекта = 62 текстуры; теперь всё сводится в 7 мешей и ОДИН атлас
 """
-SCRIPT_VERSION = "dollhouse-build v8.0 (снят северный джог, закрыты 2 разрыва стен)"
+SCRIPT_VERSION = "dollhouse-build v9.0 (оба джога сняты целиком, 3-й разрыв закрыт)"
 print(SCRIPT_VERSION)
 
 import bpy, bmesh, json, math, sys, os
@@ -25,8 +25,8 @@ ARES  = int(arg("--atlas", "2048"))
 os.makedirs(OUT, exist_ok=True)
 
 G = json.load(open(GEO, encoding="utf-8"))
-if G.get("version") != 8:
-    raise SystemExit("НУЖЕН geometry.json версии 8.")
+if G.get("version") != 9:
+    raise SystemExit("НУЖЕН geometry.json версии 9.")
 print(f"geometry.json v{G['version']}, перегородок {len(G['walls_ortho'])+len(G['walls_diag'])}")
 
 H, TH, ST = G["ceiling_h"], G["wall_th"], G["slab_th"]
