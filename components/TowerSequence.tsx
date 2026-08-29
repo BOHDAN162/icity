@@ -2,7 +2,7 @@
 
 /* iCITY 113Н — экран 1. Герой и подъём вдоль башни.
    Путь в проекте: components/TowerSequence.tsx
-   Версия 6. Скролл в обе стороны, офис — следующая секция. См. ИСТОРИЯ.
+   Версия 7. Скролл в обе стороны, офис наезжает занавесом. См. ИСТОРИЯ.
 
    КАК УСТРОЕНО. Секция высокая: 100svh экрана плюс дистанция прокрутки.
    Внутри — липкий блок с canvas на 100svh. Прогресс считается из положения
@@ -42,13 +42,13 @@ import {
   PRIME_FRAMES,
   WINDOW_POLL_MS,
   WINDOW_RADIUS,
+  CURTAIN_SVH,
   frameSrc,
   type Variant,
 } from '@/lib/sequence';
 import styles from './TowerSequence.module.css';
 
 const SMOOTH_TAU = 90;        // постоянная времени сглаживания, мс
-const GLASS_START = 0.93;     // с этой доли начинается вход в стекло
 const TEXT_FADE_END = 0.14;   // на этой доле прогресса заголовок исчезает
 const TRAVEL_MS = 4200;       // автопроход по кнопке
 
@@ -71,7 +71,6 @@ export default function TowerSequence() {
   const stickyRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const glassRef = useRef<HTMLDivElement>(null);
 
   const reduced = useSyncExternalStore(
     subscribeMotion,
@@ -271,7 +270,14 @@ export default function TowerSequence() {
       const wrap = wrapRef.current;
       if (wrap) {
         const rect = wrap.getBoundingClientRect();
-        const travel = rect.height - window.innerHeight;
+        /* Липкий блок — это ровно 100svh в пикселях. Берём его высоту,
+           а не window.innerHeight: на мобильных они расходятся, пока
+           адресная строка развёрнута, и прогресс уезжал бы вместе с ней. */
+        const svh = stickyRef.current?.offsetHeight || window.innerHeight;
+        /* Занавес в скраб НЕ входит. Секция выше на CURTAIN_SVH, но кадры
+           по нему уже не идут: индекс упирается в последний и стоит, пока
+           офис наезжает сверху. Отсюда вычитание. */
+        const travel = rect.height - svh - (svh * CURTAIN_SVH) / 100;
         targetRef.current = travel > 0 ? clamp01(-rect.top / travel) : 0;
 
         /* Инерция. Без неё кадры дёргаются рывками по щелчкам колеса:
@@ -285,15 +291,10 @@ export default function TowerSequence() {
 
         const p = smoothRef.current;
 
-        /* Вход в стекло: последние проценты засвечиваются холодным белым.
-           Раньше засветка прикрывала открытие оверлея, теперь — обычный
-           шов между концом секции и офисом, который стоит следующей
-           секцией страницы. Ведёт её тот же единый rAF. */
-        const glass = glassRef.current;
-        if (glass) {
-          const g = clamp01((p - GLASS_START) / (1 - GLASS_START));
-          glass.style.opacity = String(g);
-        }
+        /* Засветки стекла здесь больше нет. Стык с офисом закрывает
+           занавес: офис наезжает снизу и накрывает башню, а башня при
+           этом не двигается вообще. Белая вспышка и занавес — две разные
+           метафоры одного момента, и одновременно они читались как брак. */
         const index = Math.round(p * (v.count - 1));
         desiredIndexRef.current = index;
 
@@ -367,10 +368,14 @@ export default function TowerSequence() {
     travelRafRef.current = requestAnimationFrame(step);
   }, [cancelTravel]);
 
+  /* Цель кнопки — конец секции, то есть конец занавеса: человек
+     приезжает не к последнему кадру фасада, а на 23 этаж, ради которого
+     кнопка и нажата. Занавес по дороге отыгрывается сам. */
   const travel = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    startTravel(wrap.offsetTop + wrap.offsetHeight - window.innerHeight, TRAVEL_MS);
+    const svh = stickyRef.current?.offsetHeight || window.innerHeight;
+    startTravel(wrap.offsetTop + wrap.offsetHeight - svh, TRAVEL_MS);
   }, [startTravel]);
 
   // при размонтировании проезд гасим вместе со слушателями
@@ -382,7 +387,6 @@ export default function TowerSequence() {
       <div ref={stickyRef} className={styles.sticky}>
         <div className={styles.backdrop} aria-hidden="true" />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-        <div ref={glassRef} className={styles.glass} aria-hidden="true" />
 
         <div ref={overlayRef} className={styles.overlay}>
           <p className={styles.eyebrow}>iCITY · Space Tower · 23 этаж</p>
@@ -413,6 +417,15 @@ export default function TowerSequence() {
 
 /* ИСТОРИЯ
 
+   v6 → v7. ЗАНАВЕС ВМЕСТО ЗАСВЕТКИ.
+
+   `.glass` и ведущий её код удалены. Секция стала выше на CURTAIN_SVH,
+   и на этом хвосте офис наезжает снизу и накрывает башню. Башня при этом
+   не получает ничего: ни трансформации, ни прозрачности, ни масштаба —
+   её накрывают, а не анимируют. Кадры по занавесу не идут, индекс стоит
+   на последнем; дистанция скраба поэтому считается с вычитанием занавеса,
+   а travelSvh в lib/sequence.ts не тронут.
+
    v5 → v6. ОФИС СТАЛ СЕКЦИЕЙ, А НЕ ОВЕРЛЕЕМ.
 
    Секвенция больше никого не открывает и никого не возвращает: пропсы
@@ -420,8 +433,7 @@ export default function TowerSequence() {
    и обратным проездом на 3,5 с. Офис стоит следующей секцией страницы
    (OfficeStop), «К башне» — обычная прокрутка к `#tower`, и подъём
    отыгрывается назад сам собой, потому что прогресс всегда считался
-   от положения секции. Засветка стекла осталась: она теперь прикрывает
-   шов между концом секции и офисом.
+   от положения секции.
 
    v4 → v5. СКРОЛЛ В ОБЕ СТОРОНЫ.
 

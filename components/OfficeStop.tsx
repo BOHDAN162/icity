@@ -18,7 +18,10 @@
    4. Перечитать VIEW_ALT: alt описывает кадр, а не предложение. Строка
       взята из copy.md, раздел «Alt-тексты», и написана под настоящую
       съёмку — под заглушку она честна только наполовину.
-   5. Снять `"placeholder": true` из манифеста (его ставит рецепт).
+   5. Перемерить контраст подписи по реальным пикселям нового кадра.
+      Вуаль подогнана под эту панораму, и на другой она может не держать
+      4,5:1 — порядок замера в docs/office-flow.md.
+   6. Снять `"placeholder": true` из манифеста (его ставит рецепт).
 
    Чего в кадре не будет никогда: стороны света. В docs/facts.md они
    помечены как гипотеза, поэтому ни строкой, ни пикселем.
@@ -28,28 +31,34 @@
    Путь в проекте: components/OfficeStop.tsx
 
    ЧТО ЭТО. Одна высокая секция, внутри — липкая сцена на 100svh с двумя
-   слоями. Слой A — офис (OfficeHub), слой B — кадр вида. Листаешь вниз
-   из любой зоны офиса: кадр поднимается снизу, накрывает офис, держится,
-   потом уходит в растровый шов и передаёт страницу Landing. Листаешь
-   вверх — возвращаешься ровно в ту зону, из которой ушёл: OfficeHub
-   не размонтируется, состояние зоны живёт в нём.
+   слоями. Слой A — офис (OfficeHub), слой B — кадр вида.
 
-   ПОЧЕМУ НЕ position: fixed НА BODY. Прежний ActOne фиксировал body,
-   пока офис открыт, и офис был тупиком: выйти можно было только кнопкой.
-   Здесь офис — остановка внутри обычной прокрутки. Тот же приём, что
-   в TowerSequence: высокая секция плюс нативный sticky, без пиннинга
-   и без ScrollTrigger.
+   ДВА ЗАНАВЕСА, ОДНА МЕХАНИКА. Приходящий экран выезжает снизу и
+   накрывает уходящий. Уходящий НЕ ДВИГАЕТСЯ: ни масштаба, ни прозрачности,
+   ни параллакса, ни размытия. Стык — жёсткая горизонтальная линия, без
+   градиента и без перекрёстного растворения.
 
-   ОДНО ЧИСЛО НА ВСЮ АНИМАЦИЮ. Слушатель скролла считает прогресс `p`
-   от 0 до 1 и пишет его в одну CSS-переменную `--p` на узле сцены.
-   React на кадрах не участвует вообще — ровно та же дисциплина, что
-   в TowerSequence. Всё остальное (подъём кадра, масштаб офиса, подпись,
-   высота шва) считается из `--p` в CSS через calc, см. OfficeStop.module.css.
+     занавес 1  башня → офис   вся сцена едет вверх, --c: 0 → 1
+     занавес 2  офис → вид     едет слой кадра,      --p: 0,06 → 0,34
+
+   Занавес 1 живёт на хвосте секции башни: та стала выше на CURTAIN_SVH,
+   кадры по хвосту уже не идут, а эта секция подтянута вверх отрицательным
+   отступом ровно настолько, чтобы её сцена была пришпилена к верху экрана
+   к началу занавеса. Арифметика отступа — в lib/sequence.ts.
+
+   ДОВОДКА. Ни одно состояние покоя не показывает два экрана сразу: обе
+   границы либо доводятся до конца, либо откатываются. Механика и её
+   ловушки — в lib/snap.ts.
+
+   ОДНО ЧИСЛО НА КАЖДОЕ ДВИЖЕНИЕ. Слушатель скролла пишет две CSS-переменные
+   на узле сцены — `--c` и `--p` — и больше ничего. React на кадрах
+   не участвует. Всё остальное считается из них в CSS через calc,
+   см. OfficeStop.module.css и docs/office-flow.md.
 
    ГРУБОЕ СОСТОЯНИЕ `phase` существует ровно для одного — для `inert`
-   на слое офиса, чтобы фокус клавиатуры не садился на невидимые стрелки.
-   Оно меняется только на пересечении порогов, с гистерезисом, а не
-   на каждом кадре.
+   на слое офиса, чтобы под движущейся кромкой ничего нельзя было нажать
+   и поймать фокусом. Меняется только на пересечении порогов, с
+   гистерезисом, а не на каждом кадре.
 
    ЧТО ДВИЖЕТСЯ. Только transform, opacity и высота полосы шва. Ни filter,
    ни blur, ни backdrop-filter, ни маски на самом кадре: маска поверх
@@ -60,6 +69,8 @@
 import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
+import { CURTAIN_SVH } from '@/lib/sequence';
+import { createSnap, type SnapRange } from '@/lib/snap';
 import OfficeHub from './OfficeHub';
 import styles from './OfficeStop.module.css';
 
@@ -78,16 +89,25 @@ const viewSrcSet = (ext: 'avif' | 'webp') =>
   VIEW_WIDTHS.map((w) => `${VIEW_DIR}/view-${w}.${ext} ${w}w`).join(', ');
 
 /* Фазовая карта. Пороги дублируются в OfficeStop.module.css — там из них
-   считаются огибающие. Здесь нужны только два: на них переключается
-   `inert`. Полная карта — в docs/office-flow.md. */
-const PHASE_PHOTO = 0.12;
-const PHASE_SEAM = 0.62;
+   считаются огибающие. Здесь нужны только те, на которых переключается
+   `inert` и стоят границы доводки. Полная карта — в docs/office-flow.md. */
+const RISE_FROM = 0.06;   // с этой доли кадр вида пошёл вверх
+const RISE_TO = 0.34;     // здесь он полностью накрыл офис
+const PHASE_PHOTO = 0.09; // с этой доли офис под кромкой: inert
+const PHASE_SEAM = 0.52;
+
 /** мёртвая зона вокруг порога: без неё дрожание скролла дёргает setState */
 const PHASE_HYST = 0.005;
 
-type Phase = 'office' | 'photo' | 'seam';
+/** занавес считается доведённым: офис снова живой экран */
+const CURTAIN_DONE = 0.999;
+const CURTAIN_HYST = 0.009;
 
-const phaseFor = (p: number, cur: Phase): Phase => {
+type Phase = 'curtain' | 'office' | 'photo' | 'seam';
+
+const phaseFor = (c: number, p: number, cur: Phase): Phase => {
+  const done = cur === 'curtain' ? CURTAIN_DONE : CURTAIN_DONE - CURTAIN_HYST;
+  if (c < done) return 'curtain';
   const lo = cur === 'office' ? PHASE_PHOTO + PHASE_HYST : PHASE_PHOTO - PHASE_HYST;
   const hi = cur === 'seam' ? PHASE_SEAM - PHASE_HYST : PHASE_SEAM + PHASE_HYST;
   if (p < lo) return 'office';
@@ -116,7 +136,7 @@ export default function OfficeStop() {
     getMotionServerSnapshot,
   );
 
-  const [phase, setPhase] = useState<Phase>('office');
+  const [phase, setPhase] = useState<Phase>('curtain');
   /* Кадр вида монтируем, когда секция ближе полутора экранов. В бюджет
      первого экрана он попасть не должен: там уже стоит секвенция башни. */
   const [photoNear, setPhotoNear] = useState(false);
@@ -126,6 +146,22 @@ export default function OfficeStop() {
      Esc в OfficeHub делает ровно это же. */
   const toTower = useCallback(() => {
     document.getElementById('tower')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  /* --- геометрия. Один источник на привод и на доводку ----------------
+     Занавес и фазы делят пришпиленный ход секции: сначала CURTAIN_SVH
+     на наезд, потом всё остальное на фазовую карту. Считаем от высоты
+     самой сцены — это ровно 100svh в пикселях, и на мобильных она честнее
+     window.innerHeight, который гуляет вместе с адресной строкой. */
+  const metrics = useCallback(() => {
+    const wrap = wrapRef.current;
+    const stage = stageRef.current;
+    if (!wrap || !stage) return null;
+    const svh = stage.offsetHeight;
+    if (svh <= 0) return null;
+    const curtain = (svh * CURTAIN_SVH) / 100;
+    const phaseTravel = wrap.offsetHeight - svh - curtain;
+    return { rect: wrap.getBoundingClientRect(), curtain, phaseTravel };
   }, []);
 
   /* --- монтирование кадра: за полтора экрана до секции ---------------- */
@@ -151,17 +187,23 @@ export default function OfficeStop() {
 
     let raf = 0;
     let listening = false;
-    let curPhase: Phase = 'office';
+    let curPhase: Phase = 'curtain';
+    let lastC = -1;
+    let lastP = -1;
 
     const measure = () => {
-      const rect = wrap.getBoundingClientRect();
-      const travel = rect.height - window.innerHeight;
-      const p = travel > 0 ? clamp01(-rect.top / travel) : 0;
+      const m = metrics();
+      if (!m) return;
+      const y = -m.rect.top;                       // 0 в начале занавеса
+      const c = clamp01(y / m.curtain);
+      const p = m.phaseTravel > 0 ? clamp01((y - m.curtain) / m.phaseTravel) : 0;
 
-      // единственная запись в DOM на кадр — и ни одного ре-рендера React
-      stage.style.setProperty('--p', p.toFixed(4));
+      /* Пишем, только если сдвинулось: лишний setProperty инвалидирует
+         стиль всего поддерева на каждом кадре простоя. */
+      if (Math.abs(c - lastC) > 1e-4) { lastC = c; stage.style.setProperty('--c', c.toFixed(4)); }
+      if (Math.abs(p - lastP) > 1e-4) { lastP = p; stage.style.setProperty('--p', p.toFixed(4)); }
 
-      const next = phaseFor(p, curPhase);
+      const next = phaseFor(c, p, curPhase);
       if (next !== curPhase) {
         curPhase = next;
         setPhase(next);
@@ -188,9 +230,12 @@ export default function OfficeStop() {
       window.removeEventListener('resize', onScroll);
     };
 
+    /* Наблюдаем с запасом в экран: занавес начинается ровно на верхней
+       кромке обёртки, и без запаса первый его кадр считался бы уже
+       после того, как он начался. */
     const io = new IntersectionObserver(
       ([e]) => (e.isIntersecting ? start() : stop()),
-      { threshold: 0 },
+      { rootMargin: '100% 0px' },
     );
     io.observe(wrap);
 
@@ -199,17 +244,34 @@ export default function OfficeStop() {
       stop();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [reduced]);
+  }, [reduced, metrics]);
+
+  /* --- доводка на двух границах ---------------------------------------
+     Диапазоны в документных координатах, пересчитываются по требованию:
+     высоты в svh, и после поворота телефона они другие. */
+  useEffect(() => {
+    if (reduced) return undefined;
+    const ranges = (): SnapRange[] => {
+      const m = metrics();
+      if (!m) return [];
+      const top = m.rect.top + window.scrollY;    // документный верх обёртки
+      const phaseAt = (v: number) => top + m.curtain + v * m.phaseTravel;
+      return [
+        { id: 'b1', from: top, to: top + m.curtain },
+        { id: 'b2', from: phaseAt(RISE_FROM), to: phaseAt(RISE_TO) },
+      ];
+    };
+    const snap = createSnap(ranges);
+    return () => snap.destroy();
+  }, [reduced, metrics]);
 
   const officeLive = phase === 'office';
 
   return (
     <section ref={wrapRef} className={styles.wrap} id="office">
       <div ref={stageRef} className={styles.stage}>
-        {/* слой A — офис. Никакого transform на этом узле: внутри него
-            лежит план в position: fixed, и трансформированный предок
-            стал бы для него содержащим блоком. Масштаб офиса едет
-            переменной --office-scale внутрь OfficeHub, на его .stage. */}
+        {/* слой A — офис. Никакого transform на этом узле: масштаба у офиса
+            больше нет вообще, его накрывают, а не анимируют. */}
         <div
           className={`${styles.office} ${officeLive ? '' : styles.officeOff}`}
           inert={!officeLive}
@@ -235,12 +297,9 @@ export default function OfficeStop() {
             </picture>
           )}
 
-          {/* Вуаль под подписью — тот же приём и те же числа, что у
-              .scrimInfoLeft в OfficeHub: градиент --paper от кромки кадра
-              в прозрачность, маска режет его по горизонтали.
-              design-system.md, раздел «Вуаль». */}
-          <div className={styles.veil} aria-hidden="true" />
-
+          {/* Вуаль живёт псевдоэлементом самой подписи и обнимает её
+              с запасом: размер у неё содержательный, а не заданный
+              в процентах экрана. См. .caption::before в модуле. */}
           <div className={styles.caption}>
             <p className={`label ${styles.eyebrow}`}>23 ЭТАЖ</p>
             <h2 className={styles.title}>Окна открываются</h2>

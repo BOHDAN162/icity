@@ -13,10 +13,9 @@
    переживает уход вниз и возврат — за это отвечает OfficeStop.
    Сброс на ресепшн делает только «К башне», см. exit().
 
-   ЧТО ПРИЕЗЖАЕТ СНАРУЖИ. Две CSS-переменные со сцены: --office-ui
-   (прозрачность интерфейса и вуалей) и --office-scale (масштаб стопки
-   кадров). Обе читаются с запасным значением 1, поэтому офис остаётся
-   рабочим и без сцены.
+   ЧТО ПРИЕЗЖАЕТ СНАРУЖИ. Ничего. Офис — уходящий экран занавеса, а тот
+   по правилу не двигается: его накрывают. Переменные --office-ui
+   и --office-scale, которыми сцена гасила и сжимала офис в v1, сняты.
 
    ОТКУДА БЕРУТСЯ УГЛЫ СТРЕЛОК. Не из порядка списка, а из плана
    `public/plan_113n_3652px.png`. Ниже лежат центроиды зон, снятые
@@ -40,6 +39,7 @@ import {
   useCallback, useEffect, useMemo, useRef, useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import {
   RENDER_NATIVE, prefetchPlan, renderSmallest, renderSrcSet, type RenderKey,
@@ -376,7 +376,18 @@ export default function OfficeHub({ active, onExit }: Props) {
       {/* Монтируем по клику, а не прячем пропом: у dynamic() чанк едет
           в момент отрисовки, и постоянно висящий в дереве план утащил бы
           свой код на первый экран. Пустой кадр — пустой запрос. */}
-      {planOpen && <PlanDollhouse onClose={() => setPlanOpen(false)} onEnterZone={go} />}
+      {/* ПОРТАЛОМ В BODY, А НЕ ЗДЕСЬ ЖЕ В ДЕРЕВЕ. План — это position: fixed
+          поверх всего, а над офисом теперь стоит трансформированная сцена
+          занавеса: любой трансформированный предок — хоть translateY(0) —
+          становится для fixed содержащим блоком, и план поехал бы вместе
+          со сценой да ещё и обрезался её overflow. Портал снимает вопрос
+          целиком: план физически не потомок сцены.
+          dynamic(ssr: false) гарантирует, что до document мы доберёмся
+          только на клиенте. */}
+      {planOpen && createPortal(
+        <PlanDollhouse onClose={() => setPlanOpen(false)} onEnterZone={go} />,
+        document.body,
+      )}
     </section>
   );
 }

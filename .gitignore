@@ -43,3 +43,6 @@ next-env.d.ts
 # claude code — локальное, у каждого своё. .mcp.json коммитим, он общий
 .claude/settings.local.json
 .claude/worktrees/
+
+# playwright-mcp — артефакты браузерных прогонов, у каждого свои
+.playwright-mcp/
