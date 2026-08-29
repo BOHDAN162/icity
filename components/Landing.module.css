@@ -2,9 +2,26 @@
    Все значения — переменные из app/tokens.css. Литералов цвета,
    кегля, отступов и радиусов здесь нет. */
 
+/* Точка приземления шва. Полоса растра на стыке секций — 48 px во всю
+   ширину, плотность --frit-sparse (design-system.md §3). Именно она
+   сменяет собой полосу, которая росла в OfficeStop, когда липкий экран
+   отпускает и Landing выходит снизу.
+
+   На ≤767 px токен сам подменяется на --frit-mid: мелкий растр
+   на плотных экранах муарит. */
 .section {
+  position: relative;
   background: var(--paper);
-  padding: var(--section-y) var(--pad-x);
+  /* 168 px сверху — ступень ритма --s-11: 120 отступа секции плюс полоса */
+  padding: calc(var(--section-y) + 48px) var(--pad-x) var(--section-y);
+}
+
+.section::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 48px;
+  background: var(--frit-sparse);
 }
 
 .inner {

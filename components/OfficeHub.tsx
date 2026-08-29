@@ -1,11 +1,22 @@
 'use client';
 
-/* iCITY 113Н — офис. Полноэкранное состояние после входа в стекло.
+/* iCITY 113Н — офис. Остановка сразу после подъёма вдоль башни.
    Путь в проекте: components/OfficeHub.tsx
 
-   ЧТО ЭТО. Камера вошла в фасад — страница дальше не листается, вместо
-   неё открывается офис. Пять зон, между ними ходят как по этажу: связи
-   двусторонние, из любой комнаты можно вернуться в любую соседнюю.
+   ЧТО ЭТО. Камера вошла в фасад — и страница останавливается на офисе.
+   Пять зон, между ними ходят как по этажу: связи двусторонние, из любой
+   комнаты можно вернуться в любую соседнюю.
+
+   ГДЕ ОН ЖИВЁТ. Слой A липкой сцены в OfficeStop, а не оверлей поверх
+   страницы: body больше не фиксируется, вниз из офиса уходят обычной
+   прокруткой. Компонент не размонтируется никогда, поэтому зона
+   переживает уход вниз и возврат — за это отвечает OfficeStop.
+   Сброс на ресепшн делает только «К башне», см. exit().
+
+   ЧТО ПРИЕЗЖАЕТ СНАРУЖИ. Две CSS-переменные со сцены: --office-ui
+   (прозрачность интерфейса и вуалей) и --office-scale (масштаб стопки
+   кадров). Обе читаются с запасным значением 1, поэтому офис остаётся
+   рабочим и без сцены.
 
    ОТКУДА БЕРУТСЯ УГЛЫ СТРЕЛОК. Не из порядка списка, а из плана
    `public/plan_113n_3652px.png`. Ниже лежат центроиды зон, снятые
@@ -25,7 +36,10 @@
    её единственная задача — держать контраст. См. design-system.md,
    раздел «Вуаль». */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import dynamic from 'next/dynamic';
 import {
   RENDER_NATIVE, prefetchPlan, renderSmallest, renderSrcSet, type RenderKey,
@@ -135,22 +149,30 @@ const ORDER: ZoneId[] = ['reception', 'corridor', 'openspace', 'meeting_lg', 'ki
 const DISCLAIMER =
   'Визуализация по дизайн-проекту. Помещение готово — приезжайте и сверьте с оригиналом.';
 
-export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () => void }) {
+type Props = {
+  /** офис — живой экран: слушает клавиши и держит холст параллакса */
+  active: boolean;
+  /** «К башне»: прокрутка страницы к секвенции, см. OfficeStop */
+  onExit: () => void;
+};
+
+export default function OfficeHub({ active, onExit }: Props) {
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
   const [cameFrom, setCameFrom] = useState<ZoneId | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   /* Какие кадры уже стоят в стопке. Зона попадает сюда в момент перехода
      и больше не уходит: второй визит не должен ничего грузить. */
   const [seen, setSeen] = useState<ReadonlySet<ZoneId>>(() => new Set<ZoneId>(['reception']));
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLElement>(null);
 
   const go = useCallback((to: ZoneId) => {
     setSeen((prev) => (prev.has(to) ? prev : new Set(prev).add(to)));
     setZoneId((current) => { setCameFrom(current); return to; });
   }, []);
 
-  /* Обход всегда начинается от двери. Сбрасываем на выходе, а не эффектом
-     на open: setState в теле эффекта — ошибка линтера и лишний рендер. */
+  /* Обход всегда начинается от двери. Сброс висит ЗДЕСЬ и только здесь:
+     уход вниз по скроллу зону не трогает, иначе возврат наверх приводил бы
+     не туда, откуда ушли. */
   const exit = useCallback(() => {
     setPlanOpen(false);
     // seen не трогаем: уже скачанные кадры при возврате в офис
@@ -172,39 +194,62 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
     [zoneId, cameFrom],
   );
 
-  /* Клавиатура: стрелка выбирает ближайший по азимуту выход. Esc уводит
-     к башне. Пока открыт план, он забирает клавиши себе. */
+  /* Стрелки: ближайший по азимуту выход. Слушатель висит НА КОРНЕ офиса,
+     а не на window, и работает, только когда фокус внутри него. Так было
+     не всегда: пока офис был оверлеем с зафиксированным body, глобальный
+     слушатель с preventDefault ничего не ломал. Теперь страница листается,
+     и перехват ArrowDown на весь документ отнял бы у клавиатуры прокрутку —
+     ровно то, что AGENTS.md запрещает в разделе «Доступность». */
+  const onRootKey = useCallback((e: ReactKeyboardEvent) => {
+    if (planOpen) return;
+    const want =
+      e.key === 'ArrowUp' ? 0 : e.key === 'ArrowRight' ? 90
+      : e.key === 'ArrowDown' ? 180 : e.key === 'ArrowLeft' ? 270 : null;
+    if (want === null) return;
+    let best = null as null | { to: ZoneId; d: number };
+    for (const m of moves) {
+      const d = Math.abs(((m.angle - want + 540) % 360) - 180);
+      if (d <= 67.5 && (!best || d < best.d)) best = { to: m.to, d };
+    }
+    if (best) { e.preventDefault(); go(best.to); }
+  }, [planOpen, moves, go]);
+
+  /* Esc уводит к башне. Он остаётся глобальным: со скроллом не спорит,
+     а нажимают его, не целясь фокусом. Пока открыт план, клавиши его. */
   useEffect(() => {
-    if (!open) return;
+    if (!active) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (planOpen) return;
-      if (e.key === 'Escape') { e.preventDefault(); exit(); return; }
-      const want =
-        e.key === 'ArrowUp' ? 0 : e.key === 'ArrowRight' ? 90
-        : e.key === 'ArrowDown' ? 180 : e.key === 'ArrowLeft' ? 270 : null;
-      if (want === null) return;
-      let best = null as null | { to: ZoneId; d: number };
-      for (const m of moves) {
-        const d = Math.abs(((m.angle - want + 540) % 360) - 180);
-        if (d <= 67.5 && (!best || d < best.d)) best = { to: m.to, d };
-      }
-      if (best) { e.preventDefault(); go(best.to); }
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      exit();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, planOpen, moves, go, exit]);
+  }, [active, planOpen, exit]);
 
-  // фокус переносим внутрь, иначе клавиатура остаётся на странице под офисом
-  useEffect(() => { if (open) rootRef.current?.focus(); }, [open]);
+  /* Ушли вниз по скроллу с открытым планом — план закрываем. Он лежит
+     в position: fixed поверх всего и сам скролл не блокирует, поэтому
+     иначе висел бы над кадром вида. Зону при этом не трогаем.
+
+     Правка состояния прямо в рендере, а не в эффекте: это ровно тот
+     случай, под который она и описана в документации React — состояние
+     подстраивается под смену пропа. Через useEffect тут был бы лишний
+     проход и ошибка react-hooks/set-state-in-effect. */
+  const [wasActive, setWasActive] = useState(active);
+  if (wasActive !== active) {
+    setWasActive(active);
+    if (!active) setPlanOpen(false);
+  }
 
   return (
-    <div
+    /* Не dialog и не оверлей: это обычная секция страницы. Отсюда нет
+       ни role, ни aria-hidden, ни inert — видимостью и inert распоряжается
+       OfficeStop, у него для этого есть прогресс скролла. */
+    <section
       ref={rootRef}
-      className={`${styles.root} ${open ? styles.open : ''}`}
-      aria-hidden={!open}
-      inert={!open}
-      tabIndex={-1}
-      role="dialog"
+      className={styles.root}
+      onKeyDown={onRootKey}
       aria-label="Помещение 113Н, обход по зонам"
     >
       {/* Кадры лежат стопкой и переключаются прозрачностью — без сдвигов.
@@ -242,10 +287,10 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
         })}
 
         {/* Поверх стопки. Монтируется только когда офис открыт: за
-            закрытой дверью холст не нужен, а WebGL-контекст стоит слота.
+            офис не на экране, холст не нужен, а WebGL-контекст стоит слота.
             Пока карта глубины не доехала, холст прозрачен и виден кадр
             под ним, поэтому смены зоны выглядят ровно как раньше. */}
-        {open && <ZoneParallax zone={zoneId} />}
+        {active && <ZoneParallax zone={zoneId} />}
       </div>
 
       {/* Вуали. Не декор: держат контраст текста поверх светлого рендера. */}
@@ -332,6 +377,6 @@ export default function OfficeHub({ open, onExit }: { open: boolean; onExit: () 
           в момент отрисовки, и постоянно висящий в дереве план утащил бы
           свой код на первый экран. Пустой кадр — пустой запрос. */}
       {planOpen && <PlanDollhouse onClose={() => setPlanOpen(false)} onEnterZone={go} />}
-    </div>
+    </section>
   );
 }

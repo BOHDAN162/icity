@@ -1,0 +1,40 @@
+{
+ "view": {
+  "native": [
+   3460,
+   1910
+  ],
+  "src": "icity_view.png",
+  "srcPath": "/Users/bogdan/Downloads/icity_view.png",
+  "srcNative": [
+   3600,
+   2338
+  ],
+  "crop": {
+   "top": 300,
+   "right": 0,
+   "bottom": 128,
+   "left": 140
+  },
+  "variants": {
+   "640": {
+    "webp": 30,
+    "avif": 19
+   },
+   "1280": {
+    "webp": 105,
+    "avif": 65
+   },
+   "1920": {
+    "webp": 210,
+    "avif": 129
+   },
+   "2560": {
+    "webp": 334,
+    "avif": 207
+   }
+  },
+  "placeholder": true,
+  "note": "ЗАГЛУШКА: скриншот панорамы VirtualLand, не съёмка из помещения. Обрезка снимает интерфейс просмотрщика и буквы румбов «СЗ»/«С» — стороны света в docs/facts.md помечены как гипотеза."
+ }
+}

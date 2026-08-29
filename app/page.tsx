@@ -1,20 +1,34 @@
 /* iCITY 113Н — главная.
    Путь в проекте: app/page.tsx
 
-   Пока на странице один акт: облака, подъём вдоль башни, вход в стекло
-   и офис. Офис — полноэкранное состояние, а не следующая секция, поэтому
-   ниже ActOne на странице ничего нет.
+   Три экрана подряд, все три — обычные секции одной прокручиваемой
+   страницы. Ни один из них ничего не блокирует: прежний ActOne
+   фиксировал body, пока открыт офис, и офис был тупиком — выйти
+   можно было только кнопкой. Файл удалён.
 
-   Landing и StickyBar остаются в проекте, но со страницы сняты:
-   ряд из четырёх чисел переезжает в другое место, а постоянная кнопка
-   «Записаться на просмотр» теперь живёт внутри офиса. */
+   1. TowerSequence — облака и подъём вдоль башни, `id="tower"`.
+   2. OfficeStop — офис-остановка и кадр вида из окна, один липкий
+      экран на две сцены со швом между ними.
+   3. Landing — ряд чисел, абзац и кнопки. Над ним липкая панель:
+      она в потоке и прилипает к верху своей области, поэтому
+      появляется ровно тогда, когда верх Landing переходит нижнюю
+      кромку экрана, и за пределы области не выходит. */
 
-import ActOne from '@/components/ActOne';
+import TowerSequence from '@/components/TowerSequence';
+import OfficeStop from '@/components/OfficeStop';
+import StickyBar from '@/components/StickyBar';
+import Landing from '@/components/Landing';
+import styles from './page.module.css';
 
 export default function Home() {
   return (
     <main>
-      <ActOne />
+      <TowerSequence />
+      <OfficeStop />
+      <div className={styles.afterHero}>
+        <StickyBar />
+        <Landing />
+      </div>
     </main>
   );
 }

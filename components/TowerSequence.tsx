@@ -2,7 +2,7 @@
 
 /* iCITY 113Н — экран 1. Герой и подъём вдоль башни.
    Путь в проекте: components/TowerSequence.tsx
-   Версия 5. Скролл в обе стороны — см. ИСТОРИЯ.
+   Версия 6. Скролл в обе стороны, офис — следующая секция. См. ИСТОРИЯ.
 
    КАК УСТРОЕНО. Секция высокая: 100svh экрана плюс дистанция прокрутки.
    Внутри — липкий блок с canvas на 100svh. Прогресс считается из положения
@@ -49,8 +49,6 @@ import styles from './TowerSequence.module.css';
 
 const SMOOTH_TAU = 90;        // постоянная времени сглаживания, мс
 const GLASS_START = 0.93;     // с этой доли начинается вход в стекло
-const ENTER_RESET = 0.96;     // ниже этой отметки офис снова готов открыться
-const RETURN_MS = 3500;       // обратный вылет из офиса на самый верх
 const TEXT_FADE_END = 0.14;   // на этой доле прогресса заголовок исчезает
 const TRAVEL_MS = 4200;       // автопроход по кнопке
 
@@ -68,14 +66,7 @@ const subscribeMotion = (onChange: () => void) => {
 const getMotionSnapshot = () => window.matchMedia(MOTION_QUERY).matches;
 const getMotionServerSnapshot = () => false;
 
-type Props = {
-  /** вызывается один раз, когда камера вошла в стекло — открывается офис */
-  onEnterOffice?: () => void;
-  /** увеличивается снаружи, когда из офиса просят вернуться на экран 1 */
-  returnRequestId?: number;
-};
-
-export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Props) {
+export default function TowerSequence() {
   const wrapRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -107,7 +98,6 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
   const travelRafRef = useRef(0);
   const travelOffRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const doneRef = useRef(false);
 
   /* --- отрисовка. DPR капим двойкой --------------------------------- */
   const draw = useCallback((index: number) => {
@@ -295,8 +285,10 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
 
         const p = smoothRef.current;
 
-        /* вход в стекло: последние проценты засвечиваются, чтобы переход
-           в офис читался как проход сквозь фасад, а не как срез */
+        /* Вход в стекло: последние проценты засвечиваются холодным белым.
+           Раньше засветка прикрывала открытие оверлея, теперь — обычный
+           шов между концом секции и офисом, который стоит следующей
+           секцией страницы. Ведёт её тот же единый rAF. */
         const glass = glassRef.current;
         if (glass) {
           const g = clamp01((p - GLASS_START) / (1 - GLASS_START));
@@ -320,35 +312,20 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
             overlay.style.pointerEvents = shown ? 'auto' : 'none';
           }
         }
-
-        /* Вход в офис с гистерезисом. Сбрасывать флаг сразу при выходе нельзя:
-           страница в этот момент ещё стоит на 100 %, и ближайший же кадр
-           открыл бы офис заново — со стороны выглядело бы так, будто кнопка
-           «К башне» не работает. Флаг снимается, только когда камера
-           действительно отъехала. */
-        if (targetRef.current >= 0.999) {
-          if (!doneRef.current) {
-            doneRef.current = true;
-            onEnterOffice?.();
-          }
-        } else if (targetRef.current < ENTER_RESET && doneRef.current) {
-          doneRef.current = false;
-        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [draw, reduced, onEnterOffice]);
+  }, [draw, reduced]);
 
-  /* --- проезд камерой: один механизм на оба направления ----------------
-     Вперёд — кнопка «Подняться на 23 этаж», до конца секции за TRAVEL_MS.
-     Назад — «К башне» из офиса, до самого верха страницы за RETURN_MS:
-     камера вылетает через стекло, идёт вниз вдоль фасада, уходит в облака
-     и останавливается на стартовом экране с заголовком и кнопкой.
-     Отличаются только целью и временем, поэтому код общий: отмена по
-     действию пользователя одинаково работает для обоих. */
+  /* --- проезд камерой -------------------------------------------------
+     Кнопка «Подняться на 23 этаж»: тот же путь сам, за TRAVEL_MS.
+     Обратного проезда здесь больше нет. «К башне» из офиса — это
+     обычная прокрутка страницы к `#tower` (см. OfficeStop), и секвенция
+     отыгрывает подъём назад сама, кадр за кадром, потому что прогресс
+     считается от положения секции. */
   /* Слушатели отмены вешаются и снимаются здесь же, а не через состояние
      React: setState в теле эффекта — ошибка линтера, а сам факт «едем
      или нет» рендеру не нужен, на экране от него ничего не зависит. */
@@ -396,19 +373,12 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
     startTravel(wrap.offsetTop + wrap.offsetHeight - window.innerHeight, TRAVEL_MS);
   }, [startTravel]);
 
-  /* Обратный вылет. Офис к этому моменту уже закрыт — его гасит ActOne
-     тем же действием, поэтому человек смотрит на полёт, а не на
-     застывший офис. */
-  useEffect(() => {
-    if (!returnRequestId) return;
-    startTravel(0, RETURN_MS);
-  }, [returnRequestId, startTravel]);
-
   // при размонтировании проезд гасим вместе со слушателями
   useEffect(() => cancelTravel, [cancelTravel]);
 
   return (
-    <section ref={wrapRef} className={styles.wrap}>
+    /* id — цель прокрутки для кнопки «К башне» и Esc в офисе */
+    <section ref={wrapRef} className={styles.wrap} id="tower">
       <div ref={stickyRef} className={styles.sticky}>
         <div className={styles.backdrop} aria-hidden="true" />
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
@@ -442,6 +412,16 @@ export default function TowerSequence({ onEnterOffice, returnRequestId = 0 }: Pr
 }
 
 /* ИСТОРИЯ
+
+   v5 → v6. ОФИС СТАЛ СЕКЦИЕЙ, А НЕ ОВЕРЛЕЕМ.
+
+   Секвенция больше никого не открывает и никого не возвращает: пропсы
+   onEnterOffice и returnRequestId сняты вместе с гистерезисом входа
+   и обратным проездом на 3,5 с. Офис стоит следующей секцией страницы
+   (OfficeStop), «К башне» — обычная прокрутка к `#tower`, и подъём
+   отыгрывается назад сам собой, потому что прогресс всегда считался
+   от положения секции. Засветка стекла осталась: она теперь прикрывает
+   шов между концом секции и офисом.
 
    v4 → v5. СКРОЛЛ В ОБЕ СТОРОНЫ.
 
