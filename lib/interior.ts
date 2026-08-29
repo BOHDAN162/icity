@@ -18,7 +18,7 @@
 
 export type ZoneKey =
   | 'reception' | 'wc' | 'kitchen' | 'lounge' | 'meeting_lg'
-  | 'office_e' | 'office_w' | 'corridor' | 'openspace';
+  | 'office_e' | 'wardrobe' | 'skype_1' | 'skype_2' | 'corridor' | 'openspace';
 
 /** Зоны, у которых есть рендер: в них можно войти. */
 export type RenderKey = 'reception' | 'corridor' | 'openspace' | 'kitchen' | 'meeting_lg';
@@ -55,7 +55,9 @@ const LABEL: Record<ZoneKey, string> = {
   lounge: 'Зона отдыха',
   meeting_lg: 'Переговорная',
   office_e: 'Кабинет',
-  office_w: 'Кабинеты',
+  wardrobe: 'Гардероб',
+  skype_1: 'Skype room 1',
+  skype_2: 'Skype room 2',
   corridor: 'Коридор',
   openspace: 'Опенспейс',
 };

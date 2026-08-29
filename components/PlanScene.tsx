@@ -357,14 +357,22 @@ function Zone({ zone, active, frit, onHover, onPick, interactive }: ZoneProps) {
     if (!done || m.opacity !== want) invalidate();
   });
 
+  /* frameloop="demand": смена hover сама по себе не рисует кадр. React
+     перерисует дерево и передаст новый `active`, но useFrame выше увидит
+     это только на СЛЕДУЮЩЕМ кадре — а следующего кадра не будет, если
+     его никто не попросит. Без invalidate() здесь подсветка виснет на
+     прошлой зоне до первого кадра, который попросит что-то другое
+     (праздношатание, доворот) — то есть иногда секундами. */
   const enter = useCallback((e: { stopPropagation(): void }) => {
     e.stopPropagation();
     onHover(zone.key);
+    invalidate();
     if (interactive) document.body.style.cursor = 'pointer';
   }, [interactive, onHover, zone.key]);
 
   const leave = useCallback(() => {
     onHover(null);
+    invalidate();
     document.body.style.cursor = '';
   }, [onHover]);
 
