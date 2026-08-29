@@ -46,13 +46,9 @@
    отступом ровно настолько, чтобы её сцена была пришпилена к верху экрана
    к началу занавеса. Арифметика отступа — в lib/sequence.ts.
 
-   ДОВОДКИ НЕТ. Оба занавеса — чистая функция от позиции скролла, точно
-   так же, как скраб секвенции башни. Отдыхать можно на середине любого
-   из них — это законное состояние покоя, а не брак: секвенция башни уже
-   отдыхает на середине скраба, и никого это не смущает. `--c` и `--p`
-   зажаты в [0, 1] тем же приёмом, что индекс кадра в lib/sequence.ts —
-   `clamp01` в measure() ниже — поэтому на краях хода они садятся ровно
-   на 0 и ровно на 1, а не зависают на пиксель раньше.
+   ДОВОДКА. Ни одно состояние покоя не показывает два экрана сразу: обе
+   границы либо доводятся до конца, либо откатываются. Механика и её
+   ловушки — в lib/snap.ts.
 
    ОДНО ЧИСЛО НА КАЖДОЕ ДВИЖЕНИЕ. Слушатель скролла пишет две CSS-переменные
    на узле сцены — `--c` и `--p` — и больше ничего. React на кадрах
@@ -74,6 +70,7 @@ import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
 import { CURTAIN_SVH } from '@/lib/sequence';
+import { createSnap, type SnapRange } from '@/lib/snap';
 import OfficeHub from './OfficeHub';
 import styles from './OfficeStop.module.css';
 
@@ -92,8 +89,10 @@ const viewSrcSet = (ext: 'avif' | 'webp') =>
   VIEW_WIDTHS.map((w) => `${VIEW_DIR}/view-${w}.${ext} ${w}w`).join(', ');
 
 /* Фазовая карта. Пороги дублируются в OfficeStop.module.css — там из них
-   считаются огибающие. Здесь нужен только тот, на котором переключается
-   `inert`. Полная карта — в docs/office-flow.md. */
+   считаются огибающие. Здесь нужны только те, на которых переключается
+   `inert` и стоят границы доводки. Полная карта — в docs/office-flow.md. */
+const RISE_FROM = 0.06;   // с этой доли кадр вида пошёл вверх
+const RISE_TO = 0.34;     // здесь он полностью накрыл офис
 const PHASE_PHOTO = 0.09; // с этой доли офис под кромкой: inert
 const PHASE_SEAM = 0.52;
 
@@ -149,7 +148,7 @@ export default function OfficeStop() {
     document.getElementById('tower')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  /* --- геометрия привода -----------------------------------------------
+  /* --- геометрия. Один источник на привод и на доводку ----------------
      Занавес и фазы делят пришпиленный ход секции: сначала CURTAIN_SVH
      на наезд, потом всё остальное на фазовую карту. Считаем от высоты
      самой сцены — это ровно 100svh в пикселях, и на мобильных она честнее
@@ -245,6 +244,25 @@ export default function OfficeStop() {
       stop();
       if (raf) cancelAnimationFrame(raf);
     };
+  }, [reduced, metrics]);
+
+  /* --- доводка на двух границах ---------------------------------------
+     Диапазоны в документных координатах, пересчитываются по требованию:
+     высоты в svh, и после поворота телефона они другие. */
+  useEffect(() => {
+    if (reduced) return undefined;
+    const ranges = (): SnapRange[] => {
+      const m = metrics();
+      if (!m) return [];
+      const top = m.rect.top + window.scrollY;    // документный верх обёртки
+      const phaseAt = (v: number) => top + m.curtain + v * m.phaseTravel;
+      return [
+        { id: 'b1', from: top, to: top + m.curtain },
+        { id: 'b2', from: phaseAt(RISE_FROM), to: phaseAt(RISE_TO) },
+      ];
+    };
+    const snap = createSnap(ranges);
+    return () => snap.destroy();
   }, [reduced, metrics]);
 
   const officeLive = phase === 'office';
