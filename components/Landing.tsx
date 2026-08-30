@@ -4,9 +4,14 @@
    Тексты — docs/copy.md, раздел «2 · Приземление», дословно.
    Числа — docs/facts.md. Ничего сверх этих двух файлов здесь нет.
 
-   Красное на экране ровно одно: четвёртое число «0» и полоса растра
-   под ним (design-system.md §4, «Ряд чисел»). Больше --frit и --frit-deep
-   на этом экране не появляются нигде. */
+   Красное в покое ровно одно: четвёртое число «0» (design-system.md §4,
+   «Ряд чисел»). Полоса растра под ним больше не постоянная — точечный
+   подчерк появляется под любым числом только на ховере (десктоп).
+   Больше --frit и --frit-deep на этом экране не появляются нигде.
+
+   Внутри каждого dd — сетка 1×1: видимое число плюс скрытый дубликат
+   на весе 700 (aria-hidden). Дубликат резервирует ширину ячейки под
+   жирное начертание, чтобы утолщение на ховере не сдвигало раскладку. */
 
 import styles from './Landing.module.css';
 
@@ -37,7 +42,12 @@ export default function Landing() {
               className={f.accent ? `${styles.item} ${styles.itemAccent}` : styles.item}
             >
               <dt className={`label ${styles.caption}`}>{f.caption}</dt>
-              <dd className={styles.value}>{f.value}</dd>
+              <dd className={styles.value}>
+                <span className={styles.num}>{f.value}</span>
+                <span className={styles.numGhost} aria-hidden="true">
+                  {f.value}
+                </span>
+              </dd>
             </div>
           ))}
         </dl>

@@ -71,6 +71,17 @@
   --t-reveal: 380ms;
   --t-scene:  620ms;
 
+  /* --- моушен-токены: единый словарь микродвижения ---------------------
+     Длительности и кривые для ховеров, подчёркиваний и появлений.
+     --ease-soft — входы и появления, --ease-standard — всё остальное,
+     --stagger — шаг каскада при последовательном появлении элементов. */
+  --motion-fast: 150ms;
+  --motion-base: 250ms;
+  --motion-slow: 400ms;
+  --ease-soft: cubic-bezier(0.16, 1, 0.3, 1);    /* появления */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* всё остальное */
+  --stagger: 100ms;
+
   /* --- жест удержания: единые параметры, дублируются в TowerSequence.tsx */
   --hold-engage:      120ms;
   --hold-full:       5000ms;
@@ -119,6 +130,15 @@ h3 { font: var(--heading);    letter-spacing: var(--tr-head); margin: 0; }
 
 .num-xl { font: var(--num-xl); letter-spacing: var(--tr-num); }
 .num-m  { font: var(--num-m);  letter-spacing: var(--tr-num); }
+
+/* Красный точечный подчерк — тот же растр, что жил под «0» в ряду чисел:
+   полоса 6 px, плотность --frit-dense (точка r=1.4px, шаг 8px; на ≤767 px
+   токен сам подменяется на --frit-mid). Переиспользуемый паттерн: класс
+   для элементов, для псевдоэлементов — те же height: 6px + var(--frit-dense). */
+.dot-underline {
+  height: 6px;
+  background: var(--frit-dense);
+}
 
 .btn {
   appearance: none;

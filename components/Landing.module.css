@@ -58,12 +58,52 @@
   border-inline-start: 1px solid var(--alu);
 }
 
+/* Сетка 1×1: видимое число и скрытый дубликат на весе 700 лежат в одной
+   ячейке. Дубликат задаёт ширину ячейки под жирное начертание — утолщение
+   видимого числа на ховере не меняет бокс и ничего не сдвигает.
+   Базовая линия у всех четырёх чисел общая: шрифт и line-height одни
+   (--num-xl / --num-m), подчерк вне потока, высоты боксов равны. */
 .value {
   font: var(--num-xl);
   letter-spacing: var(--tr-num);
   color: var(--ink);
   margin: 0;
   white-space: nowrap;
+  display: grid;
+  justify-items: start;
+}
+
+.num,
+.numGhost {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  position: relative;
+  font-variation-settings: 'wght' 500;
+}
+
+.numGhost {
+  visibility: hidden;
+  font-variation-settings: 'wght' 700;
+}
+
+/* Точечный подчерк (паттерн .dot-underline из tokens.css): абсолютное
+   позиционирование под базовой линией, нулевая высота в потоке.
+   В покое невидим; включает его ховер-блок ниже. */
+.num::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--s-2));
+  height: 6px;
+  background: var(--frit-dense);
+  opacity: 0;
+  transform: scaleX(0.6);
+  transform-origin: left;
 }
 
 .caption {
@@ -76,16 +116,39 @@
   color: var(--frit-deep);
 }
 
-/* полоса растра под четвёртым числом: 6 px, --frit-dense.
-   На ≤767 px токен сам подменяется на --frit-mid — мелкий растр муарит. */
-.itemAccent .value::after {
-  content: '';
-  display: block;
-  /* 6 px — design-system.md §4, «Ряд чисел». Токена на 6 нет,
-     как нет его и на height:54px у .btn в tokens.css. */
-  height: 6px;
-  margin-top: var(--s-2);
-  background: var(--frit-dense);
+/* --- ховер чисел: только десктопная точная мышь ----------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+  /* вес: 500 → 650 (min(500+150, 700)), туда и обратно 180ms */
+  .num {
+    transition: font-variation-settings 180ms var(--ease-standard);
+  }
+  .item:hover .num {
+    font-variation-settings: 'wght' 650;
+  }
+
+  /* подчерк: уход 180ms (базовое правило), приход 250ms --ease-soft */
+  .num::after {
+    transition:
+      opacity 180ms var(--ease-standard),
+      transform 180ms var(--ease-standard);
+  }
+  .item:hover .num::after {
+    opacity: 1;
+    transform: scaleX(1);
+    transition:
+      opacity 250ms var(--ease-soft),
+      transform 250ms var(--ease-soft);
+  }
+}
+
+/* глобальный reduce-блок в tokens.css оставляет транзишенам 140ms —
+   здесь состояния обязаны переключаться мгновенно */
+@media (prefers-reduced-motion: reduce) {
+  .num,
+  .num::after {
+    transition: none !important;
+  }
 }
 
 /* --- абзац и кнопки -------------------------------------------------- */
