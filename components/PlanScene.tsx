@@ -221,7 +221,11 @@ const SHELL: readonly ShellPart[] = [
   { name: 'columns', baked: true },
   { name: 'mullions', baked: true },
   { name: 'glazing_facade', glass: true, color: '#9BA7AE', opacity: 0.16 },
-  { name: 'glazing_interior', glass: true, color: '#9BA7AE', opacity: 0.12 },
+  /* 0,35, а не 0,12 как у фасада с поправкой: за фасадом чёрная пустота,
+     и 0,16 читается тонировкой, а внутренняя панель стоит над белым полом —
+     на 0,12 она меняла кадр на ≤9 уровней из 255 и была невидима. Замерено
+     по readback холста, а не на глаз. */
+  { name: 'glazing_interior', glass: true, color: '#9BA7AE', opacity: 0.35 },
 ];
 
 const SHELL_BY_NAME = new Map(SHELL.map((p) => [p.name, p]));
