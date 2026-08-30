@@ -522,8 +522,8 @@
  ],
  "glass_sill": 0.0,
  "glass_head": 3.8,
- "partition_glass_h": 2.7,
- "version": 13,
+ "partition_glass_h": 3.8,
+ "version": 14,
  "area_check_m2": 244.13,
  "facade_edges": [
   {
@@ -609,7 +609,7 @@
  "glass_th": 0.04,
  "mullion_w": 0.11,
  "perimeter_open_along_facade": true,
- "notes": "v13: сняты глухие стены #14 (юг переговорной) и #16 (юг кабинета у колонны) — за обеими вплотную стояли стеклянные панели glazing_interior, невидимые за стеной. Остальное без изменений от v10.",
+ "notes": "v14: partition_glass_h = ceiling_h (3,8 м) — верх внутренних стёкол на уровне верха стен. План без изменений от v13.",
  "glazing_runs": [
   {
    "side": "юг",
