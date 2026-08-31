@@ -29,17 +29,16 @@
   margin: 0;
   padding: var(--s-2);
   list-style: none;
-  border: 1px solid transparent;
 }
 
 /* Подложка только когда список раскрыт — иначе подписи легли бы голым
-   текстом поверх графики Economics/Complex/Location. Без тени и без
+   текстом поверх графики Economics/Complex/Location. Без рамки: только
+   заливка, чтобы не читалось прямоугольной карточкой. Без тени и без
    2px-радиуса: не кнопка и не поле, design-system.md правило 3. */
 @media (hover: hover) and (pointer: fine) {
   .nav:hover .list,
   .nav:focus-within .list {
     background: var(--paper);
-    border-color: var(--alu);
   }
 }
 
@@ -64,6 +63,9 @@
 
 .text {
   color: var(--ink-60);
+  font-weight: 500;
+  text-decoration: none;
+  text-underline-offset: 3px;
   white-space: nowrap;
   opacity: 0;
   transform: translateX(6px);
@@ -73,7 +75,31 @@
     transform var(--t-micro) var(--ease-out);
 }
 
-.item[data-active='true'] .text { color: var(--ink); }
+/* Строка, в которой сейчас находится пользователь: жирная, красная,
+   подчёркнутая — читается сразу, даже если курсор стоит на другом
+   пункте списка. */
+.item[data-active='true'] .text {
+  color: var(--frit-deep);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Наведение на конкретный пункт (не обязательно активный) — жирный
+   чёрный с подчёркиванием, сигнал «сюда можно перейти». На активном
+   пункте наведение ничего не переопределяет — он и так уже выделен. */
+@media (hover: hover) and (pointer: fine) {
+  .link:hover .text,
+  .link:focus-visible .text {
+    color: var(--ink);
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  .item[data-active='true'] .link:hover .text,
+  .item[data-active='true'] .link:focus-visible .text {
+    color: var(--frit-deep);
+  }
+}
 
 .tick {
   flex-shrink: 0;
