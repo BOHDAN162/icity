@@ -319,8 +319,13 @@ export default function Complex() {
                     <span className={styles.rowTitleGhost} aria-hidden="true">
                       {a.title}
                     </span>
+                    {/* Два узла, а не один: внешний .sub — обрезающая
+                        коробка, её высоту гонит грид-ряд .text от 0fr к 1fr;
+                        внутренний несёт отступ сверху. Отступ обязан лежать
+                        ВНУТРИ трека — снаружи он не сжимается до нуля
+                        и держал бы по 8 px в каждой строке. */}
                     <span className={styles.sub} id={`complex-sub-${a.key}`}>
-                      {a.sub}
+                      <span className={styles.subInner}>{a.sub}</span>
                     </span>
                   </span>
                 </button>
