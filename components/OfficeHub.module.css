@@ -149,32 +149,14 @@
 
 .ui > * { pointer-events: auto; }
 
+/* «К башне» ушла вместе со скролл-секвенцией: возврата из офиса нет,
+   в ряду осталась одна целевая кнопка — прижата к правому краю. */
 .topRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--s-4);
 }
-
-/* «К башне» — не ровня главной кнопке: текстовый возврат без плашки */
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: var(--s-2) 0;
-  /* Подчинён целевой кнопке формой, а не цветом: без заливки, без рамки,
-     начертание 400. Прозрачностью гасить нельзя — она съедает контраст,
-     а замер этого не увидит, он читает объявленный color. */
-  color: var(--ink);
-  font: 400 15px/1 var(--sans);
-  cursor: pointer;
-  transition: color var(--t-micro) var(--ease-out);
-}
-
-.back:hover { color: var(--frit-deep); }
 
 /* Целевое действие. Осталось залитой кнопкой, но спокойнее по весу. */
 .cta {
@@ -372,7 +354,6 @@
 
 @media (max-width: 767px) {
   .ui { padding: var(--s-4) var(--pad-x) var(--s-5); }
-  .cta { flex: 1; margin-left: var(--s-4); }
   .bottom { gap: var(--s-5); }
   .info, .infoRight { justify-self: stretch; max-width: none; }
   .zoneName { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-3); }

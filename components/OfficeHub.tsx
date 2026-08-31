@@ -37,7 +37,7 @@
    раздел «Вуаль». */
 
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useMemo, useRef, useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import dynamic from 'next/dynamic';
@@ -152,11 +152,9 @@ const DISCLAIMER =
 type Props = {
   /** офис — живой экран: слушает клавиши и держит холст параллакса */
   active: boolean;
-  /** «К башне»: прокрутка страницы к секвенции, см. OfficeStop */
-  onExit: () => void;
 };
 
-export default function OfficeHub({ active, onExit }: Props) {
+export default function OfficeHub({ active }: Props) {
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
   const [cameFrom, setCameFrom] = useState<ZoneId | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
@@ -170,18 +168,9 @@ export default function OfficeHub({ active, onExit }: Props) {
     setZoneId((current) => { setCameFrom(current); return to; });
   }, []);
 
-  /* Обход всегда начинается от двери. Сброс висит ЗДЕСЬ и только здесь:
-     уход вниз по скроллу зону не трогает, иначе возврат наверх приводил бы
-     не туда, откуда ушли. */
-  const exit = useCallback(() => {
-    setPlanOpen(false);
-    // seen не трогаем: уже скачанные кадры при возврате в офис
-    // должны стоять на месте, а не грузиться заново
-    setZoneId('reception');
-    setCameFrom(null);
-    onExit();
-  }, [onExit]);
-
+  /* Сброса зоны на ресепшн больше нет нигде: башня ушла вместе со
+     скролл-секвенцией, hero-видео назад не пускает (только перезагрузка).
+     Обход начинается от двери один раз — при первом входе. */
   const zone = ZONES[zoneId];
 
   const moves = useMemo(
@@ -214,19 +203,10 @@ export default function OfficeHub({ active, onExit }: Props) {
     if (best) { e.preventDefault(); go(best.to); }
   }, [planOpen, moves, go]);
 
-  /* Esc уводит к башне. Он остаётся глобальным: со скроллом не спорит,
-     а нажимают его, не целясь фокусом. Пока открыт план, клавиши его. */
-  useEffect(() => {
-    if (!active) return undefined;
-    const onKey = (e: KeyboardEvent) => {
-      if (planOpen) return;
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      exit();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [active, planOpen, exit]);
+  /* Глобального Esc здесь больше нет: на ресепшне и в зонах Esc не делает
+     ничего — уходить некуда, hero-видео позади не существует. Единственный
+     Esc на сайте живёт внутри PlanDollhouse и закрывает только планировку,
+     возвращая к рендеру текущей зоны. */
 
   /* Ушли вниз по скроллу с открытым планом — план закрываем. Он лежит
      в position: fixed поверх всего и сам скролл не блокирует, поэтому
@@ -303,14 +283,6 @@ export default function OfficeHub({ active, onExit }: Props) {
 
       <div className={styles.ui}>
         <div className={styles.topRow}>
-          <button type="button" className={styles.back} onClick={exit}>
-            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
-              <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="1.7"
-                strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            К башне
-          </button>
-
           <a className={styles.cta} href="#contact">Записаться на просмотр</a>
         </div>
 

@@ -81,13 +81,6 @@
   --ease-soft: cubic-bezier(0.16, 1, 0.3, 1);    /* появления */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* всё остальное */
   --stagger: 100ms;
-
-  /* --- жест удержания: единые параметры, дублируются в TowerSequence.tsx */
-  --hold-engage:      120ms;
-  --hold-full:       5000ms;
-  --hold-release:     900ms;
-  --hold-idle-hero:  6500ms;
-  --hold-idle-window: 3000ms;
 }
 
 @media (max-width: 1023px) {

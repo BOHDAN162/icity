@@ -1,0 +1,17 @@
+/* Путь в проекте: components/HeroGate.module.css
+
+   Класс живёт только на стадии 'hero' и снимается целиком на свапе:
+   после него на обёртке не остаётся ни transform (containing block
+   для fixed-плана), ни will-change (лишний слой растеризации).
+
+   z-index: hero держит свои слои внутри себя (isolation: isolate),
+   а этой обёртке трансформ создаёт собственный контекст наложения —
+   z-index 10 поднимает выезжающий контент над секцией hero. */
+
+.lifted {
+  --hero-lift: 0;
+  position: relative;
+  z-index: 10;
+  transform: translateY(calc(var(--hero-lift) * -100svh));
+  will-change: transform;
+}

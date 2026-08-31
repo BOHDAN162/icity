@@ -220,8 +220,7 @@
 }
 
 /* Мелкий растр на плотных экранах муарит — design-system.md §1.
-   828 px здесь то же число, что MOBILE_MAX_WIDTH в lib/sequence.ts:
-   граница «телефон», а не размер кадра. */
+   828 px — граница «телефон», а не размер кадра. */
 @media (max-width: 828px) {
   .band { height: calc(22svh * var(--seam)); }
   .band::before,

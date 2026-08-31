@@ -36,15 +36,17 @@
 
    ПОЧЕМУ НЕ position: fixed НА BODY. Прежний ActOne фиксировал body,
    пока офис открыт, и офис был тупиком: выйти можно было только кнопкой.
-   Здесь офис — остановка внутри обычной прокрутки. Тот же приём, что
-   в TowerSequence: высокая секция плюс нативный sticky, без пиннинга
-   и без ScrollTrigger.
+   Здесь офис — остановка внутри обычной прокрутки: высокая секция плюс
+   нативный sticky, без пиннинга и без ScrollTrigger. На страницу секция
+   попадает через HeroGate: пока hero-видео живо, скролл заблокирован
+   и офис накрыт inert, после финала ролика ресепшн — верх страницы.
 
    ОДНО ЧИСЛО НА ВСЮ АНИМАЦИЮ. Слушатель скролла считает прогресс `p`
    от 0 до 1 и пишет его в одну CSS-переменную `--p` на узле сцены.
-   React на кадрах не участвует вообще — ровно та же дисциплина, что
-   в TowerSequence. Всё остальное (подъём кадра, масштаб офиса, подпись,
-   высота шва) считается из `--p` в CSS через calc, см. OfficeStop.module.css.
+   React на кадрах не участвует вообще — та же дисциплина «один rAF →
+   одна огибающая», что у выезда в HeroVideo. Всё остальное (подъём кадра,
+   масштаб офиса, подпись, высота шва) считается из `--p` в CSS через
+   calc, см. OfficeStop.module.css.
 
    ГРУБОЕ СОСТОЯНИЕ `phase` существует ровно для одного — для `inert`
    на слое офиса, чтобы фокус клавиатуры не садился на невидимые стрелки.
@@ -58,7 +60,7 @@
    она низкая и стоит на месте. */
 
 import {
-  useCallback, useEffect, useRef, useState, useSyncExternalStore,
+  useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
 import OfficeHub from './OfficeHub';
 import styles from './OfficeStop.module.css';
@@ -117,18 +119,13 @@ export default function OfficeStop() {
   );
 
   const [phase, setPhase] = useState<Phase>('office');
-  /* Кадр вида монтируем, когда секция ближе полутора экранов. В бюджет
-     первого экрана он попасть не должен: там уже стоит секвенция башни. */
+  /* Кадр вида монтируем, когда секция ближе полутора экранов. */
   const [photoNear, setPhotoNear] = useState(false);
 
-  /* «К башне» больше ничего не закрывает — она прокручивает страницу
-     к секвенции, и та отыгрывает подъём назад сама, кадр за кадром.
-     Esc в OfficeHub делает ровно это же. */
-  const toTower = useCallback(() => {
-    document.getElementById('tower')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
-
-  /* --- монтирование кадра: за полтора экрана до секции ---------------- */
+  /* --- монтирование кадра: за полтора экрана до секции ----------------
+     С уходом скролл-секвенции секция офиса стоит сразу за hero (100svh),
+     поэтому порог срабатывает уже при загрузке страницы — кадр вида
+     едет фоном с fetchPriority="low", пока зритель смотрит постер. */
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return undefined;
@@ -214,7 +211,7 @@ export default function OfficeStop() {
           className={`${styles.office} ${officeLive ? '' : styles.officeOff}`}
           inert={!officeLive}
         >
-          <OfficeHub active={officeLive} onExit={toTower} />
+          <OfficeHub active={officeLive} />
         </div>
 
         {/* слой B — кадр вида */}
