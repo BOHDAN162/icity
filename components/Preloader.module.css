@@ -60,12 +60,6 @@
   transition: opacity var(--t-reveal) var(--ease-out);
 }
 
-.mark {
-  position: absolute;
-  left: var(--pad-x);
-  top: clamp(22px, 5svh, 40px);
-}
-
 .ladder {
   position: absolute;
   left: var(--pad-x);

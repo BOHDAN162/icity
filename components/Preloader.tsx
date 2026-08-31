@@ -177,7 +177,6 @@ export default function Preloader() {
       <div ref={doorLRef} className={`${styles.door} ${styles.doorL}`} />
       <div ref={doorRRef} className={`${styles.door} ${styles.doorR}`} />
       <div ref={uiRef} className={styles.ui}>
-        <p className={`label ${styles.mark}`}>Подъём на 23 этаж</p>
         <div ref={ladderRef} className={styles.ladder}>{rungs}</div>
         <div className={styles.big}>
           <span ref={numRef} className={styles.num}>01</span>
