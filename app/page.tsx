@@ -18,6 +18,7 @@ import TowerSequence from '@/components/TowerSequence';
 import OfficeStop from '@/components/OfficeStop';
 import StickyBar from '@/components/StickyBar';
 import Landing from '@/components/Landing';
+import Economics from '@/components/Economics';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -28,6 +29,9 @@ export default function Home() {
       <div className={styles.afterHero}>
         <StickyBar />
         <Landing />
+        {/* 4. Economics — экономика сделки, сразу за рядом чисел 113Н:
+              шкала «рынок против нашей ставки» и полоса фактов. */}
+        <Economics />
       </div>
     </main>
   );

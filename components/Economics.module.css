@@ -1,0 +1,279 @@
+/* Путь в проекте: components/Economics.module.css
+   Цвета, кегли токенов и отступы — из app/tokens.css. Пиксельные
+   значения самой шкалы (11px подписи, 26px число маркера, 28px полоса,
+   60px маркер) — спецификация блока B3, локальные переменные ниже.
+
+   Движение: полоса рынка растёт 1000ms, маркер приходит 700ms
+   с задержкой 550ms, кривая везде --ease-soft. Состояния навешивает
+   Economics.tsx: .armed — спрятано, .played — переход в финал.
+   Без JS и при prefers-reduced-motion классов нет — базовые правила
+   ниже и есть финальный вид. */
+
+.section {
+  position: relative;
+  background: var(--paper);
+  padding: var(--section-y) var(--pad-x);
+}
+
+.inner {
+  max-width: var(--container);
+  margin: 0 auto;
+}
+
+.eyebrow {
+  margin: 0 0 var(--s-5);
+}
+
+.title {
+  margin: 0 0 var(--s-5);
+}
+
+.para {
+  font: var(--lead);
+  letter-spacing: var(--tr-lead);
+  color: var(--ink-60);
+  max-width: 60ch;
+  margin: 0 0 var(--s-7);
+}
+
+/* --- бенчмарк-шкала: 0…100 000 ₽/м²·год = 0…100% ширины ------------- */
+
+/* Вертикальная раскладка от одной оси: --track-y — линия шкалы.
+   Выше неё — подпись рынка и половина серой полосы, ниже — половина
+   маркера (он отцентрован по оси), его подписи и линейка. */
+.scale {
+  --track-y: 70px;
+  --band-h: 28px;
+  --marker-h: 60px;
+  --scale-h: 208px;
+
+  position: relative;
+  height: var(--scale-h);
+  margin: var(--s-8) 0;
+}
+
+.track {
+  position: absolute;
+  top: var(--track-y);
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ink);
+}
+
+/* серая полоса рынка 80–100%; left и width ставит Economics.tsx,
+   ширина анимируется от 0 — рост слева направо от отметки 80% */
+.band {
+  position: absolute;
+  top: calc(var(--track-y) - var(--band-h) / 2);
+  height: var(--band-h);
+  background: var(--alu);
+}
+
+/* якорь снизу: на телефоне подпись переносится на две строки
+   и растёт вверх, не наезжая на полосу */
+.bandLabel {
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--scale-h) - var(--track-y) + var(--band-h) / 2 + var(--s-2));
+  max-width: 60%;
+  font: 500 11px/1.4 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* маркер — линия 2 px, единственное красное на секции вместе
+   со своим числом. --frit разрешён в линиях 1–2 px */
+.marker {
+  position: absolute;
+  top: calc(var(--track-y) - var(--marker-h) / 2);
+  width: 2px;
+  height: var(--marker-h);
+  margin-left: -1px;
+  background: var(--frit);
+  transform-origin: top;
+}
+
+.markerLabels {
+  position: absolute;
+  top: calc(var(--track-y) + var(--marker-h) / 2 + var(--s-3));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.markerValue {
+  font: 500 26px/1 var(--mono);
+  letter-spacing: var(--tr-num);
+  color: var(--frit-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+.markerCaption {
+  font: 500 11px/1 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+}
+
+.ruler {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--s-2);
+  height: 12px;
+}
+
+.tick {
+  position: absolute;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* середины центрируются на своей отметке; края прижаты внутрь,
+   чтобы ничего не вылезало за контейнер */
+.tickMid {
+  transform: translateX(-50%);
+}
+
+.tickEnd {
+  right: 0;
+  text-align: right;
+}
+
+/* --- движение: one-shot по входу в кадр ------------------------------ */
+
+/* armed: JS жив и reduce не запрошен — прячем то, что будет входить */
+.armed .band {
+  width: 0 !important; /* перебивает inline width из tsx до старта */
+}
+
+.armed .marker {
+  transform: scaleY(0);
+}
+
+.armed .markerLabels {
+  opacity: 0;
+}
+
+/* played: переход в финальные (базовые) значения */
+.played .band {
+  transition: width 1000ms var(--ease-soft);
+}
+
+.played .marker {
+  transition: transform 700ms var(--ease-soft) 550ms;
+}
+
+.played .markerLabels {
+  transition: opacity 700ms var(--ease-soft) 550ms;
+}
+
+/* Страховка: даже если reduce включили после монтирования,
+   всё стоит в финальном виде без переходов. Основная ветка —
+   в Economics.tsx: наблюдатель при reduce не создаётся. */
+@media (prefers-reduced-motion: reduce) {
+  .band {
+    width: 20% !important;
+    transition: none !important;
+  }
+  .marker {
+    transform: none !important;
+    transition: none !important;
+  }
+  .markerLabels {
+    opacity: 1 !important;
+    transition: none !important;
+  }
+}
+
+/* --- полоса фактов: три ячейки между волосяными линиями -------------- */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-block: 1px solid var(--alu);
+  margin: 0 0 var(--s-4);
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5);
+  min-width: 0;
+}
+
+.fact:first-child { padding-inline-start: 0; }
+.fact:last-child  { padding-inline-end: 0; }
+
+.fact + .fact {
+  border-inline-start: 1px solid var(--alu);
+}
+
+.factKey {
+  font: 500 11px/1 var(--mono);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-60);
+  margin: 0;
+}
+
+.factValue {
+  font: 500 19px/1.3 var(--mono);
+  letter-spacing: var(--tr-num);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.note {
+  font: var(--small);
+  color: var(--ink-60);
+  margin: 0;
+}
+
+/* --- мобильная раскладка --------------------------------------------- */
+
+@media (max-width: 899px) {
+  /* подпись рынка на двух строках: ось ниже, запас сверху больше */
+  .scale {
+    --track-y: 78px;
+    --scale-h: 196px;
+  }
+
+  .bandLabel,
+  .markerCaption,
+  .tick {
+    font-size: 10px;
+  }
+
+  .markerValue {
+    font-size: 22px;
+  }
+
+  /* линейка — только 0 / 50 000 / 100 000 */
+  .tickOptional {
+    display: none;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .fact {
+    padding: var(--s-4) 0;
+  }
+
+  .fact + .fact {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--alu);
+  }
+}
