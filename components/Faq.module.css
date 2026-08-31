@@ -1,0 +1,176 @@
+/* Путь в проекте: components/Faq.module.css
+   Токенов --line-soft / --ink2 / --ink3 в проекте нет (см. Location.module.css):
+   линии — на --alu, вторичный текст — на --ink-60, красный текст только
+   на --frit-deep (правило 1 дизайн-системы). Кривые — общие моушен-токены,
+   своих безье здесь не заводится. */
+
+.section {
+  position: relative;
+  background: var(--paper);
+  padding: var(--section-y) var(--pad-x);
+}
+
+.inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.eyebrow {
+  margin: 0 0 var(--s-5);
+}
+
+.title {
+  margin: 0 0 var(--s-7);
+}
+
+/* --- список ------------------------------------------------------------ */
+
+.list {
+  border-block-start: 1px solid var(--ink);
+}
+
+.item {
+  border-block-end: 1px solid var(--alu);
+}
+
+/* index-колонка + отступ до вопроса — общая величина, на неё же
+   выравнивается левый край ответа в .bodyInner. */
+.item {
+  --index-w: 32px;
+}
+
+.summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding: var(--s-4) 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--frit-deep);
+  outline-offset: 4px;
+}
+
+.index {
+  flex: 0 0 var(--index-w);
+  font: 400 13px / 1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tr-num);
+  color: var(--ink-60);
+}
+
+.item[open] .index {
+  color: var(--frit-deep);
+  font-weight: 500;
+}
+
+.question {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 450 clamp(16px, 1.6vw, 20px) / 1.3 var(--sans);
+  letter-spacing: var(--tr-head);
+  color: var(--ink);
+}
+
+/* Тот же растр, что у точечного выноса в Location.tsx: --alu, шаг 6 px. */
+.dots {
+  flex: 1 1 12px;
+  min-width: 16px;
+  height: 6px;
+  background: radial-gradient(circle, var(--alu) 1px, transparent 1.5px) 0 0 / 6px 6px;
+}
+
+.icon {
+  position: relative;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.iconBar {
+  position: absolute;
+  background: var(--ink);
+}
+
+.iconBarH {
+  inset-inline-start: 0;
+  inset-block-start: 6px;
+  width: 14px;
+  height: 2px;
+}
+
+.iconBarV {
+  inset-inline-start: 6px;
+  inset-block-start: 0;
+  width: 2px;
+  height: 14px;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.item[open] .iconBarH {
+  background: var(--frit-deep);
+}
+
+.item[open] .iconBarV {
+  transform: scaleY(0);
+}
+
+/* --- ответ: раскрытие высотой через grid-template-rows ------------------ */
+
+.body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-base) var(--ease-soft);
+}
+
+.item[open] .body {
+  grid-template-rows: 1fr;
+}
+
+.bodyInner {
+  overflow: hidden;
+  padding-inline-start: calc(var(--index-w) + var(--s-3));
+}
+
+.answer {
+  margin: 0 0 var(--s-4);
+  max-width: 62ch;
+  font: 400 15px / 1.6 var(--sans);
+  color: var(--ink-60);
+}
+
+/* --- закрывающая строка -------------------------------------------------- */
+
+.note {
+  margin: var(--s-6) 0 0;
+  font: 400 13px / 1.5 var(--sans);
+  color: var(--ink-60);
+}
+
+/* --- телефон: вынос уходит, номер/вопрос/иконка остаются ---------------- */
+
+@media (max-width: 639px) {
+  .dots {
+    display: none;
+  }
+}
+
+/* --- покой --------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .body {
+    transition: none;
+    transition-duration: 0s !important;
+  }
+
+  .iconBarV {
+    transition: none;
+  }
+}
