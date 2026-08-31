@@ -22,6 +22,8 @@ import Economics from '@/components/Economics';
 import Complex from '@/components/Complex';
 import Location from '@/components/Location';
 import Faq from '@/components/Faq';
+import Contact from '@/components/Contact';
+import Footer from '@/components/Footer';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -44,7 +46,11 @@ export default function Home() {
         {/* 7. Faq — вопросы до просмотра: аккордеон-оглавление,
               единственный открытый пункт держит браузер сам. */}
         <Faq />
+        {/* 8. Contact — запись на просмотр: последняя секция страницы,
+              её эмоциональная кульминация. После неё только тихий Footer. */}
+        <Contact />
       </div>
+      <Footer />
     </main>
   );
 }
