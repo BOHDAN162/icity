@@ -1,0 +1,319 @@
+/* Путь в проекте: components/Complex.module.css
+   Цвета, кегли и отступы — из app/tokens.css. Токена --line в проекте
+   нет: линии по дизайн-системе идут на --alu, верхняя кромка списка —
+   на --ink. Длительности и кривые — общие моушен-токены (--motion-fast,
+   --ease-standard, --ease-soft), своих кривых здесь не заводится.
+
+   Движение: точка 150 мс, вес заголовка 200 мс, микро-строка 350 мс,
+   растворение растра 550 мс. Первые три ведёт класс .rowOn, последнее —
+   .snap, который вешает и снимает Complex.tsx. */
+
+.section {
+  position: relative;
+  background: var(--paper-2);
+  padding: var(--section-y) var(--pad-x);
+}
+
+/* Две колонки и две строки. Заголовок занимает верхнюю ячейку левой
+   колонки, список — нижнюю, рамка стоит в НИЖНЕЙ ячейке правой и
+   центрируется по ней. Если бы рамка занимала обе строки, она
+   центрировалась бы по всей колонке вместе с заголовком и висела бы
+   выше списка на половину его высоты. */
+.inner {
+  max-width: var(--container);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 560px);
+  grid-template-rows: auto auto;
+  column-gap: var(--s-8);
+  align-items: start;
+}
+
+.head {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 var(--s-5);
+}
+
+.title {
+  margin: 0 0 var(--s-7);
+}
+
+/* --- список удобств --------------------------------------------------- */
+
+.list {
+  grid-column: 1;
+  grid-row: 2;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border-block-start: 1px solid var(--ink);
+  border-block-end: 1px solid var(--alu);
+}
+
+.item + .item {
+  border-block-start: 1px solid var(--alu);
+}
+
+.row {
+  --row-fs: clamp(22px, 2.4vw, 32px);
+
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  width: 100%;
+  padding: var(--s-5) 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* Фокус ведёт по кромке строки: глобальный outline-offset 2px вылез бы
+   за колонку, строка занимает её целиком. */
+.row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Маркер. Ровно 8 px, к первой строке заголовка: полстроки кегля
+   минус собственный радиус. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--alu);
+  margin-block-start: calc(var(--row-fs) * 0.56 - 4px);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+/* Заливка красным — только --frit-deep, --frit живёт в растре
+   и в линиях 1–2 px (docs/design-system.md, правило 1). */
+.rowOn .dot {
+  background: var(--frit-deep);
+  transform: scale(1.25);
+}
+
+.text {
+  display: grid;
+  grid-template-rows: auto auto;
+  min-width: 0;
+}
+
+/* Двойник в конечном весе задаёт коробку строки: сетка меряется по
+   самому широкому/высокому элементу ряда, а это всегда он. Поэтому
+   переход 350 → 550 не может ни перенести слово на новую строку,
+   ни изменить высоту строки списка. Тот же приём, что у .numGhost
+   в Landing.module.css. */
+.rowTitle,
+.rowTitleGhost {
+  grid-row: 1;
+  grid-column: 1;
+  font: 350 var(--row-fs) / 1.12 var(--sans);
+  letter-spacing: var(--tr-head);
+}
+
+.rowTitleGhost {
+  visibility: hidden;
+  font-weight: 550;
+  font-variation-settings: 'wght' 550;
+}
+
+.rowTitle {
+  font-weight: 350;
+  font-variation-settings: 'wght' 350;
+  transition:
+    font-weight 200ms var(--ease-standard),
+    font-variation-settings 200ms var(--ease-standard);
+}
+
+.rowOn .rowTitle {
+  font-weight: 550;
+  font-variation-settings: 'wght' 550;
+}
+
+/* Микро-строка. Отступ сверху едет вместе с max-height, а не стоит
+   постоянно: padding не сжимается до отрицательного, и коробка с
+   max-height: 0 всё равно занимала бы свои 8 px в каждой строке —
+   измерено, было ровно 8. В покое строка занимает ноль. */
+.sub {
+  grid-row: 2;
+  grid-column: 1;
+  padding-block-start: 0;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  font: 500 11px / 1.4 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+  transition:
+    max-height 350ms var(--ease-soft),
+    padding-block-start 350ms var(--ease-soft),
+    opacity 350ms var(--ease-soft);
+}
+
+.rowOn .sub {
+  padding-block-start: var(--s-2);
+  max-height: 40px;
+  opacity: 1;
+}
+
+/* --- рамка кадра ------------------------------------------------------ */
+
+.frameWrap {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* minmax(0, 1fr) на обеих осях, а не просто grid: строка по умолчанию
+   меряется по содержимому, и <img> шириной во всю рамку раздувал её
+   своей СОБСТВЕННОЙ высотой 4:3 — на телефоне, где рамка 16:10, ряд
+   уезжал на 262 px при коробке в 217, и подпись вылезала под кадр.
+   Нулевой минимум делает высоту ряда определённой, и height: 100%
+   у кадров наконец к чему-то относится. */
+.frame {
+  position: relative;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  width: 100%;
+  max-width: 560px;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--alu);
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.shot,
+.raster,
+.caption {
+  grid-area: 1 / 1;
+}
+
+/* Кадры лежат стопкой, виден один. Перехода нет намеренно: смена кадра
+   происходит под непрозрачным растром, а без растра (reduce, медленная
+   сеть) мгновенная подмена честнее полусекундного кросс-фейда. */
+.shot {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.shotOn {
+  opacity: 1;
+}
+
+/* Растр. В покое прозрачен; .snap вспыхивает без перехода, снятие
+   класса растворяет его за 550 мс. */
+.raster {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 550ms var(--ease-soft);
+}
+
+.snap {
+  opacity: 1;
+  transition: none;
+}
+
+/* Вуаль под подписью — сплошная полупрозрачная плашка, а не
+   backdrop-filter: вендорные префиксы в проекте не пишутся руками,
+   и на этом свойстве уже один раз обожглись (AGENTS.md). */
+.caption {
+  align-self: end;
+  justify-self: start;
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  background: rgba(242, 244, 245, 0.86);
+  font: 500 10px / 1 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink);
+}
+
+/* --- ховер: только точная мышь ---------------------------------------- */
+
+/* Состояние строки ведёт JS (класс .rowOn), поэтому здесь остаётся
+   ровно одно — мгновенный отклик маркера на наведение, до того как
+   успеет доехать кадр. На тач-устройствах этот блок не применяется,
+   и «залипшего» ховера после тапа не бывает. */
+@media (hover: hover) and (pointer: fine) {
+  .row:hover .dot {
+    background: var(--frit-deep);
+  }
+}
+
+/* --- телефон и планшет: рамка сверху, список под ней ------------------ */
+
+@media (max-width: 959px) {
+  /* Одна колонка, три строки: рамка, заголовок, список. Порядок задан
+     номерами строк, а не order: у order нет власти над явно
+     расставленными ячейками. */
+  .inner {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    row-gap: var(--s-7);
+  }
+
+  .frameWrap {
+    grid-column: 1;
+    grid-row: 1;
+    justify-content: stretch;
+  }
+
+  .head {
+    grid-row: 2;
+  }
+
+  .list {
+    grid-row: 3;
+  }
+
+  .frame {
+    max-width: none;
+    aspect-ratio: 16 / 10;
+  }
+
+  /* Расстояние между заголовком и списком задаёт row-gap сетки —
+     собственный отступ заголовка сложился бы с ним вдвое. */
+  .title {
+    margin-block-end: 0;
+  }
+
+  .row {
+    --row-fs: clamp(20px, 5.2vw, 28px);
+  }
+}
+
+/* --- reduce: кадр открыт сразу, растра нет ---------------------------- */
+
+/* Основная ветка — в Complex.tsx: при reduce растр не считается вовсе.
+   Здесь страховка на случай, если режим включили после монтирования.
+   transition-duration прописан отдельным свойством: глобальное правило
+   в tokens.css ставит его через !important, и шорткат его не перебьёт. */
+@media (prefers-reduced-motion: reduce) {
+  .raster {
+    display: none;
+  }
+
+  .dot,
+  .rowTitle,
+  .sub {
+    transition: none;
+    transition-duration: 0s !important;
+  }
+}

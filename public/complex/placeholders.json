@@ -1,0 +1,25 @@
+{
+  "generatedBy": "scripts/gen-complex-placeholders.mjs",
+  "items": {
+    "atrium": {
+      "file": "atrium.jpg",
+      "placeholder": true
+    },
+    "garden": {
+      "file": "garden.jpg",
+      "placeholder": true
+    },
+    "gallery": {
+      "file": "gallery.jpg",
+      "placeholder": true
+    },
+    "parking": {
+      "file": "parking.jpg",
+      "placeholder": true
+    },
+    "smart": {
+      "file": "smart.jpg",
+      "placeholder": true
+    }
+  }
+}

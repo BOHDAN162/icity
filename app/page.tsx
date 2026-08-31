@@ -19,6 +19,7 @@ import OfficeStop from '@/components/OfficeStop';
 import StickyBar from '@/components/StickyBar';
 import Landing from '@/components/Landing';
 import Economics from '@/components/Economics';
+import Complex from '@/components/Complex';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -32,6 +33,9 @@ export default function Home() {
         {/* 4. Economics — экономика сделки, сразу за рядом чисел 113Н:
               шкала «рынок против нашей ставки» и полоса фактов. */}
         <Economics />
+        {/* 5. Complex — комплекс iCITY: список удобств этажами ниже
+              и кадр, который открывается из растра фритты. */}
+        <Complex />
       </div>
     </main>
   );
