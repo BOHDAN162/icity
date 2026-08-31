@@ -34,13 +34,16 @@
 .doorL { left: 0; border-right: 1px solid var(--alu); }
 .doorR { right: 0; }
 
+/* 900ms, не --t-scene (620ms): это разъезд во весь экран, а не смена
+   секции — на такой дистанции 620 читаются рывком. Синхронизировано
+   с ожиданием в Preloader.tsx перед finish(). */
 .door.openL {
   transform: translateX(-100%);
-  transition: transform var(--t-scene) var(--ease-out);
+  transition: transform 900ms var(--ease-out);
 }
 .door.openR {
   transform: translateX(100%);
-  transition: transform var(--t-scene) var(--ease-out);
+  transition: transform 900ms var(--ease-out);
 }
 
 .ui {

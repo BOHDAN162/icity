@@ -114,7 +114,10 @@ export default function Preloader() {
       window.setTimeout(() => {
         doorLRef.current?.classList.add(styles.openL);
         doorRRef.current?.classList.add(styles.openR);
-        window.setTimeout(finish, 900);
+        /* 1050 = 900 (длительность разъезда в .module.css) + запас,
+           чтобы finish() не размонтировал прелоадер раньше, чем
+           створки долетят до края. */
+        window.setTimeout(finish, 1050);
       }, 220);
     };
 
