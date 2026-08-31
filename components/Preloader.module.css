@@ -96,7 +96,10 @@
 .tick.past .tickLine { background: var(--ink); }
 .tick.past .tickNum { color: var(--ink-60); }
 
-.tick.cur .tickLine { transform: scaleX(1.9); background: var(--frit); }
+/* 1,4, не 1,9: удлинённая линия (20px * scale) не должна дотягиваться
+   до числа — до него 32px (ширина линии + gap .tick), 1,9 перечёркивало
+   цифру. */
+.tick.cur .tickLine { transform: scaleX(1.4); background: var(--frit); }
 .tick.cur .tickNum { color: var(--frit-deep); }
 
 .big {
