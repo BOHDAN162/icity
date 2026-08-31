@@ -43,9 +43,6 @@ const SPY_SECTIONS = [
 
 const SPY_IDS = SPY_SECTIONS.map((s) => s.id);
 
-const COARSE_QUERY = '(hover: none)';
-const isCoarsePointer = () => window.matchMedia(COARSE_QUERY).matches;
-
 /** Та же формула прогресса, что в OfficeStop.tsx: p = -rect.top / travel. */
 const scrollToViewPhase = () => {
   const office = document.getElementById('office');
@@ -64,7 +61,6 @@ export default function ScrollIndicator() {
   const navRef = useRef<HTMLElement>(null);
   const activeIdRef = useRef<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
 
   /* --- активная секция и видимость: один rAF-слушатель на весь показ -- */
   useEffect(() => {
@@ -85,7 +81,6 @@ export default function ScrollIndicator() {
         if (activeIdRef.current !== null) {
           activeIdRef.current = null;
           setActiveId(null);
-          setExpanded(false);
         }
         return;
       }
@@ -125,44 +120,18 @@ export default function ScrollIndicator() {
     };
   }, []);
 
-  /* --- тач: тап вне списка сворачивает его обратно ---------------------- */
-  useEffect(() => {
-    if (!expanded) return undefined;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!navRef.current?.contains(e.target as Node)) setExpanded(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [expanded]);
-
-  /* На мышке/трекпаде список раскрывает :hover/:focus-within в CSS —
-     сюда попадаем только с тач-указателя, где hover нет вообще: первый
-     тап по свёрнутой колонке раскрывает список (ссылки под pointer-events:
-     none, пока !expanded — см. .module.css), второй тап уже идёт в саму
-     ссылку. */
-  const handleNavClick = (e: React.MouseEvent) => {
-    if (!isCoarsePointer() || expanded) return;
-    e.preventDefault();
-    setExpanded(true);
-  };
-
   const handleViewClick = (e: React.MouseEvent) => {
     e.preventDefault();
     scrollToViewPhase();
-    setExpanded(false);
   };
-
-  const collapse = () => setExpanded(false);
 
   return (
     <nav
       ref={navRef}
       className={styles.nav}
       data-visible={activeId !== null}
-      data-expanded={expanded}
       inert={activeId === null}
       aria-label="Разделы страницы"
-      onClick={handleNavClick}
     >
       <ul className={styles.list}>
         {JUMP_ITEMS.map((item) => (
@@ -170,7 +139,7 @@ export default function ScrollIndicator() {
             <a
               className={styles.link}
               href={item.href}
-              onClick={item.id === 'view' ? handleViewClick : collapse}
+              onClick={item.id === 'view' ? handleViewClick : undefined}
             >
               <span className={`label ${styles.text}`}>{item.label}</span>
               <span className={styles.tick} aria-hidden="true" />
@@ -185,7 +154,6 @@ export default function ScrollIndicator() {
                 className={styles.link}
                 href={`#${item.id}`}
                 aria-current={active ? 'location' : undefined}
-                onClick={collapse}
               >
                 <span className={`label ${styles.text}`}>{item.label}</span>
                 <span className={styles.tick} aria-hidden="true" />

@@ -1,9 +1,14 @@
 /* Путь в проекте: components/ScrollIndicator.module.css */
 
+/* right: var(--s-5), не var(--pad-x) — сайт держит полосу 0–var(--pad-x)
+   от края всегда пустой (.section{padding-inline:var(--pad-x)} во всех
+   секциях), индикатор живёт внутри неё, а не на её границе, иначе он
+   утыкается в контент, прижатый к этой же границе (подпись в Economics,
+   рамка фото в Complex, рамка карты в Location — все ровно на pad-x). */
 .nav {
   position: fixed;
   top: 50%;
-  right: var(--pad-x);
+  right: var(--s-4);
   transform: translateY(-50%);
   z-index: 20;
 
@@ -22,19 +27,38 @@
   flex-direction: column;
   gap: var(--s-4);
   margin: 0;
-  padding: 0;
+  padding: var(--s-2);
   list-style: none;
+  border: 1px solid transparent;
 }
 
-.item { display: flex; }
+/* Подложка только когда список раскрыт — иначе подписи легли бы голым
+   текстом поверх графики Economics/Complex/Location. Без тени и без
+   2px-радиуса: не кнопка и не поле, design-system.md правило 3. */
+@media (hover: hover) and (pointer: fine) {
+  .nav:hover .list,
+  .nav:focus-within .list {
+    background: var(--paper);
+    border-color: var(--alu);
+  }
+}
 
+/* justify-content: flex-end — тик всегда у правого края строки,
+   независимо от длины (невидимого в покое) лейбла слева от него.
+   Без этого «Экономика» и «Вид» ставили тик на разную дистанцию
+   от края — баг, из-за которого чёрточки не выстраивались в линию. */
+.item { display: flex; justify-content: flex-end; }
+
+/* Без своего padding-inline: ширина ссылки — это текст + отступ + тик,
+   а выравнивание по правому краю строки уже даёт .item{justify-content:
+   flex-end}. Лишний inline-padding здесь только увеличил бы расстояние
+   от тика до края контента (сейчас и так впритык на узких десктопах). */
 .link {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--s-3);
   min-height: 44px;
-  padding-inline: var(--s-2);
   text-decoration: none;
 }
 
@@ -62,7 +86,10 @@
 .item[data-active='true'] .tick { background: var(--frit); }
 
 /* Раскрытие: чистый CSS-hover, тот же приём, что .move/.moveLabel
-   в OfficeHub.module.css. :focus-within — Tab-фокус тоже раскрывает. */
+   в OfficeHub.module.css. :focus-within — Tab-фокус тоже раскрывает.
+   На тач наведения нет вообще — там подписи просто никогда не видны,
+   раскрытия по тапу нет (полосы --pad-x впритык хватает только на точку,
+   не на тик и уж тем более не на подпись). */
 @media (hover: hover) and (pointer: fine) {
   .nav:hover .text,
   .nav:focus-within .text {
@@ -71,19 +98,14 @@
   }
 }
 
-/* Тач: наведения нет. Ссылки некликабельны, пока список свёрнут —
-   первый тап по колонке достаётся <nav> (обработчик раскрывает список),
-   второй тап уже приходится на саму ссылку. */
-@media (hover: none) {
-  .link { pointer-events: none; }
-
-  .nav[data-expanded='true'] .link { pointer-events: auto; }
-  .nav[data-expanded='true'] .text {
-    opacity: 1;
-    transform: none;
-  }
-}
-
+/* На ≤767px --pad-x всего 20px — честного места под чёрточку и подпись
+   нет. Сжимаем до точек у самого края, раскрытия там не будет никогда. */
 @media (max-width: 767px) {
-  .nav { right: var(--s-4); }
+  .nav { right: 6px; }
+
+  .tick {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
 }
