@@ -69,7 +69,7 @@
 
 .copy {
   text-align: center;
-  padding: clamp(48px, 9svh, 104px) var(--pad-x) 0;
+  padding: clamp(96px, 22svh, 240px) var(--pad-x) 0;
 }
 
 .eyebrow {
@@ -87,22 +87,100 @@
   margin: 0 0 var(--s-4);
 }
 
+/* Линия-разделитель — --frit допустим только в растре и линиях 1–2 px
+   (design-system.md §1), здесь ровно такая линия. */
+.divider {
+  width: min(420px, 100%);
+  height: 0;
+  margin: 0 auto var(--s-5);
+  border-top: 2px dotted var(--frit);
+}
+
 .lead {
   font: var(--lead);
   letter-spacing: var(--tr-lead);
   color: var(--ink-60);
-  margin: 0 auto;
-  max-width: 30em;
+  margin: 0;
 }
 
 .enter {
   position: absolute;
-  top: 50%;
+  top: 74%;
   left: 50%;
   transform: translate(-50%, -50%);
   pointer-events: auto;
 }
 
+/* Кнопка в покое — прозрачная с рамкой 2px (--ink, как текст всего
+   первого экрана), а не сплошная заливка .btn: над видео/постером
+   рамка читается лучше, чем плашка. Ховер: заливка --frit-deep
+   неспешно (--t-scene, --ease-soft — тот же темп, что у входа кадра)
+   подъезжает снизу, надпись меняет цвет с --ink на белый — тот же
+   приём translateY, что заезд выезда, только на кнопке и в одну
+   сторону. Оба слоя (заливка и строка) едут синхронно, поэтому старая
+   надпись уходит вверх ровно в темпе новой, въезжающей из-под низа —
+   эффект одного движения, а не смены цвета одним кадром. Только
+   --ink/--frit-deep/--white: второго акцентного цвета нет,
+   design-system.md. */
+button.enterBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+  background: transparent;
+  border: 2px solid var(--ink);
+  color: var(--ink);
+}
+
+.enterFill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--frit-deep);
+  transform: translateY(101%);
+  pointer-events: none;
+}
+
+.enterLabel {
+  position: relative;
+  z-index: 1;
+  display: block;
+  overflow: hidden;
+  line-height: 1;
+}
+
+.enterLabelDefault,
+.enterLabelHover {
+  display: block;
+}
+
+.enterLabelHover {
+  position: absolute;
+  inset: 0;
+  color: var(--white);
+  transform: translateY(101%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .enterFill,
+  .enterLabelDefault,
+  .enterLabelHover {
+    transition: transform var(--t-scene) var(--ease-soft);
+  }
+
+  .enterBtn:hover .enterFill,
+  .enterBtn:hover .enterLabelHover {
+    transform: translateY(0%);
+  }
+
+  .enterBtn:hover .enterLabelDefault {
+    transform: translateY(-101%);
+  }
+}
+
 @media (max-width: 767px) {
-  .copy { padding-top: clamp(32px, 8svh, 72px); }
+  .copy { padding-top: clamp(64px, 18svh, 160px); }
+  .enter { top: 78%; }
 }

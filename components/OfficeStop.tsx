@@ -79,6 +79,13 @@ const VIEW_ALT = 'Вид из окна 23 этажа на Москва-Сити'
 const viewSrcSet = (ext: 'avif' | 'webp') =>
   VIEW_WIDTHS.map((w) => `${VIEW_DIR}/view-${w}.${ext} ${w}w`).join(', ');
 
+/* docs/facts.md, строки 18–19. Тот же паттерн ряда чисел, что в
+   Landing.tsx: dl > dt(подпись)/dd(значение), column-reverse. */
+const VIEW_FIGURES = [
+  { value: '23', caption: 'ЭТАЖ' },
+  { value: '3,8', caption: 'ПОТОЛКИ, М' },
+] as const;
+
 /* Фазовая карта. Пороги дублируются в OfficeStop.module.css — там из них
    считаются огибающие. Здесь нужны только два: на них переключается
    `inert`. Полная карта — в docs/office-flow.md. */
@@ -239,14 +246,24 @@ export default function OfficeStop() {
           <div className={styles.veil} aria-hidden="true" />
 
           <div className={styles.caption}>
-            <p className={`label ${styles.eyebrow}`}>23 ЭТАЖ</p>
-            <h2 className={styles.title}>Окна открываются</h2>
-            <p className={styles.para}>
-              В высотных офисах окна обычно не открываются — башню
-              проектируют герметичной. Здесь створка открывается,
-              и в кабинет заходит воздух с высоты 23 этажа.
-            </p>
-            <p className={styles.fine}>Вид из окон помещения</p>
+            <div className={styles.copy}>
+              <p className={`label ${styles.eyebrow}`}>23 ЭТАЖ</p>
+              <h2 className={styles.title}>Вид</h2>
+            </div>
+
+            <dl className={styles.figures}>
+              {VIEW_FIGURES.map((f) => (
+                <div key={f.caption} className={styles.figure}>
+                  <dt className={`label ${styles.figCaption}`}>{f.caption}</dt>
+                  <dd className={styles.figValue}>
+                    <span className={styles.num}>{f.value}</span>
+                    <span className={styles.numGhost} aria-hidden="true">
+                      {f.value}
+                    </span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </div>
 

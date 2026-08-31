@@ -302,16 +302,21 @@ export default function HeroVideo({ onLift, onDone }: Props) {
             <br />
             въезжают завтра
           </h1>
+          <div className={styles.divider} aria-hidden="true" />
           <p className={styles.lead}>
-            Потолки 3,8 метра. Окна открываются.
+            244,1 м² с отделкой PRIDEX.
             <br />
-            Отделка PRIDEX и мебель уже внутри.
+            Ноль капитальных затрат до въезда.
           </p>
         </div>
 
         <div className={styles.enter}>
-          <button type="button" className="btn" onClick={enter} disabled={started}>
-            Войти
+          <button type="button" className={`btn ${styles.enterBtn}`} onClick={enter} disabled={started}>
+            <span className={styles.enterFill} aria-hidden="true" />
+            <span className={styles.enterLabel}>
+              <span className={styles.enterLabelDefault}>Войти</span>
+              <span className={styles.enterLabelHover} aria-hidden="true">Войти</span>
+            </span>
           </button>
         </div>
       </div>

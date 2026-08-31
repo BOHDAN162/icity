@@ -1,0 +1,89 @@
+/* Путь в проекте: components/ScrollIndicator.module.css */
+
+.nav {
+  position: fixed;
+  top: 50%;
+  right: var(--pad-x);
+  transform: translateY(-50%);
+  z-index: 20;
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-reveal) var(--ease-out);
+}
+
+.nav[data-visible='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item { display: flex; }
+
+.link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding-inline: var(--s-2);
+  text-decoration: none;
+}
+
+.text {
+  color: var(--ink-60);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(6px);
+  transition:
+    opacity var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out),
+    transform var(--t-micro) var(--ease-out);
+}
+
+.item[data-active='true'] .text { color: var(--ink); }
+
+.tick {
+  flex-shrink: 0;
+  width: 20px;
+  height: 2px;
+  background: var(--alu);
+  transition: background var(--t-micro) var(--ease-out);
+}
+
+.item[data-active='true'] .tick { background: var(--frit); }
+
+/* Раскрытие: чистый CSS-hover, тот же приём, что .move/.moveLabel
+   в OfficeHub.module.css. :focus-within — Tab-фокус тоже раскрывает. */
+@media (hover: hover) and (pointer: fine) {
+  .nav:hover .text,
+  .nav:focus-within .text {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Тач: наведения нет. Ссылки некликабельны, пока список свёрнут —
+   первый тап по колонке достаётся <nav> (обработчик раскрывает список),
+   второй тап уже приходится на саму ссылку. */
+@media (hover: none) {
+  .link { pointer-events: none; }
+
+  .nav[data-expanded='true'] .link { pointer-events: auto; }
+  .nav[data-expanded='true'] .text {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .nav { right: var(--s-4); }
+}

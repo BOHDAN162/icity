@@ -9,14 +9,10 @@
    1. HeroVideo — постер → ролик полёта, внутри HeroGate.
    2. OfficeStop — офис-остановка и кадр вида из окна, один липкий
       экран на две сцены со швом между ними.
-   3. Landing — ряд чисел, абзац и кнопки. Над ним липкая панель:
-      она в потоке и прилипает к верху своей области, поэтому
-      появляется ровно тогда, когда верх Landing переходит нижнюю
-      кромку экрана, и за пределы области не выходит. */
+   3. Landing — ряд чисел, абзац и кнопка «Позвонить». */
 
 import HeroGate from '@/components/HeroGate';
 import OfficeStop from '@/components/OfficeStop';
-import StickyBar from '@/components/StickyBar';
 import Landing from '@/components/Landing';
 import Economics from '@/components/Economics';
 import Complex from '@/components/Complex';
@@ -24,6 +20,7 @@ import Location from '@/components/Location';
 import Faq from '@/components/Faq';
 import Contact from '@/components/Contact';
 import Footer from '@/components/Footer';
+import ScrollIndicator from '@/components/ScrollIndicator';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -32,7 +29,6 @@ export default function Home() {
       <HeroGate>
         <OfficeStop />
         <div className={styles.afterHero}>
-          <StickyBar />
           <Landing />
           {/* 4. Economics — экономика сделки, сразу за рядом чисел 113Н:
                 шкала «рынок против нашей ставки» и полоса фактов. */}
@@ -51,6 +47,7 @@ export default function Home() {
           <Contact />
         </div>
         <Footer />
+        <ScrollIndicator />
       </HeroGate>
     </main>
   );

@@ -282,10 +282,6 @@ export default function OfficeHub({ active }: Props) {
       <div className={styles.scrimBottom} aria-hidden="true" />
 
       <div className={styles.ui}>
-        <div className={styles.topRow}>
-          <a className={styles.cta} href="#contact">Записаться на просмотр</a>
-        </div>
-
         <div className={styles.bottom}>
           <div className={`${styles.info} ${zone.side === 'right' ? styles.infoRight : ''}`} key={zoneId}>
             <p className={`label ${styles.eyebrow}`}>Помещение 113Н</p>

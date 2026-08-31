@@ -59,10 +59,7 @@ export default function Landing() {
         </p>
 
         <div className={styles.actions}>
-          <a className={`btn ${styles.action}`} href="#contact">
-            Записаться на просмотр
-          </a>
-          <a className={`btn btn-secondary ${styles.action}`} href="tel:+79093798015">
+          <a className={`btn ${styles.action}`} href="tel:+79093798015">
             Позвонить
           </a>
         </div>

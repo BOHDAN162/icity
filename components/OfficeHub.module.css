@@ -142,38 +142,11 @@
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: auto 1fr auto;
   padding: var(--s-5) var(--pad-x) var(--s-6);
   pointer-events: none;
 }
 
 .ui > * { pointer-events: auto; }
-
-/* «К башне» ушла вместе со скролл-секвенцией: возврата из офиса нет,
-   в ряду осталась одна целевая кнопка — прижата к правому краю. */
-.topRow {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--s-4);
-}
-
-/* Целевое действие. Осталось залитой кнопкой, но спокойнее по весу. */
-.cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  padding: 0 var(--s-5);
-  border-radius: var(--radius);
-  background: var(--frit-deep);
-  color: var(--white);
-  font: 500 15px/1 var(--sans);
-  text-decoration: none;
-  transition: background var(--t-micro) var(--ease-out);
-}
-
-.cta:hover { background: var(--frit-press); }
 
 /* --- низ: текст зоны, переходы, мелкий шрифт -------------------------- */
 

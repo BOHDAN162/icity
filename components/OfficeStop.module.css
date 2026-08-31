@@ -110,38 +110,38 @@
   object-fit: cover;
 }
 
-/* Вуаль под подписью. Приём и вертикальный профиль альфы — те же, что
-   у .scrimInfoLeft в OfficeHub.module.css: градиент --paper от кромки
-   кадра в прозрачность, маска режет его по горизонтали. Второго приёма
-   в проекте нет. Гаснет вместе с подписью: она держит контраст только ей.
+/* Вуаль под подписью. Приём тот же, что у .scrimInfoLeft в
+   OfficeHub.module.css: градиент --paper от кромки кадра в
+   прозрачность. Второго приёма в проекте нет. Гаснет вместе
+   с подписью: она держит контраст только ей.
 
-   ШИРЕ, ЧЕМ В ОФИСЕ, И ЭТО ЗАМЕР, А НЕ ВКУС. В офисе вуаль 62 % шириной
-   с маской, сплошной до 48 %, и этого хватает: рендеры зон светлые.
-   Здесь под текстом городская панорама с тёмной развязкой, и по реальным
-   пикселям кадра худший контраст выходил 4,20:1 — на конце строки
-   «и в кабинет», x ≈ 681 px при экране 1440, там, где маска уже почти
-   растворилась. Строка абзаца доходит до 704 px, то есть до 49 % ширины,
-   поэтому маска держится сплошной до 53 % и гаснет к 76 %.
+   ВО ВСЮ ШИРИНУ, БЕЗ МАСКИ — заголовок «Вид» слева и ряд чисел справа
+   занимают всю ширину нижней кромки кадра, а не только левую половину,
+   как раньше с абзацем. Маска, резавшая вуаль по горизонтали, больше
+   не нужна: под текстом должна быть подложка везде, где есть текст.
 
-   Замер после правки, по глифовым пикселям на кадре: --ink — 14,09:1,
-   мелкий шрифт на --ink-60 — 5,24:1. Углублять альфу не понадобилось,
-   хватило ширины. design-system.md, раздел «Вуаль», условие 4. */
+   НИЖЕ И ЛЕГЧЕ, ЧЕМ РАНЬШЕ — короткой подписи без абзаца не нужна
+   вуаль на 72% высоты и альфу до 0,96: это гасило половину фотографии.
+   Высота 40% (46% на мобильном), альфа не выше 0,62 — тень только
+   у самой кромки кадра. Контраст текста замерен по пикселям кадра
+   (canvas-сэмплинг + WCAG-формула), таблица — docs/office-flow.md,
+   раздел «Контраст подписи». Худшая точка — 4,82:1, у верхнего края
+   цифр: небольшой запас, при замене кадра-заглушки на реальную съёмку
+   замер нужно повторить. design-system.md, раздел «Вуаль», условие 4. */
 .veil {
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 76%;
-  height: 72%;
+  width: 100%;
+  height: 40%;
   pointer-events: none;
   background: linear-gradient(
     to top,
-    rgba(242, 244, 245, 0.96) 0%,
-    rgba(242, 244, 245, 0.92) 46%,
-    rgba(242, 244, 245, 0.74) 68%,
-    rgba(242, 244, 245, 0.34) 86%,
+    rgba(242, 244, 245, 0.62) 0%,
+    rgba(242, 244, 245, 0.50) 35%,
+    rgba(242, 244, 245, 0.28) 65%,
     rgba(242, 244, 245, 0) 100%
   );
-  mask-image: linear-gradient(to right, #000 0%, #000 70%, transparent 100%);
   opacity: calc(var(--cap-in) * (1 - var(--cap-out)));
 }
 
@@ -150,10 +150,17 @@
   left: var(--pad-x);
   right: var(--pad-x);
   bottom: clamp(48px, 9vh, 104px);
-  max-width: 40rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--s-6);
   opacity: calc(var(--cap-in) * (1 - var(--cap-out)));
   transform: translateY(calc(12px * (1 - var(--cap-in)) - 40px * var(--cap-out)));
   will-change: opacity, transform;
+}
+
+.copy {
+  min-width: 0;
 }
 
 .eyebrow {
@@ -169,23 +176,106 @@
   font: var(--display-l);
   letter-spacing: var(--tr-l);
   color: var(--ink);
-  margin: 0 0 var(--s-4);
-}
-
-.para {
-  font: var(--lead);
-  letter-spacing: var(--tr-lead);
-  color: var(--ink);
-  margin: 0 0 var(--s-5);
-  max-width: 32em;
-}
-
-/* Подпись под видом — мелкий шрифт: тихий цвет, без собственной
-   поверхности. design-system.md §4. */
-.fine {
-  font: var(--small);
-  color: var(--ink-60);
   margin: 0;
+}
+
+/* --- ряд чисел ---------------------------------------------------------
+   Тот же паттерн, что .figures/.item/.value в Landing.module.css:
+   column-reverse (число сверху, подпись снизу), сетка 1×1 с призрачным
+   дублем на весе 700 под ховер. Кегль — --num-m, не --num-xl: числа
+   здесь вторичны по отношению к заголовку «Вид», не главный контент
+   экрана, как на Landing. */
+.figures {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s-3);
+  padding-inline: var(--s-5);
+  min-width: 0;
+}
+
+.figure:first-child { padding-inline-start: 0; }
+.figure:last-child { padding-inline-end: 0; }
+
+.figure + .figure {
+  border-inline-start: 1px solid var(--alu);
+}
+
+.figCaption {
+  color: var(--ink);
+}
+
+.figValue {
+  font: var(--num-m);
+  letter-spacing: var(--tr-num);
+  color: var(--ink);
+  margin: 0;
+  white-space: nowrap;
+  display: grid;
+  justify-items: start;
+}
+
+.num,
+.numGhost {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  position: relative;
+  font-variation-settings: 'wght' 500;
+}
+
+.numGhost {
+  visibility: hidden;
+  font-variation-settings: 'wght' 700;
+}
+
+.num::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--s-2));
+  height: 6px;
+  background: var(--frit-dense);
+  opacity: 0;
+  transform: scaleX(0.6);
+  transform-origin: left;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .num {
+    transition: font-variation-settings 180ms var(--ease-standard);
+  }
+  .figure:hover .num {
+    font-variation-settings: 'wght' 650;
+  }
+
+  .num::after {
+    transition:
+      opacity 180ms var(--ease-standard),
+      transform 180ms var(--ease-standard);
+  }
+  .figure:hover .num::after {
+    opacity: 1;
+    transform: scaleX(1);
+    transition:
+      opacity 250ms var(--ease-soft),
+      transform 250ms var(--ease-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .num,
+  .num::after {
+    transition: none !important;
+  }
 }
 
 /* --- шов -------------------------------------------------------------- */
@@ -227,20 +317,18 @@
   .band::after { background: var(--frit-mid); }
 }
 
-@media (max-width: 1023px) {
-  .caption { max-width: 34rem; }
-}
-
 @media (max-width: 767px) {
   .wrap { height: calc(100svh + 200svh); }
   .caption {
-    max-width: none;
+    /* горизонтально места на заголовок и ряд чисел рядом не хватает —
+       числа встают под заголовком */
+    flex-direction: column;
+    align-items: flex-start;
     bottom: clamp(32px, 7vh, 72px);
   }
   .title { font: var(--heading); letter-spacing: var(--tr-head); }
-  .para { font: var(--body); }
-  /* На узком экране вуаль держит подпись во всю ширину */
-  .veil { width: 100%; height: 78%; mask-image: none; }
+  .figures { margin-top: var(--s-4); }
+  .veil { height: 46%; }
 }
 
 /* --- просьба убрать движение ------------------------------------------
