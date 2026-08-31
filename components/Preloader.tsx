@@ -18,7 +18,12 @@
    Один rAF на компонент, ре-рендеров React на кадрах нет: floor
    и рельса пишутся в DOM напрямую (textContent, style.transform),
    классы тиков — через classList. Единственное состояние React —
-   `visible`, и меняется оно ровно один раз, на размонтировании. */
+   `visible`, и меняется оно ровно один раз, на размонтировании.
+
+   ЖЁСТКАЯ ПЕРЕЗАГРУЗКА ПОКАЗЫВАЕТ ЭКРАН СНОВА. sessionStorage помнит
+   показ до конца вкладки, но Cmd/Ctrl+Shift+R должен пробивать эту
+   память — это метит proxy.ts кукой icity-hard-reload (см. её комментарий
+   про Cache-Control: no-cache и оговорку про Safari). */
 
 import {
   useEffect, useRef, useState, useSyncExternalStore,
@@ -38,6 +43,18 @@ const getMotionSnapshot = () => window.matchMedia(MOTION_QUERY).matches;
 const getMotionServerSnapshot = () => false;
 
 const STORAGE_KEY = 'icity-preloaded';
+const HARD_RELOAD_COOKIE = 'icity-hard-reload';
+
+/* Кука ставится proxy.ts на один запрос при Cache-Control: no-cache
+   (жёсткая перезагрузка) и сама гаснет через несколько секунд (maxAge
+   в proxy.ts) — чистим только чтение, без побочного стирания: эффект
+   в StrictMode дев-режима вызывается дважды при монтировании, и если
+   первый вызов гасит куку, второй её уже не увидит и скроет прелоадер. */
+function hasHardReloadFlag(): boolean {
+  return document.cookie
+    .split('; ')
+    .some((entry) => entry.startsWith(`${HARD_RELOAD_COOKIE}=`));
+}
 
 /* === PROGRESS SOURCE — заменить тело позже на реальную загрузку ===
    Контракт неизменен: { p: 0..1, done }. При переходе на реальный сигнал —
@@ -66,7 +83,8 @@ export default function Preloader() {
   const ladderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (sessionStorage.getItem(STORAGE_KEY)) {
+    const forcedByHardReload = hasHardReloadFlag();
+    if (!forcedByHardReload && sessionStorage.getItem(STORAGE_KEY)) {
       /* setState вызывается из колбэка, а не синхронно из тела эффекта —
          так требует react-hooks/set-state-in-effect; микротаск успевает
          до отрисовки кадра, вспышки интерфейса нет. */
