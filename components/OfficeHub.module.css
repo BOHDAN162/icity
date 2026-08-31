@@ -75,13 +75,13 @@
   left: 0;
   right: 0;
   top: 0;
-  height: 18%;
+  height: 14%;
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    rgba(242, 244, 245, 0.94) 0%,
-    rgba(242, 244, 245, 0.82) 38%,
-    rgba(242, 244, 245, 0.42) 70%,
+    rgba(242, 244, 245, 0.75) 0%,
+    rgba(242, 244, 245, 0.60) 38%,
+    rgba(242, 244, 245, 0.28) 70%,
     rgba(242, 244, 245, 0) 100%
   );
   mask-image: linear-gradient(to right, #000 0%, #000 28%, transparent 58%);
@@ -198,9 +198,12 @@
 
 .line:last-of-type { margin-bottom: var(--s-5); }
 
-/* Единственное красное: ноль капзатрат и полоса растра под ним.
+/* Красное здесь только у зон с zero-полем (сейчас ни у одной — блок
+   ресепшна убран, мебель в ставку не входит, см. docs/facts.md).
    Место разрешено списком в design-system.md §1 — «полоса под ключевым
-   числом». Растр --frit-dense, на ≤767 px токен сам становится --frit-mid. */
+   числом». Растр --frit-dense, на ≤767 px токен сам становится --frit-mid.
+   Единственное интерактивное красное на экране офиса теперь — ховер
+   ссылки «Открыть планировку», см. .planLink ниже. */
 .zeroRow {
   display: flex;
   flex-direction: column;
@@ -233,6 +236,13 @@
   background: var(--frit-dense);
 }
 
+/* Оболочка нужна как containing block для .planSub (подпись-reveal)
+   и как общая зона наведения/фокуса для ссылки и бейджа «3D». */
+.planWrap {
+  position: relative;
+  display: inline-flex;
+}
+
 /* Текстовый контрол с волосяной линией, не кнопка в коробке */
 .planLink {
   appearance: none;
@@ -240,13 +250,72 @@
   border-bottom: 1px solid var(--alu);
   background: none;
   padding: 0 0 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
   color: var(--ink);
   font: 500 15px/1.2 var(--sans);
   cursor: pointer;
-  transition: border-color var(--t-micro) var(--ease-out);
+  transition:
+    border-color var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out);
 }
 
-.planLink:hover { border-bottom-color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .planLink:hover { border-bottom-color: var(--frit-deep); color: var(--frit-deep); }
+}
+
+.planWrap:focus-within .planLink {
+  border-bottom-color: var(--frit-deep);
+  color: var(--frit-deep);
+}
+
+/* Бейдж «3D» — декоративный, aria-hidden в разметке */
+.planBadge {
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  padding: 2px var(--s-2);
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+  transition:
+    border-color var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .planWrap:hover .planBadge { border-color: var(--frit-deep); color: var(--frit-deep); }
+}
+
+.planWrap:focus-within .planBadge {
+  border-color: var(--frit-deep);
+  color: var(--frit-deep);
+}
+
+/* Подпись под ссылкой, появляется вместе с красным ховером — тот же
+   приём, что .moveLabel у кругов перехода ниже. */
+.planSub {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  left: 0;
+  white-space: nowrap;
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--frit-deep);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity var(--t-micro) var(--ease-out),
+    transform var(--t-micro) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .planWrap:hover .planSub { opacity: 1; transform: translateY(0); }
+}
+
+.planWrap:focus-within .planSub { opacity: 1; transform: translateY(0); }
 
 /* --- переходы: только круг со стрелкой -------------------------------- */
 
@@ -275,19 +344,22 @@
     color var(--t-micro) var(--ease-out);
 }
 
-.move:hover { background: var(--white); border-color: var(--ink); }
+.move:hover { background: var(--ink); border-color: var(--ink); color: var(--white); }
 
-/* Возврат туда, откуда только что пришли, — тише прямых ходов */
+/* Возврат туда, откуда только что пришли, — тише прямых ходов только
+   в состоянии покоя; на ховере/фокусе сливается с обычным переходом
+   (иначе .moveReturn:hover переопределил бы цвет текста поверх залитого
+   .move:hover круга и стрелка стала бы чёрной на чёрном). */
 .moveReturn { color: var(--ink-60); border-color: var(--alu); }
-.moveReturn:hover { color: var(--ink); }
 
-/* Подпись появляется по наведению и по фокусу. Для скринридера имя
-   кнопки несёт aria-label, поэтому подпись помечена aria-hidden. */
+/* Подпись появляется по наведению и по фокусу, под кругом. Для
+   скринридера имя кнопки несёт aria-label, поэтому подпись помечена
+   aria-hidden. */
 .moveLabel {
   position: absolute;
-  bottom: calc(100% + var(--s-3));
+  top: calc(100% + var(--s-3));
   left: 50%;
-  transform: translateX(-50%) translateY(4px);
+  transform: translateX(-50%) translateY(-4px);
   white-space: nowrap;
   font: var(--label);
   letter-spacing: var(--tr-label);
@@ -333,6 +405,14 @@
   .line { font: var(--body); }
   .nav { gap: var(--s-4); }
   .move { width: 52px; height: 52px; }
+  /* На узкой колонке под кругами сразу мелкий шрифт — подписи некуда
+     выезжать вниз без наезда на него. Возвращаем её наверх, к блоку
+     зоны, где есть запас (как было до правки под десктоп-референс). */
+  .moveLabel {
+    top: auto;
+    bottom: calc(100% + var(--s-3));
+    transform: translateX(-50%) translateY(4px);
+  }
   .fine { text-align: left; justify-self: stretch; }
   .scrimBottom { height: 40%; }
   .scrimInfo { width: 100%; height: 78%; }

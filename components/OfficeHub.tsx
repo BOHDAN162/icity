@@ -63,6 +63,11 @@ const ZoneParallax = dynamic(() => import('./ZoneParallax'), { ssr: false });
    чем принять чужое имя. */
 type ZoneId = RenderKey;
 
+/* Узкий неразрывный пробел — разряды и число/единица, как в Location.tsx.
+   PlanDollhouse.tsx использует обычный U+00A0 — это её локальная
+   неточность, не эталон, здесь не повторяем. */
+const NBSP = ' ';
+
 type Zone = {
   id: ZoneId;
   label: string;
@@ -70,7 +75,6 @@ type Zone = {
   /** сторона, с которой встаёт текстовый блок */
   side: 'left' | 'right';
   lines: string[];
-  /** единственное красное на экране — ноль капзатрат */
   zero?: { caption: string; unit: string };
 };
 
@@ -108,8 +112,7 @@ const ZONES: Record<ZoneId, Zone> = {
     label: 'Ресепшн',
     alt: 'Ресепшн с рифлёной плиткой и отделкой из светлого дуба',
     side: 'left',
-    lines: ['Отделка PRIDEX.'],
-    zero: { caption: 'Капитальных затрат до въезда', unit: '₽' },
+    lines: ['Отделка PRIDEX выполнена.', 'Мебель — по готовому дизайн-проекту.'],
   },
   corridor: {
     id: 'corridor',
@@ -284,7 +287,9 @@ export default function OfficeHub({ active }: Props) {
       <div className={styles.ui}>
         <div className={styles.bottom}>
           <div className={`${styles.info} ${zone.side === 'right' ? styles.infoRight : ''}`} key={zoneId}>
-            <p className={`label ${styles.eyebrow}`}>Помещение 113Н</p>
+            <p className={`label ${styles.eyebrow}`}>
+              Помещение 113Н{NBSP}·{NBSP}244,1{NBSP}м²
+            </p>
             <h2 className={styles.zoneName}>{zone.label}</h2>
 
             {zone.zero && (
@@ -302,15 +307,23 @@ export default function OfficeHub({ active }: Props) {
 
             {/* Модель и JSON тянем уже по наведению: к клику они в кэше,
                 и план открывается без паузы на загрузку. */}
-            <button
-              type="button"
-              className={styles.planLink}
-              onClick={() => setPlanOpen(true)}
-              onPointerEnter={prefetchPlan}
-              onFocus={prefetchPlan}
-            >
-              Открыть планировку
-            </button>
+            <div className={styles.planWrap}>
+              <button
+                type="button"
+                className={styles.planLink}
+                onClick={() => setPlanOpen(true)}
+                onPointerEnter={prefetchPlan}
+                onFocus={prefetchPlan}
+              >
+                Открыть планировку
+                <span className={styles.planBadge} aria-hidden="true">3D</span>
+              </button>
+              {/* Декоративная подпись, появляется вместе с красным ховером
+                  ссылки; доступное имя кнопки остаётся чистым. */}
+              <span className={styles.planSub} aria-hidden="true">
+                Пять зон{NBSP}·{NBSP}объёмный план
+              </span>
+            </div>
           </div>
 
           <nav className={styles.nav} aria-label="Переходы по помещению">
