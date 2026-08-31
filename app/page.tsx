@@ -20,6 +20,7 @@ import StickyBar from '@/components/StickyBar';
 import Landing from '@/components/Landing';
 import Economics from '@/components/Economics';
 import Complex from '@/components/Complex';
+import Location from '@/components/Location';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -36,6 +37,9 @@ export default function Home() {
         {/* 5. Complex — комплекс iCITY: список удобств этажами ниже
               и кадр, который открывается из растра фритты. */}
         <Complex />
+        {/* 6. Location — локация: схема района чертёжной графикой
+              и таблица времени в пути с точечным выносом. */}
+        <Location />
       </div>
     </main>
   );

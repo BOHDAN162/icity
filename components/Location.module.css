@@ -1,0 +1,258 @@
+/* Путь в проекте: components/Location.module.css
+   Цвета и кегли — из app/tokens.css. Токенов --line-soft / --surface /
+   --ink2 / --ink3 в проекте нет: линии идут на --alu, вторичный текст —
+   на --ink-60, подложка схемы — --white. Красный только двух видов:
+   --frit в линиях 1–2 px (контуры станций, маршруты) и --frit-deep
+   в заливке и в тексте (квадрат башни, время в выделенной строке) —
+   правило 1 дизайн-системы.
+
+   Кривые — общие моушен-токены. Своих безье здесь не заводится. */
+
+.section {
+  position: relative;
+  background: var(--paper);
+  padding: var(--section-y) var(--pad-x);
+}
+
+.inner {
+  max-width: var(--container);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  column-gap: var(--s-8);
+  align-items: center;
+}
+
+.text {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 var(--s-5);
+}
+
+.title {
+  margin: 0 0 var(--s-5);
+}
+
+.lead {
+  margin: 0 0 var(--s-7);
+  max-width: 46ch;
+  font: var(--lead);
+  letter-spacing: var(--tr-lead);
+  color: var(--ink-60);
+}
+
+/* --- таблица времени -------------------------------------------------- */
+
+.table {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-block-start: 1px solid var(--ink);
+}
+
+/* align-items: baseline ставит точечный вынос на базовую линию строки:
+   у пустого блока без текста базовой линией служит его нижняя кромка,
+   поэтому полоса точек садится ровно под буквы, а не по центру строки. */
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  border-block-end: 1px solid var(--alu);
+}
+
+.place {
+  font: var(--small);
+  color: var(--ink);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Тот же растр, что у .dot-underline в tokens.css, только цветом линии
+   и мельче шагом: 6 px вместо 8. Сжимается первым — flex-shrink у него
+   максимальный, а min-width держит вынос заметным даже в самой длинной
+   строке. */
+.dots {
+  display: block;
+  flex: 1 1 12px;
+  min-width: 16px;
+  height: 6px;
+  background: radial-gradient(circle, var(--alu) 1px, transparent 1.5px) 0 0 / 6px 6px;
+}
+
+.time {
+  flex: 0 0 auto;
+  text-align: end;
+  font: 400 15px / 1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tr-num);
+  color: var(--ink);
+}
+
+/* Выделенная строка — та самая минута до МЦД. Красный текст только
+   на --frit-deep: на чистом --frit контраст падает ниже AA. */
+.rowHot .time {
+  color: var(--frit-deep);
+  font-weight: 500;
+}
+
+.mode {
+  flex: 0 0 62px;
+  text-align: end;
+  font: 500 10px / 1.5 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+}
+
+/* --- рамка схемы ------------------------------------------------------ */
+
+.mapWrap {
+  min-width: 0;
+}
+
+.frame {
+  position: relative;
+  border: 1px solid var(--alu);
+  background: var(--white);
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.caption {
+  position: absolute;
+  inset-block-end: var(--s-3);
+  inset-inline-start: var(--s-3);
+  margin: 0;
+  font: 500 9px / 1 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+}
+
+/* --- слои схемы ------------------------------------------------------- */
+
+.block > rect {
+  fill: var(--paper-2);
+}
+
+.roadMajor > path {
+  fill: none;
+  stroke: var(--alu);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.roadMinor > path {
+  fill: none;
+  stroke: var(--paper-3);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rail {
+  fill: none;
+  stroke: var(--alu);
+  stroke-width: 2;
+  stroke-dasharray: 10 7;
+}
+
+/* Контур станции и маршруты — линии 1–2 px, единственное место,
+   где по дизайн-системе живёт чистый --frit. */
+.station {
+  fill: var(--white);
+  stroke: var(--frit);
+  stroke-width: 2;
+}
+
+.tower {
+  fill: var(--frit-deep);
+}
+
+/* Запасная длина 400 больше самого длинного маршрута на схеме (≈250):
+   до того как эффект снимет точные значения через getTotalLength,
+   маршруты гарантированно спрятаны, и на гидратации ничего не мигает. */
+.route {
+  --len: 400;
+  fill: none;
+  stroke: var(--frit);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: var(--len);
+  stroke-dashoffset: var(--len);
+  transition: stroke-dashoffset 450ms var(--ease-soft) var(--route-delay, 0ms);
+}
+
+.routeDrawn {
+  stroke-dashoffset: 0;
+}
+
+/* --- подписи схемы ----------------------------------------------------
+   Кегль задан в пользовательских единицах viewBox и едет вместе с ней.
+   На узком экране схема сжимается примерно вдвое, поэтому там кегль
+   поднимается: 16 единиц × 0,55 ≈ 9 CSS-пикселей — столько же, сколько
+   у подписи в углу. */
+
+.mapLabel > text,
+.mapLabelRed {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+}
+
+.mapLabel > text {
+  fill: var(--ink-60);
+}
+
+.mapLabelRed {
+  fill: var(--frit-deep);
+}
+
+/* --- планшет и телефон: текст сверху, схема под ним -------------------- */
+
+@media (max-width: 959px) {
+  .inner {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--s-7);
+  }
+}
+
+@media (max-width: 639px) {
+  .mapLabel > text,
+  .mapLabelRed {
+    font-size: 16px;
+  }
+
+  /* Способ уходит из вёрстки, но не из разметки: строка на 375 px
+     без него дышит, а скринридер по-прежнему читает «ПЕШКОМ». */
+  .mode {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* --- покой ------------------------------------------------------------
+   Основная ветка — в Location.tsx: при reduce наблюдатель не заводится
+   вовсе. Здесь снимается сам переход. transition-duration прописан
+   отдельным свойством: глобальное правило в tokens.css ставит его
+   через !important, и шорткат его не перебьёт. */
+
+@media (prefers-reduced-motion: reduce) {
+  .route {
+    transition: none;
+    transition-duration: 0s !important;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+}
