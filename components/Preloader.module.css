@@ -35,15 +35,18 @@
 .doorR { right: 0; }
 
 /* 1400ms, не --t-scene (620ms): это разъезд во весь экран, а не смена
-   секции — на такой дистанции короче читается рывком. Синхронизировано
+   секции — на такой дистанции короче читается рывком. Кривая —
+   --ease-standard, а не --ease-out: у --ease-out старт крутой (первая
+   контрольная точка уже на y=1), из-за этого начало разъезда дёргалось;
+   у --ease-standard касательная в начале плоская. Синхронизировано
    с ожиданием в Preloader.tsx перед finish(). */
 .door.openL {
   transform: translateX(-100%);
-  transition: transform 1400ms var(--ease-out);
+  transition: transform 1400ms var(--ease-standard);
 }
 .door.openR {
   transform: translateX(100%);
-  transition: transform 1400ms var(--ease-out);
+  transition: transform 1400ms var(--ease-standard);
 }
 
 .ui {
