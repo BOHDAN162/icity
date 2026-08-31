@@ -1,12 +1,15 @@
-/* iCITY 113Н — комплекс (вариант C1: список удобств с растровым проявлением).
+/* iCITY 113Н — комплекс (вариант C1: список удобств и кадр рядом).
    Путь в проекте: components/Complex.tsx
 
-   Пять строк слева, одна рамка справа. Наведение на строку меняет кадр,
-   и каждый кадр открывается из растра: поверх фотографии лежит холст
-   с её полутоновой версией (lib/halftone.ts), он вспыхивает без перехода
-   и тает за 550 мс. Приём тот же, что несёт вся дизайн-система, —
-   фритта фасада iCITY, только здесь она проявляет кадр, а не украшает
-   стык секций.
+   Пять строк слева, одна рамка справа. Наведение на строку меняет кадр
+   спокойным кроссфейдом на 250 мс — и это всё движение, какое здесь есть.
+
+   РАСТРОВОГО ПРОЯВЛЕНИЯ ЗДЕСЬ БОЛЬШЕ НЕТ И ВОЗВРАЩАТЬ ЕГО НЕ НАДО.
+   Кадр открывался из полутоновой сетки точек поверх фотографии
+   (lib/halftone.ts, холст с getImageData). Заказчик посмотрел вживую
+   и снял эффект: точки читались как артефакт загрузки, а не как приём.
+   Вместе с ним уехали холст, ResizeObserver, кэш из пяти растров
+   и весь модуль halftone.
 
    ЧИСЛА — docs/facts.md: стилобат 14 760 м², паркинг 950 мест на шести
    уровнях, Space Tower 258 м и 61 этаж. Высота башен в ТЗ заказчика
@@ -23,9 +26,8 @@
 
    ЧТО ГРУЗИТСЯ И КОГДА. Ни одного байта до подхода к секции:
    IntersectionObserver с rootMargin 200px монтирует <img>, отписывается
-   и больше не живёт. Растр считается после img.decode() внутри rAF —
-   getImageData на 560×420 стоит порядка 4 мс, и попасть этими
-   миллисекундами в кадр прокрутки не хочется.
+   и больше не живёт. Дальше секция не считает вообще ничего —
+   ни на кадрах прокрутки, ни на ресайзе.
 
    ДОСТУПНОСТЬ. Строки — настоящие <button>: Enter и Space приходят
    сами, фокус ведёт кадр так же, как мышь, aria-pressed говорит,
@@ -35,7 +37,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { paletteFrom, renderHalftone, type HalftonePalette } from '@/lib/halftone';
 import manifest from '@/public/complex/placeholders.json';
 import styles from './Complex.module.css';
 
@@ -103,34 +104,19 @@ function altFor(a: Amenity): string {
 }
 
 const REVEAL_ROOT_MARGIN = '200px';
-const RESIZE_DEBOUNCE = 200;
 
 export default function Complex() {
   const [near, setNear] = useState(false);
   const [active, setActive] = useState(0);
 
   const sectionRef = useRef<HTMLElement>(null);
-  const frameRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  /* Готовые растры и сами <img> — вне состояния: React не должен
-     перерисовываться из-за них ни разу. */
-  const rasters = useRef(new Map<string, HTMLCanvasElement>());
-  const images = useRef(new Map<string, HTMLImageElement>());
-  /* Ключ, который ждёт своего растра: наведение опередило расчёт. */
-  const pending = useRef<string | null>(null);
-  const rafId = useRef(0);
 
   /* Ховером ведём кадр только на точной мыши. Тач-события приходят
      кликом — он же обслуживает и клавиатуру. */
   const fine = useRef(false);
-  /* Запрос на покой — в ref, а не в состоянии: он не меняет разметку,
-     только поведение, и лишний рендер на монтировании ни к чему. */
-  const reduced = useRef(false);
 
-  /* --- 1. подход к секции: монтируем кадры и запоминаем reduce ------ */
+  /* --- подход к секции: монтируем кадры и больше не живём ----------- */
   useEffect(() => {
-    reduced.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     fine.current = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
     const el = sectionRef.current;
@@ -149,133 +135,9 @@ export default function Complex() {
     return () => io.disconnect();
   }, []);
 
-  /* --- 2. проявление ------------------------------------------------- */
-
-  /* Вспышка и растворение. Класс .snap ставит opacity 1 и снимает
-     переход; чтение offsetWidth заставляет браузер зафиксировать это
-     состояние, и только следующим кадром класс снимается — тогда
-     переход 550 мс отрабатывает от единицы к нулю. Без принудительного
-     пересчёта обе правки схлопнулись бы в одну и перехода не было бы. */
-  const play = useCallback(
-    (key: string) => {
-      const cv = canvasRef.current;
-      if (!cv) return;
-
-      const raster = rasters.current.get(key);
-      if (reduced.current || !raster) {
-        /* без растра и при reduce кадр просто стоит открытым */
-        cv.classList.remove(styles.snap);
-        pending.current = reduced.current ? null : key;
-        return;
-      }
-      pending.current = null;
-
-      const ctx = cv.getContext('2d');
-      if (!ctx) return;
-      cv.width = raster.width;
-      cv.height = raster.height;
-      ctx.drawImage(raster, 0, 0);
-
-      cv.classList.add(styles.snap);
-      void cv.offsetWidth;
-      cancelAnimationFrame(rafId.current);
-      rafId.current = requestAnimationFrame(() => {
-        cv.classList.remove(styles.snap);
-      });
-    },
-    []
-  );
-
-  const compute = useCallback(
-    (key: string, img: HTMLImageElement) => {
-      const frame = frameRef.current;
-      if (!frame || reduced.current) return;
-      const palette: HalftonePalette = paletteFrom(frame);
-      const raster = renderHalftone(img, frame.clientWidth, frame.clientHeight, palette);
-      if (!raster) return;
-      /* Прежний растр этого кадра больше не нужен: Safari не отпускает
-         canvas-память без явного обнуления размеров. */
-      const prev = rasters.current.get(key);
-      if (prev) {
-        prev.width = 0;
-        prev.height = 0;
-      }
-      rasters.current.set(key, raster);
-      if (pending.current === key) play(key);
-    },
-    [play]
-  );
-
-  /* Расчёт только после декодирования и только внутри rAF: getImageData
-     на неготовой картинке вернёт пустоту, а вне кадра — попадёт
-     в прокрутку. */
-  const onShotLoad = useCallback(
-    (key: string) => (e: React.SyntheticEvent<HTMLImageElement>) => {
-      const img = e.currentTarget;
-      images.current.set(key, img);
-      if (reduced.current) return;
-      const run = () => requestAnimationFrame(() => compute(key, img));
-      img.decode().then(run, run);
-    },
-    [compute]
-  );
-
-  /* Первый показ: как только кадры смонтированы, первая строка
-     открывается тем же проявлением, что и все следующие. */
-  useEffect(() => {
-    if (!near || reduced.current) return;
-    pending.current = AMENITIES[active].key;
-    play(AMENITIES[active].key);
-    /* active намеренно не в зависимостях: смену строки ведёт activate */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [near, play]);
-
-  /* --- 3. ресайз: пересчёт всех растров, 200 мс дребезга ------------- */
-  useEffect(() => {
-    if (!near || reduced.current) return;
-    const frame = frameRef.current;
-    if (!frame) return;
-
-    let timer = 0;
-    const ro = new ResizeObserver(() => {
-      clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        for (const [key, img] of images.current) compute(key, img);
-      }, RESIZE_DEBOUNCE);
-    });
-    ro.observe(frame);
-    return () => {
-      clearTimeout(timer);
-      ro.disconnect();
-    };
-  }, [near, compute]);
-
-  /* --- 4. размонтирование ------------------------------------------- */
-  useEffect(() => {
-    const cache = rasters.current;
-    const cv = canvasRef.current;
-    return () => {
-      cancelAnimationFrame(rafId.current);
-      /* Safari не отпускает canvas-память без обнуления размеров */
-      for (const raster of cache.values()) {
-        raster.width = 0;
-        raster.height = 0;
-      }
-      cache.clear();
-      if (cv) {
-        cv.width = 0;
-        cv.height = 0;
-      }
-    };
-  }, []);
-
-  const activate = useCallback(
-    (index: number) => {
-      setActive(index);
-      play(AMENITIES[index].key);
-    },
-    [play]
-  );
+  /* Смена кадра — это только смена состояния. Кроссфейд ведёт CSS,
+     JS в него не вмешивается ни одним кадром. */
+  const activate = useCallback((index: number) => setActive(index), []);
 
   return (
     <section
@@ -335,7 +197,7 @@ export default function Complex() {
         </ul>
 
         <div className={styles.frameWrap}>
-          <div ref={frameRef} className={styles.frame}>
+          <div className={styles.frame}>
             {near &&
               AMENITIES.map((a, i) => (
                 /* eslint-disable-next-line @next/next/no-img-element --
@@ -354,13 +216,8 @@ export default function Complex() {
                   decoding="async"
                   loading="lazy"
                   fetchPriority={i === 0 ? 'high' : 'low'}
-                  onLoad={onShotLoad(a.key)}
                 />
               ))}
-
-            {/* Растр. aria-hidden: он ничего не сообщает, это та же
-                картинка, только точками. */}
-            <canvas ref={canvasRef} className={styles.raster} aria-hidden="true" />
 
             <p className={styles.caption}>{captionFor(AMENITIES[active])}</p>
           </div>
