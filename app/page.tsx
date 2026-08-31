@@ -19,6 +19,11 @@ import OfficeStop from '@/components/OfficeStop';
 import StickyBar from '@/components/StickyBar';
 import Landing from '@/components/Landing';
 import Economics from '@/components/Economics';
+import Complex from '@/components/Complex';
+import Location from '@/components/Location';
+import Faq from '@/components/Faq';
+import Contact from '@/components/Contact';
+import Footer from '@/components/Footer';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -32,7 +37,20 @@ export default function Home() {
         {/* 4. Economics — экономика сделки, сразу за рядом чисел 113Н:
               шкала «рынок против нашей ставки» и полоса фактов. */}
         <Economics />
+        {/* 5. Complex — комплекс iCITY: список удобств этажами ниже
+              и кадр, который открывается из растра фритты. */}
+        <Complex />
+        {/* 6. Location — локация: схема района чертёжной графикой
+              и таблица времени в пути с точечным выносом. */}
+        <Location />
+        {/* 7. Faq — вопросы до просмотра: аккордеон-оглавление,
+              единственный открытый пункт держит браузер сам. */}
+        <Faq />
+        {/* 8. Contact — запись на просмотр: последняя секция страницы,
+              её эмоциональная кульминация. После неё только тихий Footer. */}
+        <Contact />
       </div>
+      <Footer />
     </main>
   );
 }

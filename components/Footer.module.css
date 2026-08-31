@@ -1,0 +1,54 @@
+/* Путь в проекте: components/Footer.module.css
+   Последний элемент страницы. Тихо — без анимаций и без растра фритты:
+   секция выше уже разрешает себе кульминацию, здесь только спокойный
+   выход. Перфорация — не растр iCITY, точки на --alu, тот же приём,
+   что у .dots в Faq.module.css и Location.module.css, просто шире шагом.
+   Токена --ink3 в проекте нет — мелкий mono-текст на --ink-60,
+   как везде вторичный текст (см. Contact.module.css). */
+
+.divider {
+  height: 8px;
+  max-width: var(--container);
+  margin: 9vh auto 0;
+  background: radial-gradient(circle, var(--alu) 1px, transparent 1.5px) 0 0 / 8px 8px;
+  background-repeat: repeat-x;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-4) var(--s-6);
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: var(--s-6) var(--pad-x) var(--s-8);
+}
+
+.item {
+  margin: 0;
+  font: 500 11px / 1.5 var(--mono);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-60);
+}
+
+.link {
+  color: var(--ink-60);
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--alu);
+  text-underline-offset: 3px;
+}
+
+.link:hover {
+  color: var(--ink);
+  text-decoration-color: var(--frit-deep);
+}
+
+@media (max-width: 639px) {
+  .row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}

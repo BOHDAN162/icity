@@ -1,0 +1,321 @@
+/* Путь в проекте: components/Contact.module.css
+   Финальный экран страницы — единственная секция, которой разрешено
+   заметно больше воздуха, чем стандартный --section-y (design-system.md
+   применяется как есть, ритм ниже держится на токенах --s-*, только
+   несколько пиксельных значений — 640px колонки, 52px кнопки и отступа
+   формы, 26px зазора ссылок — заданы явно тем же способом, каким
+   StickyBar.module.css один раз уходит от 54px кнопки: под конкретное
+   требование макета, не изобретение произвольного числа.
+   Токенов --ink2 / --ink3 в проекте нет (см. Location.module.css,
+   Faq.module.css) — вторичный текст здесь на --ink-60, третичный
+   (мелкий mono) — тоже на --ink-60, просто мельче кеглем. */
+
+.section {
+  position: relative;
+  background: var(--paper);
+  padding: calc(var(--section-y) + var(--s-8)) var(--pad-x);
+}
+
+.inner {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 var(--s-5);
+}
+
+.title {
+  margin: 0 0 var(--s-8);
+}
+
+/* --- менеджер ----------------------------------------------------------- */
+
+.managerName {
+  margin: 0 0 var(--s-2);
+  font: 450 clamp(24px, 2.4vw, 34px) / 1.2 var(--sans);
+  letter-spacing: var(--tr-head);
+  color: var(--ink);
+}
+
+.managerRole {
+  margin: 0 0 var(--s-7);
+}
+
+/* --- телефон: главный интерактивный элемент секции ---------------------- */
+
+.phone {
+  display: inline-block;
+  margin: 0 0 var(--s-6);
+  font: 500 clamp(22px, 3.5vw + 8px, 44px) / 1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tr-num);
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .phone:hover {
+    border-bottom-color: var(--frit-deep);
+  }
+}
+
+/* --- ряд ссылок: почта, Max, презентация — равный вес, без бейджей ------ */
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 26px;
+  margin: 0 0 var(--s-6);
+}
+
+.pdfTag {
+  margin-inline-start: var(--s-1);
+  font: 500 10px/1 var(--mono);
+  letter-spacing: var(--tr-label);
+  color: var(--ink-60);
+}
+
+/* Точечное подчёркивание ссылок: то же родство с растром фритты, что
+   у .dot-underline в tokens.css, но как text-decoration — раскладка
+   по строке не ломается на переносе, чего не даст псевдоэлемент. */
+.dottedLink {
+  color: var(--ink);
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--alu);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--motion-fast) var(--ease-standard);
+}
+
+.dottedLink:hover {
+  text-decoration-color: var(--frit-deep);
+}
+
+.quiet {
+  margin: 0;
+  font: 400 14px / 1.5 var(--sans);
+  color: var(--ink-60);
+}
+
+/* --- форма --------------------------------------------------------------- */
+
+.form {
+  margin-top: var(--s-7);
+  text-align: left;
+}
+
+.field {
+  position: relative;
+  padding-top: 22px;
+  margin-bottom: var(--s-6);
+}
+
+.input,
+.textarea {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--alu);
+  background: transparent;
+  padding: var(--s-2) 0;
+  font: var(--body);
+  color: var(--ink);
+  border-radius: 0;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 44px;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-bottom-color: var(--ink);
+}
+
+.input.invalid,
+.textarea.invalid {
+  border-bottom-color: var(--frit-deep);
+}
+
+/* Плавающий лейбл — чистый CSS через :placeholder-shown (placeholder=" ").
+   В покое сидит на строке поля тем же кеглем, что и введённый текст;
+   в фокусе или при заполненном поле поднимается и превращается
+   в мелкую mono-подпись, как остальные микро-лейблы дизайн-системы. */
+.floatLabel {
+  position: absolute;
+  left: 0;
+  top: 30px;
+  font: var(--body);
+  color: var(--ink-60);
+  letter-spacing: normal;
+  text-transform: none;
+  pointer-events: none;
+  transition:
+    top var(--motion-fast) var(--ease-standard),
+    font-size var(--motion-fast) var(--ease-standard),
+    letter-spacing var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.input:focus + .floatLabel,
+.input:not(:placeholder-shown) + .floatLabel,
+.textarea:focus + .floatLabel,
+.textarea:not(:placeholder-shown) + .floatLabel {
+  top: 0;
+  font: 500 10px / 1 var(--mono);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-60);
+}
+
+.optional {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.error {
+  margin: var(--s-2) 0 0;
+  font: 400 12px / 1.4 var(--sans);
+  color: var(--frit-deep);
+}
+
+/* --- кнопка ---------------------------------------------------------------
+   Фиксированные размеры во всех состояниях — idle/loading содержимое
+   меняется, бокс нет. */
+.submit {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--frit-deep);
+  color: var(--white);
+  font: 500 15px/1 var(--sans);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.submit:hover:not(:disabled) {
+  background: #B80018;
+}
+
+.submit:disabled {
+  cursor: default;
+}
+
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.loadingText {
+  display: none;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--white);
+  animation: contactDotBlink 1s var(--ease-standard) infinite;
+}
+
+.dot:nth-child(2) { animation-delay: 150ms; }
+.dot:nth-child(3) { animation-delay: 300ms; }
+
+@keyframes contactDotBlink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+
+.legal {
+  margin: var(--s-5) 0 0;
+  max-width: 44ch;
+  font: 400 11px / 1.6 var(--mono);
+  color: var(--ink-60);
+}
+
+/* --- успех ----------------------------------------------------------------
+   Форма скрывается целиком, строка с холстом и текстом занимает её место. */
+.success {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  margin-top: var(--s-7);
+  text-align: left;
+}
+
+.successCanvas {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+}
+
+.successTitle {
+  margin: 0 0 var(--s-1);
+  font: 700 19px / 1.3 var(--sans);
+  color: var(--ink);
+}
+
+.successNote {
+  margin: 0;
+  font: 400 14px / 1.5 var(--sans);
+  color: var(--ink-60);
+}
+
+/* --- телефон: узкие экраны ------------------------------------------------ */
+
+@media (max-width: 639px) {
+  .links {
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .success {
+    align-items: flex-start;
+  }
+}
+
+/* --- покой ------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .phone {
+    transition: none;
+  }
+
+  .floatLabel {
+    transition: none;
+  }
+
+  .submit {
+    transition: none;
+  }
+
+  .dot {
+    display: none;
+  }
+
+  .loadingText {
+    display: inline;
+  }
+
+  .dottedLink {
+    transition: none;
+  }
+}
