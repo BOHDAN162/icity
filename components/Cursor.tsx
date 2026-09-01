@@ -12,6 +12,13 @@
    слоёв: запрет на «блобы за курсором» из AGENTS.md остаётся в силе.
    Элементов ровно два, и второй нужен затем, чтобы отставать.
 
+   ДВА РЕЖИМА ПРОСЯТ СНАРУЖИ, через lib/cursorMode.ts. Лист чертежа:
+   только точка — кольцо там спорит с обмерными линиями. Ролик полёта:
+   тоже только точка, и она плавно белеет, потому что красная на кадрах
+   полёта теряется. Оба режима держат кольцо схлопнутым тем же
+   значением `hot`, что и ховер над кнопкой, — не отдельной веткой:
+   так переход в режим и обратно идёт той же анимацией, а не рывком.
+
    Ре-рендеров React на кадрах нет: позиция пишется прямо в узел,
    как --p в OfficeStop и как текст числа в countUp. Состояние
    компонента не меняется ни разу за всё время жизни страницы. */
@@ -22,7 +29,9 @@ import {
   CURSOR_RING_TAU,
   CURSOR_HOT_TAU,
   CURSOR_HOT_SCALE,
+  CURSOR_PALE_TAU,
 } from '@/lib/motion';
+import { cursorMode } from '@/lib/cursorMode';
 import styles from './Cursor.module.css';
 
 /* Что считается кнопкой. Список именно такой, а не «[tabindex]»:
@@ -62,12 +71,14 @@ export default function Cursor() {
   const rootRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
+  const paleRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const root = rootRef.current;
     const ring = ringRef.current;
     const dot = dotRef.current;
-    if (!root || !ring || !dot) return;
+    const pale = paleRef.current;
+    if (!root || !ring || !dot || !pale) return;
 
     /* matchMedia спрашивается ЖИВЬЁМ, а не через useSyncExternalStore.
        Тот на гидрации обязан вернуть серверный снимок — «мышь есть,
@@ -91,7 +102,11 @@ export default function Cursor() {
     let ry = 0;
     /* 0 — кольцо раскрыто, 1 — село на точку и растворилось */
     let hot = 0;
-    let tgtHot = 0;
+    /* 0 — точка красная, 1 — белая */
+    let paleness = 0;
+    /* под указателем кнопка. Режимы снаружи учитываются отдельно,
+       в кадре: они меняются без единого события мыши. */
+    let hovered = false;
 
     let placed = false;
     let raf = 0;
@@ -114,19 +129,27 @@ export default function Cursor() {
       const kd = 1 - Math.exp(-dt / CURSOR_DOT_TAU);
       const kr = 1 - Math.exp(-dt / CURSOR_RING_TAU);
       const kh = 1 - Math.exp(-dt / CURSOR_HOT_TAU);
+      const kp = 1 - Math.exp(-dt / CURSOR_PALE_TAU);
+
+      /* Режимы читаются КАЖДЫЙ КАДР, а не по событию: они меняются
+         без единого движения мыши — открылся чертёж, пошёл ролик. */
+      const tgtHot = hovered || cursorMode.sheet || cursorMode.video ? 1 : 0;
+      const tgtPale = cursorMode.video ? 1 : 0;
 
       dx += (tx - dx) * kd;
       dy += (ty - dy) * kd;
       rx += (tx - rx) * kr;
       ry += (ty - ry) * kr;
       hot += (tgtHot - hot) * kh;
+      paleness += (tgtPale - paleness) * kp;
 
       const alive =
         Math.abs(tx - dx) > 0.05 ||
         Math.abs(ty - dy) > 0.05 ||
         Math.abs(tx - rx) > 0.05 ||
         Math.abs(ty - ry) > 0.05 ||
-        Math.abs(tgtHot - hot) > 0.002;
+        Math.abs(tgtHot - hot) > 0.002 ||
+        Math.abs(tgtPale - paleness) > 0.002;
 
       /* Последний кадр приезжает в точное значение. Иначе цикл
          останавливался бы на остатке: кольцо над кнопкой доживало бы
@@ -135,12 +158,14 @@ export default function Cursor() {
         dx = tx; dy = ty;
         rx = tx; ry = ty;
         hot = tgtHot;
+        paleness = tgtPale;
       }
 
       dot.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       ring.style.transform =
         `translate3d(${rx}px, ${ry}px, 0) scale(${1 - (1 - CURSOR_HOT_SCALE) * hot})`;
       ring.style.opacity = `${1 - hot}`;
+      pale.style.opacity = `${paleness}`;
 
       raf = alive ? requestAnimationFrame(draw) : 0;
     };
@@ -150,15 +175,23 @@ export default function Cursor() {
        это кадр в кадр на пустом месте, включая ноутбук на батарее. */
     const wake = () => {
       if (raf) return;
-      last = 0;
+      /* Отсчёт от момента пробуждения, а не ноль с подстановкой 16,7 мс:
+         на 120-герцевом экране кадр 8,3, и подстановка давала бы двойной
+         шаг на первом кадре после каждой остановки. Ровно этот дефект
+         ловили в прокрутке — там он читался как рывок с места. */
+      last = performance.now();
       raf = requestAnimationFrame(draw);
     };
+    /* Смена режима снаружи обязана разбудить цикл: он спит, пока
+       ничего не едет, и без этого чертёж открылся бы, а кольцо
+       осталось бы висеть до первого движения мыши. */
+    cursorMode.wake = wake;
 
     const aim = (t: EventTarget | null) => {
       over = t;
-      const next = isHot(t) ? 1 : 0;
-      if (next !== tgtHot) {
-        tgtHot = next;
+      const next = isHot(t);
+      if (next !== hovered) {
+        hovered = next;
         wake();
       }
     };
@@ -235,6 +268,7 @@ export default function Cursor() {
       document.removeEventListener('scroll', onScroll, { capture: true });
       clearTimeout(settle);
       if (raf) cancelAnimationFrame(raf);
+      cursorMode.wake = undefined;
       html.classList.remove(HIDE_NATIVE);
     };
   }, []);
@@ -246,7 +280,9 @@ export default function Cursor() {
   return (
     <div ref={rootRef} className={styles.root} aria-hidden="true">
       <div ref={ringRef} className={styles.ring} />
-      <div ref={dotRef} className={styles.dot} />
+      <div ref={dotRef} className={styles.dot}>
+        <span ref={paleRef} className={styles.dotPale} />
+      </div>
     </div>
   );
 }

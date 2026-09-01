@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Drawing } from '@/lib/plan';
 import { bboxOf, fmtArea, loadDrawing } from '@/lib/plan';
+import { setCursorSheet } from '@/lib/cursorMode';
 import PlanSheet, { MARGIN_PX, viewBoxOf, type Layers } from './PlanSheet';
 import styles from './PlanOverlay.module.css';
 
@@ -56,6 +57,15 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
   const closeRef = useRef<HTMLButtonElement>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+
+  /* Свой курсор на листе — одна точка без кольца: кольцо в 56 px
+     спорит с обмерными линиями и накрывает подписи зон целиком.
+     Канал — lib/cursorMode.ts, курсор живёт в layout и пропом сюда
+     не дотягивается. */
+  useEffect(() => {
+    setCursorSheet(open);
+    return () => setCursorSheet(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

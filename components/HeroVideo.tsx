@@ -60,6 +60,7 @@ import {
 import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
+import { setCursorVideo } from '@/lib/cursorMode';
 import {
   currentHeroVariant, heroPreloadServerSnapshot, heroPreloadSnapshot,
   releaseHeroPreload, SOURCES, startHeroPreload, subscribeHeroPreload,
@@ -308,9 +309,18 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     startHeroPreload(currentHeroVariant());
   }, [reduced, variant]);
 
+  /* Страховка: hero сняли, не пройдя через finish (быстрый уход
+     со страницы, горячая перезагрузка). Белая точка иначе осталась бы
+     на обычной странице. */
+  useEffect(() => () => setCursorVideo(false), []);
+
   const finish = useCallback(() => {
     if (doneRef.current) return;
     doneRef.current = true;
+    /* Курсор обратно в обычный вид. Здесь, а не в обработчике ended:
+       сюда сходятся все пять отказов, и белая точка не должна пережить
+       ни один из них. */
+    setCursorVideo(false);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
@@ -401,6 +411,10 @@ export default function HeroVideo({ onLift, onDone }: Props) {
        у декодера свои несколько кадров, и начни растворение раньше —
        ролик проявлялся бы, ещё не начав двигаться. */
     setPlayingVisible(true);
+    /* Курсор на время полёта — одна белая точка без кольца. Отсчёт
+       от `playing`, а не от клика, по той же причине, что и кроссфейд:
+       до него ролик ещё не двигается. */
+    setCursorVideo(true);
     crossTimerRef.current = window.setTimeout(() => {
       idleRef.current?.pause();
       setIdleGone(true);
