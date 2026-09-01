@@ -374,8 +374,8 @@
 
 .move {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   border: 1px solid var(--alu);
   background: var(--paper);
@@ -398,7 +398,7 @@
 .move::after {
   content: '';
   position: absolute;
-  inset: -9px;
+  inset: -10px;
   border-radius: 50%;
   border: 1px solid var(--ink);
   opacity: 0;
@@ -447,6 +447,19 @@
   transform: translateX(-50%) translateY(0);
 }
 
+/* Маска — круг ровно по границе заливки (inset: 0 от .move), отдельный
+   слой от кольца на .move::after: то кольцо шире круга на 10px и обрезаться
+   этой маской не должно. Сдвиг стрелки на ховере остаётся внутри неё. */
+.moveMask {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 /* Поворот стрелки — на обёртке (.arrowWrap, инлайн-угол из bearing()),
    сдвиг по наведению — на самой svg. Внутри уже повёрнутой родителем
    системы координат translateY(-N) идёт вдоль направления стрелки для
@@ -461,7 +474,7 @@
   transition: transform var(--motion-base) var(--ease-soft);
 }
 
-.move:hover .arrowIcon { transform: translateY(-3px); }
+.move:hover .arrowIcon { transform: translateY(-5px); }
 
 /* --- мелкий шрифт ----------------------------------------------------- */
 
@@ -475,6 +488,11 @@
   text-align: center;
 }
 
+/* Строка остаётся в разметке и держит свою высоту (visibility, не display) —
+   иначе круги переходов оказались бы на разной высоте на ресепшне и
+   в остальных зонах. */
+.fineHidden { visibility: hidden; }
+
 @media (max-width: 1023px) {
   .info { max-width: 28rem; }
 }
@@ -486,7 +504,7 @@
   .zoneName { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-3); }
   .line { font: var(--body); }
   .nav { gap: var(--s-5); margin-bottom: var(--s-3); }
-  .move { width: 58px; height: 58px; }
+  .move { width: 64px; height: 64px; }
   /* На узкой колонке под кругами сразу мелкий шрифт — подписи некуда
      выезжать вниз без наезда на него. Возвращаем её наверх, к блоку
      зоны, где есть запас (как было до правки под десктоп-референс). */

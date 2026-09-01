@@ -362,22 +362,35 @@ export default function OfficeHub({ active }: Props) {
                 {/* подпись видна по наведению и по фокусу; для скринридера
                     имя кнопки несёт aria-label, поэтому здесь aria-hidden */}
                 <span className={styles.moveLabel} aria-hidden="true">{m.label}</span>
-                {/* Поворот — на обёртке, сдвиг по наведению — на самой svg.
-                    Раздельно специально: translateY в системе координат,
-                    уже повёрнутой родителем, идёт вдоль направления стрелки
-                    само по себе, без вычисления sin/cos под конкретный угол. */}
-                <span className={styles.arrowWrap} aria-hidden="true"
-                  style={{ transform: `rotate(${m.angle.toFixed(1)}deg)` }}>
-                  <svg viewBox="0 0 24 24" width="19" height="19" className={styles.arrowIcon}>
-                    <path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor"
-                      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                {/* Маска — круг ровно по границе заливки, отдельно от кольца
+                    на ::after (оно на самой кнопке и шире круга на 10px,
+                    обрезать его вместе со стрелкой нельзя). Стрелка внутри
+                    неё сдвигается на ховере вперёд и не выходит за заливку. */}
+                <span className={styles.moveMask} aria-hidden="true">
+                  {/* Поворот — на обёртке, сдвиг по наведению — на самой svg.
+                      Раздельно специально: translateY в системе координат,
+                      уже повёрнутой родителем, идёт вдоль направления стрелки
+                      само по себе, без вычисления sin/cos под конкретный угол. */}
+                  <span className={styles.arrowWrap}
+                    style={{ transform: `rotate(${m.angle.toFixed(1)}deg)` }}>
+                    <svg viewBox="0 0 24 24" width="19" height="19" className={styles.arrowIcon}>
+                      <path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor"
+                        strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
                 </span>
               </button>
             ))}
           </nav>
 
-          {zoneId === 'reception' && <p className={styles.fine}>{DISCLAIMER}</p>}
+          {/* Строка всегда в разметке, даже там, где не нужна: она — часть
+              той же сетки, что и круги переходов, и её высота — часть общей
+              высоты блока. Убрать её из потока значило бы сдвинуть круги
+              вниз на всех экранах, кроме ресепшна, — а они обязаны стоять
+              на одном уровне везде. Прячем классом, не убираем узел. */}
+          <p className={`${styles.fine} ${zoneId === 'reception' ? '' : styles.fineHidden}`}>
+            {DISCLAIMER}
+          </p>
         </div>
       </div>
 
