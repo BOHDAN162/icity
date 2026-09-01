@@ -214,7 +214,15 @@ export default function Cursor() {
     window.addEventListener('pointermove', move, { passive: true });
     window.addEventListener('pointerup', onUp, { passive: true });
     window.addEventListener('blur', hide);
-    document.addEventListener('pointerleave', hide);
+    /* pointerleave НЕ ВСПЛЫВАЕТ и приходит на <html>, а не на document:
+       слушатель на document не сработал бы ни разу, и курсор оставался
+       бы висеть в последней точке, когда мышь ушла из окна. Замер:
+       событие, посланное на documentElement, до document не доходит.
+       И это именно pointerleave, а не pointerout с пустым relatedTarget:
+       второй прилетает ещё и когда элемент под курсором просто удалили
+       из разметки — а это на сайте штатное дело, «Войти» исчезает
+       вместе со всем первым экраном. */
+    html.addEventListener('pointerleave', hide);
     /* capture: прокрутка внутренних областей (лист чертежа, оверлеи)
        до window не всплывает. */
     document.addEventListener('scroll', onScroll, { passive: true, capture: true });
@@ -223,7 +231,7 @@ export default function Cursor() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('blur', hide);
-      document.removeEventListener('pointerleave', hide);
+      html.removeEventListener('pointerleave', hide);
       document.removeEventListener('scroll', onScroll, { capture: true });
       clearTimeout(settle);
       if (raf) cancelAnimationFrame(raf);
