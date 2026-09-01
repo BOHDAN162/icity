@@ -235,8 +235,14 @@
   border-inline-start: 1px solid var(--alu);
 }
 
+/* Вес объявлен ДВАЖДЫ — в шорткате `font` и отдельной строкой
+   font-variation-settings. Это не дубль: анимируется здесь именно ось
+   'wght', а интерполировать её браузеру не из чего, пока базовое
+   значение не названо явно (из `normal` перехода не выйдет — будет
+   скачок). Тот же приём, что у .num в Landing.module.css. */
 .factKey {
   font: 500 11px/1 var(--mono);
+  font-variation-settings: 'wght' 500;
   letter-spacing: var(--tr-label);
   text-transform: uppercase;
   color: var(--ink-60);
@@ -245,10 +251,44 @@
 
 .factValue {
   font: 500 19px/1.3 var(--mono);
+  font-variation-settings: 'wght' 500;
   letter-spacing: var(--tr-num);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   margin: 0;
+}
+
+/* --- ховер ячейки: только вес, только точная мышь ---------------------
+   Те же 500 → 650 и те же 180ms --ease-standard, что у .num в Landing:
+   ряд чисел там и полоса фактов здесь — один и тот же приём, и
+   расходиться им нельзя. Подчерка нет нарочно: в Landing он метит
+   числа, которые читают по одному, а тут ячейка целиком отвечает
+   на курсор — красная полоса под каждой строкой превратила бы
+   спокойную полосу фактов в подсвеченную таблицу.
+
+   Раскладка от этого не двигается: JetBrains Mono моноширинный, ширина
+   знака от веса не зависит. Замер на 1440 — коробки всех трёх ячеек
+   и обеих строк в них совпадают до 0,00 px в покое и на ховере,
+   поэтому призрачный дубль, как у .num, здесь не нужен. */
+@media (hover: hover) and (pointer: fine) {
+  .factKey,
+  .factValue {
+    transition: font-variation-settings 180ms var(--ease-standard);
+  }
+
+  .fact:hover .factKey,
+  .fact:hover .factValue {
+    font-variation-settings: 'wght' 650;
+  }
+}
+
+/* Глобальный reduce-блок в tokens.css оставляет транзишенам 140ms —
+   здесь вес обязан переключаться мгновенно. */
+@media (prefers-reduced-motion: reduce) {
+  .factKey,
+  .factValue {
+    transition: none !important;
+  }
 }
 
 /* --- мобильная раскладка --------------------------------------------- */
