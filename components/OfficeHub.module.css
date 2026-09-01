@@ -243,57 +243,96 @@
   display: inline-flex;
 }
 
-/* Текстовый контрол с волосяной линией, не кнопка в коробке */
+/* Текстовый контрол, не кнопка в коробке. Крупнее прежнего (было 15px) —
+   это единственный явный call to action на экране офиса. */
 .planLink {
   appearance: none;
   border: 0;
-  border-bottom: 1px solid var(--alu);
   background: none;
-  padding: 0 0 3px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: var(--s-2);
+  gap: var(--s-3);
   color: var(--ink);
-  font: 500 15px/1.2 var(--sans);
+  font: 500 19px/1.2 var(--sans);
   cursor: pointer;
-  transition:
-    border-color var(--t-micro) var(--ease-out),
-    color var(--t-micro) var(--ease-out);
+  transition: color var(--motion-base) var(--ease-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .planLink:hover { border-bottom-color: var(--frit-deep); color: var(--frit-deep); }
+  .planLink:hover { color: var(--frit-deep); }
 }
 
-.planWrap:focus-within .planLink {
-  border-bottom-color: var(--frit-deep);
-  color: var(--frit-deep);
+.planWrap:focus-within .planLink { color: var(--frit-deep); }
+
+/* Волосяная линия под текстом — двумя слоями: серая лежит всегда,
+   красная рисуется поверх неё слева направо на ховере (scaleX, не
+   ширина — не триггерит layout). */
+.planText {
+  position: relative;
+  display: inline-block;
+  padding-bottom: 4px;
 }
 
-/* Бейдж «3D» — декоративный, aria-hidden в разметке */
+.planText::before,
+.planText::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+}
+
+.planText::before { background: var(--alu); }
+
+.planText::after {
+  background: var(--frit-deep);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-base) var(--ease-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .planLink:hover .planText::after { transform: scaleX(1); }
+}
+
+.planWrap:focus-within .planText::after { transform: scaleX(1); }
+
+/* Бейдж «3D» — декоративный, aria-hidden в разметке. На ховере заливается
+   красным целиком, а не просто краснеет рамкой — белый на --frit-deep
+   держит 6,1:1, см. design-system.md §1. */
 .planBadge {
   border: 1px solid var(--alu);
   border-radius: var(--radius);
-  padding: 2px var(--s-2);
+  padding: 4px var(--s-3);
   font: var(--label);
   letter-spacing: var(--tr-label);
   color: var(--ink-60);
+  background: transparent;
   transition:
-    border-color var(--t-micro) var(--ease-out),
-    color var(--t-micro) var(--ease-out);
+    border-color var(--motion-base) var(--ease-soft),
+    color var(--motion-base) var(--ease-soft),
+    background var(--motion-base) var(--ease-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .planWrap:hover .planBadge { border-color: var(--frit-deep); color: var(--frit-deep); }
+  .planWrap:hover .planBadge {
+    border-color: var(--frit-deep);
+    background: var(--frit-deep);
+    color: var(--white);
+  }
 }
 
 .planWrap:focus-within .planBadge {
   border-color: var(--frit-deep);
-  color: var(--frit-deep);
+  background: var(--frit-deep);
+  color: var(--white);
 }
 
-/* Подпись под ссылкой, появляется вместе с красным ховером — тот же
-   приём, что .moveLabel у кругов перехода ниже. */
+/* Подпись под ссылкой — тот же приём, что .moveLabel у кругов перехода
+   ниже, но двумя кусками: второй появляется с задержкой --stagger, чтобы
+   подпись читалась «по очереди», а не одним блоком. */
 .planSub {
   position: absolute;
   top: calc(100% + var(--s-2));
@@ -303,19 +342,25 @@
   letter-spacing: var(--tr-label);
   text-transform: uppercase;
   color: var(--frit-deep);
+  pointer-events: none;
+}
+
+.planSubStep {
+  display: inline-block;
   opacity: 0;
   transform: translateY(-4px);
-  pointer-events: none;
   transition:
-    opacity var(--t-micro) var(--ease-out),
-    transform var(--t-micro) var(--ease-out);
+    opacity var(--motion-base) var(--ease-soft),
+    transform var(--motion-base) var(--ease-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .planWrap:hover .planSub { opacity: 1; transform: translateY(0); }
+  .planWrap:hover .planSubStep { opacity: 1; transform: translateY(0); }
+  .planWrap:hover .planSubStep:nth-child(2) { transition-delay: var(--stagger); }
 }
 
-.planWrap:focus-within .planSub { opacity: 1; transform: translateY(0); }
+.planWrap:focus-within .planSubStep { opacity: 1; transform: translateY(0); }
+.planWrap:focus-within .planSubStep:nth-child(2) { transition-delay: var(--stagger); }
 
 /* --- переходы: только круг со стрелкой -------------------------------- */
 
@@ -339,10 +384,10 @@
   place-items: center;
   cursor: pointer;
   transition:
-    background var(--t-micro) var(--ease-out),
-    border-color var(--t-micro) var(--ease-out),
-    color var(--t-micro) var(--ease-out),
-    transform var(--t-micro) var(--ease-out);
+    background var(--motion-base) var(--ease-soft),
+    border-color var(--motion-base) var(--ease-soft),
+    color var(--motion-base) var(--ease-soft),
+    transform var(--motion-base) var(--ease-soft);
 }
 
 /* Обводка вокруг круга — отдельный слой, не border самого круга: border
@@ -358,7 +403,7 @@
   border: 1px solid var(--ink);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--t-micro) var(--ease-out);
+  transition: opacity var(--motion-base) var(--ease-soft);
 }
 
 .move:hover {
@@ -392,8 +437,8 @@
   opacity: 0;
   pointer-events: none;
   transition:
-    opacity var(--t-micro) var(--ease-out),
-    transform var(--t-micro) var(--ease-out);
+    opacity var(--motion-base) var(--ease-soft),
+    transform var(--motion-base) var(--ease-soft);
 }
 
 .move:hover .moveLabel,
@@ -413,7 +458,7 @@
 
 .arrowIcon {
   display: block;
-  transition: transform var(--t-micro) var(--ease-out);
+  transition: transform var(--motion-base) var(--ease-soft);
 }
 
 .move:hover .arrowIcon { transform: translateY(-3px); }

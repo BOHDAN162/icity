@@ -329,13 +329,18 @@ export default function OfficeHub({ active }: Props) {
                 onPointerEnter={prefetchPlan}
                 onFocus={prefetchPlan}
               >
-                Открыть планировку
+                {/* Волосяная линия — на обёртке текста, не на кнопке: под
+                    бейджем «3D» своя рамка, второй линии под ним не нужно.
+                    Красная линия рисуется поверх серой отдельным слоем. */}
+                <span className={styles.planText}>Открыть планировку</span>
                 <span className={styles.planBadge} aria-hidden="true">3D</span>
               </button>
               {/* Декоративная подпись, появляется вместе с красным ховером
-                  ссылки; доступное имя кнопки остаётся чистым. */}
+                  ссылки, по очереди — второй кусок с задержкой --stagger;
+                  доступное имя кнопки остаётся чистым. */}
               <span className={styles.planSub} aria-hidden="true">
-                Пять зон{NBSP}·{NBSP}объёмный план
+                <span className={styles.planSubStep}>Пять зон</span>
+                <span className={styles.planSubStep}>{NBSP}·{NBSP}Объёмный план</span>
               </span>
             </div>
           </div>
