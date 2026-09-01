@@ -13,6 +13,13 @@
    держится на нативном position: sticky, а кукольный дом — на
    position: fixed, и трансформированный предок убил бы обоих.
 
+   ТРЕКПАД СЮДА НЕ ЗАХОДИТ. Сглаживается только дискретное колесо мыши —
+   вход, который правда идёт рывками. У трекпада macOS инерция своя,
+   системная и композиторная; поверх неё сглаживать нечего, а отнять оно
+   может задержку, устойчивость к занятому главному потоку и главное —
+   «поставил пальцы, страница встала». Тип ввода решается один раз
+   на жест, см. looksLikeMouse ниже.
+
    ЧЕГО ЗДЕСЬ НЕТ НАМЕРЕННО:
    — тач не трогаем вовсе. Мы просто не слушаем touch-события, поэтому
      на телефоне не меняется ничего, включая pull-to-refresh и уборку
@@ -34,6 +41,9 @@ import {
   SCROLL_LINE_PX,
   SCROLL_MIN_STEP_DPX,
   SCROLL_SYNC_PX,
+  SCROLL_SMOOTH_TRACKPAD,
+  SCROLL_GESTURE_GAP_MS,
+  wheelLooksLikeMouse,
 } from '@/lib/motion';
 
 export default function SmoothScroll() {
@@ -58,6 +68,10 @@ export default function SmoothScroll() {
        Тот же приём, что с `over` в Cursor.tsx. */
     let cacheNode: EventTarget | null = null;
     let cacheOwner: Element | null = null;
+
+    /* Тип ввода текущего жеста и время последнего его события. */
+    let gestureIsMouse = false;
+    let lastWheelAt = -Infinity;
 
     const maxScroll = () =>
       Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -127,6 +141,15 @@ export default function SmoothScroll() {
     const onWheel = (e: WheelEvent) => {
       /* Ctrl+колесо — щипковый зум браузера, не прокрутка. */
       if (e.ctrlKey || e.defaultPrevented || e.deltaY === 0) return;
+
+      /* Новый жест — заново решаем, чем скроллят. Внутри жеста решение
+         не пересматривается ни разу: половина жеста нативно, половина
+         через сглаживание — это два привода, дерущиеся за одну
+         страницу. */
+      const now = e.timeStamp;
+      if (now - lastWheelAt > SCROLL_GESTURE_GAP_MS) gestureIsMouse = wheelLooksLikeMouse(e);
+      lastWheelAt = now;
+      if (!gestureIsMouse && !SCROLL_SMOOTH_TRACKPAD) return;
 
       /* Страница заперта — и на первом экране (HeroGate), и под обоими
          оверлеями (Contact). Оба ставят инлайновый overflow на body,
