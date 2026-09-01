@@ -242,8 +242,10 @@
   display: inline-flex;
 }
 
-/* Текстовый контрол, не кнопка в коробке. Крупнее прежнего (было 15px) —
-   это единственный явный call to action на экране офиса. */
+/* Текстовый контрол, не кнопка в коробке — единственный явный call to
+   action на экране офиса. Кегль и трекинг — токен --heading (тот же,
+   что у h3 по сайту): ближайшее совпадение к целевым 26px/-0.025em
+   из всех готовых связок, плюс резиновый clamp вместо фиксированного px. */
 .planLink {
   appearance: none;
   border: 0;
@@ -251,9 +253,10 @@
   padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-4);
   color: var(--ink);
-  font: 500 19px/1.2 var(--sans);
+  font: var(--heading);
+  letter-spacing: var(--tr-head);
   cursor: pointer;
   transition: color var(--motion-base) var(--ease-soft);
 }
@@ -264,47 +267,58 @@
 
 .planWrap:focus-within .planLink { color: var(--frit-deep); }
 
-/* Волосяная линия под текстом — двумя слоями: серая лежит всегда,
-   красная рисуется поверх неё слева направо на ховере (scaleX, не
-   ширина — не триггерит layout). */
+/* Волосяная линия под текстом — один слой, не два: в покое короткая
+   и серая (scaleX 0,22 — доля, не токенизируется, как и радиус дуги
+   на карте), на ховере вытягивается на всю ширину и красне́ет разом.
+   Сам текст на ховере сдвигается вправо на --s-1: ближайший шаг к
+   целевым 6px, специально меньше сдвига бейджа (--s-2) — иначе
+   пропадает ощущение «текст и бейдж едут с разной скоростью». */
 .planText {
   position: relative;
   display: inline-block;
-  padding-bottom: 4px;
+  padding-bottom: var(--s-2);
+  transition: transform var(--motion-slow) var(--ease-soft);
 }
 
-.planText::before,
 .planText::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 1px;
-}
-
-.planText::before { background: var(--alu); }
-
-.planText::after {
-  background: var(--frit-deep);
-  transform: scaleX(0);
+  height: 2px;
+  background: var(--alu);
+  transform: scaleX(0.22);
   transform-origin: left;
-  transition: transform var(--motion-base) var(--ease-soft);
+  transition:
+    transform var(--motion-slow) var(--ease-soft),
+    background-color var(--motion-base) var(--ease-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .planLink:hover .planText::after { transform: scaleX(1); }
+  .planLink:hover .planText { transform: translateX(var(--s-1)); }
+  .planLink:hover .planText::after {
+    transform: scaleX(1);
+    background-color: var(--frit-deep);
+  }
 }
 
-.planWrap:focus-within .planText::after { transform: scaleX(1); }
+.planWrap:focus-within .planText { transform: translateX(var(--s-1)); }
+.planWrap:focus-within .planText::after {
+  transform: scaleX(1);
+  background-color: var(--frit-deep);
+}
 
 /* Бейдж «3D» — декоративный, aria-hidden в разметке. На ховере заливается
    красным целиком, а не просто краснеет рамкой — белый на --frit-deep
-   держит 6,1:1, см. design-system.md §1. */
+   держит 6,1:1, см. design-system.md §1. Сдвиг вправо на --s-2 (точное
+   совпадение с целевыми 8px) и лёгкое увеличение — та же природа числа,
+   что и scale(1.25) у кругов перехода ниже: коэффициент масштаба токенами
+   не описан нигде в проекте, это не отступ и не кегль. */
 .planBadge {
   border: 1px solid var(--alu);
   border-radius: var(--radius);
-  padding: 4px var(--s-3);
+  padding: var(--s-2) var(--s-3);
   font: var(--label);
   letter-spacing: var(--tr-label);
   color: var(--ink-60);
@@ -312,7 +326,8 @@
   transition:
     border-color var(--motion-base) var(--ease-soft),
     color var(--motion-base) var(--ease-soft),
-    background var(--motion-base) var(--ease-soft);
+    background var(--motion-base) var(--ease-soft),
+    transform var(--motion-slow) var(--ease-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -320,6 +335,7 @@
     border-color: var(--frit-deep);
     background: var(--frit-deep);
     color: var(--white);
+    transform: translateX(var(--s-2)) scale(1.08);
   }
 }
 
@@ -327,6 +343,7 @@
   border-color: var(--frit-deep);
   background: var(--frit-deep);
   color: var(--white);
+  transform: translateX(var(--s-2)) scale(1.08);
 }
 
 /* Подпись под ссылкой — тот же приём, что .moveLabel у кругов перехода
