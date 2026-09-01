@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Literata, Golos_Text, JetBrains_Mono } from "next/font/google";
 import Preloader from "@/components/Preloader";
+import Cursor from "@/components/Cursor";
 import "./globals.css";
 
 /* ТИПОГРАФИКА ПРОЕКТА — три гарнитуры с жёстко разведёнными ролями.
@@ -75,6 +76,11 @@ export default function RootLayout({
       <body>
         <Preloader />
         {children}
+        {/* Свой курсор — последним узлом body и поверх всего (z-index
+            2000). Компонент сам решает, работать ли: на тач-устройстве
+            и при prefers-reduced-motion он не стартует и системную
+            стрелку не трогает. */}
+        <Cursor />
       </body>
     </html>
   );
