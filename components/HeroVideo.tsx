@@ -754,7 +754,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           <p className={styles.lead}>
             {[
               `244,1${NBSP}м² с отделкой от PRIDEX.`,
-              'Место, где решения становятся масштабными',
+              'Место, где решения становятся масштабными.',
             ].map((line, i) => (
               <span className={styles.leadLine} key={line}>
                 <span
