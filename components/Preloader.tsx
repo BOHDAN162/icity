@@ -6,10 +6,11 @@
    ЧТО ЭТО. Полноэкранная накладка поверх всего на первой загрузке.
    Слева лестница этажей 01→23 (буквальная метафора «подняться на 23»,
    не проценты), справа крупный номер этажа моно. По завершении двери-
-   створки расходятся в стороны, открывая {children} страницы, а лестница
-   и число растворяются ПОВЕРХ едущих створок, за 1100 мс из 1400 —
-   не «сначала погасли, потом открылось», а одно движение. Дальше
-   компонент размонтируется.
+   створки расходятся в стороны, открывая {children} страницы, и УНОСЯТ
+   ИНТЕРФЕЙС С СОБОЙ: лестница и число написаны на створках и стоят
+   неподвижно, пока уходящий край их срезает — не гаснут, а исчезают
+   по кромке. Устройство — в .module.css, .keep. Дальше компонент
+   размонтируется.
 
    ПРОГРЕСС — РЕАЛЬНЫЕ БАЙТЫ ДВУХ ВИДЕО ПЕРВОГО ЭКРАНА. Луп облаков плюс
    ролик полёта, вариант под текущую ориентацию; счётчик — lib/heroPreload.ts,
@@ -159,7 +160,6 @@ export default function Preloader() {
   const [visible, setVisible] = useState(true);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const uiRef = useRef<HTMLDivElement>(null);
   const numRef = useRef<HTMLSpanElement>(null);
   const doorLRef = useRef<HTMLDivElement>(null);
   const doorRRef = useRef<HTMLDivElement>(null);
@@ -215,13 +215,12 @@ export default function Preloader() {
         return;
       }
       window.setTimeout(() => {
-        /* Интерфейс растворяется В ОДИН КАДР СО СТВОРКАМИ, а не до них.
-           Прежде .uiOut ставился здесь же, но на 220 мс раньше и шёл
-           380 мс — лестница и число успевали погаснуть ещё при закрытых
-           створках, и открытие начиналось по пустому экрану. Теперь оба
-           класса ставятся вместе: 1100 мс растворения поверх 1400 мс
-           разъезда (длительности — в .module.css). */
-        uiRef.current?.classList.add(styles.uiOut);
+        /* Один класс на створку — и всё. Интерфейс отдельной команды
+           на уход не получает: он лежит внутри створок и уходит вместе
+           с их кромкой (разбор — .module.css, .keep). Прежде здесь
+           стоял ещё .uiOut, гасивший лестницу и число прозрачностью;
+           заказчик посмотрел живьём 1 сентября 2026 и попросил срез
+           кромкой, как в референсе. */
         doorLRef.current?.classList.add(styles.openL);
         doorRRef.current?.classList.add(styles.openR);
         /* 1550 = 1400 (длительность разъезда в .module.css) + запас,
@@ -294,15 +293,29 @@ export default function Preloader() {
     );
   }
 
+  /* ЛЕСТНИЦА ЛЕЖИТ ВНУТРИ ЛЕВОЙ СТВОРКИ, ЧИСЛО — ВНУТРИ ПРАВОЙ, и это
+     не вольность вёрстки, а весь приём: створка обрезает своё
+     содержимое (overflow: hidden), поэтому уходящий край СРЕЗАЕТ
+     интерфейс, а не гасит его. Стоять на месте, пока его срезают,
+     элементу даёт .keep — встречный сдвиг ровно на ход створки,
+     разбор в .module.css.
+     Координаты от этого не меняются: левая створка начинается на левой
+     кромке экрана, правая кончается на правой, поэтому `left: --pad-x`
+     у лестницы и `right: …` у числа значат ровно то же, что значили
+     на общем слое во весь экран. */
   return (
     <div ref={rootRef} className={styles.root} aria-hidden="true">
-      <div ref={doorLRef} className={`${styles.door} ${styles.doorL}`} />
-      <div ref={doorRRef} className={`${styles.door} ${styles.doorR}`} />
-      <div ref={uiRef} className={styles.ui}>
-        <div ref={ladderRef} className={styles.ladder}>{rungs}</div>
-        <div className={styles.big}>
-          <span ref={numRef} className={styles.num}>01</span>
-          <span className={`label ${styles.numLabel}`}>Этаж</span>
+      <div ref={doorLRef} className={`${styles.door} ${styles.doorL}`}>
+        <div className={styles.keep}>
+          <div ref={ladderRef} className={styles.ladder}>{rungs}</div>
+        </div>
+      </div>
+      <div ref={doorRRef} className={`${styles.door} ${styles.doorR}`}>
+        <div className={styles.keep}>
+          <div className={styles.big}>
+            <span ref={numRef} className={styles.num}>01</span>
+            <span className={`label ${styles.numLabel}`}>Этаж</span>
+          </div>
         </div>
       </div>
     </div>
