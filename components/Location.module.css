@@ -225,47 +225,54 @@
 }
 
 /* --- метки поверх карты -----------------------------------------------
-   YMapMarker ставит переданный узел так, что точка привязки приходится
-   на его центр. Поэтому у каждой метки собственная сетка: маркер по
-   центру, подпись рядом — и обе не ловят события, чтобы карта под ними
-   оставалась картой. */
+   ymaps3 ставит на географическую точку ЛЕВЫЙ ВЕРХНИЙ УГОЛ переданного
+   узла, а не его центр — замерено: метка уезжала на 86 px вправо.
+   Поэтому корень метки нулевого размера: у коробки 0×0 левый верхний
+   угол совпадает с центром, и обе трактовки якоря дают одно и то же.
+   Маркер и подпись висят на нём абсолютно. */
 
 .pinTower,
 .pinStation {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  white-space: nowrap;
+  position: relative;
+  width: 0;
+  height: 0;
   pointer-events: none;
-  /* сдвиг на половину маркера: узел центрируется по точке целиком,
-     вместе с подписью, и без этого метка уезжает влево */
-  transform: translateX(50%);
+}
+
+.pinDiamond,
+.pinCircle {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
 }
 
 .pinDiamond {
-  flex: 0 0 auto;
   width: 14px;
   height: 14px;
   background: var(--frit-deep);
-  transform: rotate(45deg);
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .pinCircle {
-  flex: 0 0 auto;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--white);
   /* чистый --frit живёт в линиях 1–2 px — правило 1 дизайн-системы */
   border: 2px solid var(--frit);
+  transform: translate(-50%, -50%);
 }
 
 .pinLabel,
 .pinLabelRed {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 14px;
+  transform: translateY(-50%);
+  white-space: nowrap;
   font: 500 10px / 1 var(--mono);
   letter-spacing: var(--tr-label);
-  /* подложка под подписью: на светлой схеме без неё буквы теряются
-     на белом полотне дороги */
+  /* подложка: на светлой схеме буквы теряются на белом полотне дороги */
   background: rgba(242, 244, 245, 0.88);
   padding: 3px 5px;
 }
@@ -276,6 +283,13 @@
 
 .pinLabelRed {
   color: var(--frit-deep);
+}
+
+/* Подпись слева от маркера — для точек у правого края кадра. */
+.pinFlip .pinLabel,
+.pinFlip .pinLabelRed {
+  inset-inline-start: auto;
+  inset-inline-end: 14px;
 }
 
 /* --- планшет и телефон: текст сверху, карта под ним -------------------- */

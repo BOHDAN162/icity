@@ -80,6 +80,10 @@ const CUSTOMIZATION: Customization = [
   /* Свои станции подписываем сами, чужие подписи транспорта не нужны. */
   { tags: { any: ['transit_location', 'transit_stop', 'transit_entrance'] }, elements: 'label', stylers: [{ visibility: 'off' }] },
 
+  /* Номера домов — вон. На кадре про башню «9с4», «34с10» и «13соор1»
+     читаются мусором и спорят с нашими подписями. */
+  { tags: { all: ['address'] }, elements: 'label', stylers: [{ visibility: 'off' }] },
+
   /* Остаются названия улиц и районов — ровно то, что несла схема. */
   { tags: { any: ['road', 'admin'] }, elements: 'label.text.fill', stylers: [{ color: INK_60 }] },
   { tags: { any: ['road', 'admin'] }, elements: 'label.text.outline', stylers: [{ color: WHITE }] },
@@ -158,9 +162,9 @@ function towerPin(): HTMLElement {
   return wrap;
 }
 
-function stationPin(label: string): HTMLElement {
+function stationPin(label: string, flip = false): HTMLElement {
   const wrap = document.createElement('div');
-  wrap.className = styles.pinStation;
+  wrap.className = `${styles.pinStation}${flip ? ` ${styles.pinFlip}` : ''}`;
   const dot = document.createElement('span');
   dot.className = styles.pinCircle;
   const text = document.createElement('span');
@@ -243,7 +247,9 @@ export default function YandexMap({ onFail, onReady }: Props) {
         /* Метки поверх связок. */
         const markers: YMapMarker[] = [
           new YMapMarker({ coordinates: ICITY, zIndex: 30 }, towerPin()),
-          new YMapMarker({ coordinates: MCD, zIndex: 20 }, stationPin('МОСКВА-СИТИ · ТЕСТОВСКАЯ · 1 МИН')),
+          /* Своё имя станции короткое: «Москва-Сити» карта подписывает
+             сама, а 254 px подписи упирались в правый край кадра. */
+          new YMapMarker({ coordinates: MCD, zIndex: 20 }, stationPin('ТЕСТОВСКАЯ · 1 МИН')),
           new YMapMarker({ coordinates: SHELEPIKHA, zIndex: 20 }, stationPin('ШЕЛЕПИХА · 5 МИН')),
         ];
         markers.forEach((m) => map!.addChild(m));
