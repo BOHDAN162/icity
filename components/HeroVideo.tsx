@@ -61,8 +61,8 @@ import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
 import {
-  heroPreloadServerSnapshot, heroPreloadSnapshot, SOURCES, startHeroPreload,
-  subscribeHeroPreload, type HeroVariant,
+  heroPreloadServerSnapshot, heroPreloadSnapshot, releaseHeroPreload, SOURCES,
+  startHeroPreload, subscribeHeroPreload, type HeroVariant,
 } from '@/lib/heroPreload';
 import styles from './HeroVideo.module.css';
 
@@ -165,6 +165,11 @@ type VariantKey = HeroVariant;
    решает, когда снять луп из потока, там — за сколько проявить ролик.
    Правишь одно — правь второе. */
 const CROSS_MS = 250;
+/* Запас на кадр композитора: снимать луп ровно в миллисекунду конца
+   перехода нельзя — округление вниз оставило бы ролик на 0,99
+   непрозрачности над голым постером на один кадр. Та же дисциплина,
+   что у «1550 = 1400 + запас» в Preloader.tsx. */
+const CROSS_GUARD_MS = 80;
 
 const posterSrcSet = (key: 'hero-desktop' | 'hero-mobile', widths: readonly number[], ext: 'avif' | 'webp') =>
   widths.map((w) => `${POSTER_DIR}/${key}-${w}.${ext} ${w}w`).join(', ');
@@ -248,6 +253,16 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     () => heroPreloadSnapshot(variant),
     heroPreloadServerSnapshot,
   );
+
+  /* fetch не задался — возвращаемся к прежней разметке с <source>.
+     Кнопку в этом случае не держим: готовность считает сам браузер,
+     а страхует её PLAY_TIMEOUT_MS, как и до этой правки. */
+  const legacy = preload.failed;
+
+  /* «Войти» заперт, пока ролик не лёг в память целиком. Клик раньше
+     времени привёл бы ровно к тому, ради чего всё затевалось, — к паузе
+     на буферизации посреди полёта. */
+  const waiting = !reduced && !legacy && preload.flightUrl === null;
 
   const [started, setStarted] = useState(false);
   const [playingVisible, setPlayingVisible] = useState(false);
@@ -360,7 +375,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     crossTimerRef.current = window.setTimeout(() => {
       idleRef.current?.pause();
       setIdleGone(true);
-    }, CROSS_MS);
+    }, CROSS_MS + CROSS_GUARD_MS);
     startTicking();
   }, [startTicking]);
 
@@ -409,7 +424,10 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     const unIdle = wire(idleRef.current, onIdleError);
     const unMain = wire(videoRef.current, onVideoError);
     return () => { unIdle(); unMain(); };
-  }, [variant, reduced, idleBroken, onIdleError, onVideoError]);
+  }, [
+    variant, reduced, idleBroken, legacy,
+    preload.idleUrl, preload.flightUrl, onIdleError, onVideoError,
+  ]);
 
   /* Страховка занавеса: если сигнал не пришёл, копия обязана появиться
      сама — иначе первый экран остался бы пустым навсегда. */
@@ -424,6 +442,10 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
     audioRef.current?.pause();
+    /* Только с настоящего размонтирования, после финала: doneRef отсекает
+       двойное монтирование StrictMode, иначе URL отобрались бы у живого
+       плеера ещё до первого клика. */
+    if (doneRef.current) releaseHeroPreload();
   }, []);
 
   const sources = SOURCES[variant];
@@ -446,13 +468,17 @@ export default function HeroVideo({ onLift, onDone }: Props) {
         />
       </picture>
 
-      {/* Idle-луп: облака живут до клика. Файлов может не быть —
-          error на последнем source прячет элемент, остаётся постер. */}
-      {!reduced && !idleBroken && (
+      {/* Idle-луп: облака живут до клика и ещё CROSS_MS после него —
+          пока ролик проявляется поверх. Потом idleGone снимает его
+          из потока: декодировать 20 с облаков за кадром полёта незачем.
+          Обычный путь — готовый blob из heroPreload; legacy — прежняя
+          пара <source>, если fetch не задался. */}
+      {!reduced && !idleBroken && !idleGone && (preload.idleUrl || legacy) && (
         <video
-          key={`idle-${variant}`}
+          key={`idle-${variant}-${preload.idleUrl ? 'blob' : 'src'}`}
           ref={idleRef}
           className={styles.idle}
+          src={preload.idleUrl ?? undefined}
           autoPlay
           muted
           loop
@@ -462,19 +488,25 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           aria-hidden="true"
           onError={onIdleError}
         >
-          <source src={sources.idleHevc.src} type={sources.idleHevc.type} />
-          <source src={sources.idleH264.src} type={sources.idleH264.type} onError={onIdleError} />
+          {legacy && (
+            <>
+              <source src={sources.idle[0].src} type={sources.idle[0].type} />
+              <source src={sources.idle[1].src} type={sources.idle[1].type} onError={onIdleError} />
+            </>
+          )}
         </video>
       )}
 
-      {/* Основной ролик. preload="auto" сознательно: к клику файл в кэше,
-          полёт начинается без паузы. HEVC-версии лёгкие: 2,5 МБ десктоп,
-          1,8 МБ мобильный. */}
-      {!reduced && (
+      {/* Основной ролик. Появляется в разметке уже готовым: blob-URL
+          выдаётся, когда файл скачан целиком, — полёт начинается без
+          паузы и не может встать посреди. HEVC-версии лёгкие: 2,5 МБ
+          десктоп, 1,8 МБ мобильный. */}
+      {!reduced && (preload.flightUrl || legacy) && (
         <video
-          key={`flight-${variant}`}
+          key={`flight-${variant}-${preload.flightUrl ? 'blob' : 'src'}`}
           ref={videoRef}
           className={`${styles.video} ${playingVisible ? styles.videoOn : ''}`}
+          src={preload.flightUrl ?? undefined}
           muted
           playsInline
           preload="auto"
@@ -484,8 +516,12 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           onEnded={finish}
           onError={onVideoError}
         >
-          <source src={sources.hevc.src} type={sources.hevc.type} />
-          <source src={sources.h264.src} type={sources.h264.type} onError={onVideoError} />
+          {legacy && (
+            <>
+              <source src={sources.flight[0].src} type={sources.flight[0].type} />
+              <source src={sources.flight[1].src} type={sources.flight[1].type} onError={onVideoError} />
+            </>
+          )}
         </video>
       )}
 
@@ -548,27 +584,58 @@ export default function HeroVideo({ onLift, onDone }: Props) {
             </span>
           </h1>
 
+          {/* Абзац выезжает СНИЗУ ВВЕРХ ИЗ-ПОД МАСКИ, строка за строкой —
+              так в референсе. Каждая строка живёт в своём overflow: hidden,
+              внутренний span стартует ниже маски и поднимается на место:
+              на середине видны только верхушки букв, обрезанные снизу
+              краем маски. Отсюда двухслойная разметка — маску и сдвиг
+              нельзя повесить на один узел, overflow обрезал бы сам себя.
+              Строки разбиты руками, а не <br>: каждой нужна своя маска. */}
           <p className={styles.lead}>
-            244,1{NBSP}м² с отделкой PRIDEX.
-            <br />
-            Ноль капитальных затрат до въезда.
+            {[
+              `244,1${NBSP}м² с отделкой PRIDEX.`,
+              'Ноль капитальных затрат до въезда.',
+            ].map((line, i) => (
+              <span className={styles.leadLine} key={line}>
+                <span
+                  className={styles.leadInner}
+                  style={{ '--i': i } as CSSProperties}
+                >
+                  {line}
+                </span>
+              </span>
+            ))}
           </p>
 
+          {/* Кнопка заперта, пока ролик не догрузился: предохранитель
+              прелоадера на 8 с уводит створки раньше, чем приезжает
+              ролик, и без замка первый же клик встал бы на буферизации.
+              Индикатор — мягкая полоса по нижней кромке, не спиннер:
+              спиннера в системе нет, а полоса — та же рельса, что
+              у лифта. Надпись НЕ гасится: --ink на этом постере
+              единственный проходящий по контрасту цвет. */}
           <div className={styles.actions}>
             <button
               type="button"
-              className={`btn ${styles.enterBtn}`}
+              className={[
+                'btn', styles.enterBtn, waiting ? styles.enterWaiting : '',
+              ].filter(Boolean).join(' ')}
               onClick={() => enter(true)}
               onPointerEnter={warmAmbience}
               onFocus={warmAmbience}
-              disabled={started}
+              disabled={started || waiting}
+              aria-busy={waiting}
             >
               <span className={styles.enterFill} aria-hidden="true" />
               <span className={styles.enterLabel}>
                 <span className={styles.enterLabelDefault}>Войти</span>
                 <span className={styles.enterLabelHover} aria-hidden="true">Войти</span>
               </span>
+              <span className={styles.enterWait} aria-hidden="true" />
             </button>
+            <p className={styles.sr} role="status">
+              {waiting ? 'Ролик загружается' : 'Вход готов'}
+            </p>
           </div>
         </div>
 
@@ -581,21 +648,16 @@ export default function HeroVideo({ onLift, onDone }: Props) {
               type="button"
               className={styles.mute}
               onClick={() => enter(false)}
-              disabled={started}
+              disabled={started || waiting}
+              aria-busy={waiting}
             >
-              <span className={styles.muteIcon} aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
-                  <path
-                    d="M4 9v6h4l5 4V5L8 9H4zm13 0 4 6m0-6-4 6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              Войти без звука
+              {/* Только текст с подчёркиванием, как в референсе. Иконки
+                  и круга нет нарочно: круг читался как вторая кнопка
+                  рядом с «Войти», хотя это вход того же веса, только
+                  тише. Подчёркивание живёт на внутреннем span, а не на
+                  кнопке: у кнопки 44 px цели нажатия, и линия по её
+                  нижней кромке висела бы заметно ниже текста. */}
+              <span className={styles.muteLabel}>Войти без звука</span>
             </button>
           </div>
         )}
