@@ -11,8 +11,7 @@
    формы: чек собирается из точек растра фритты на холсте, тот же язык,
    что у растра по всему сайту, только покадрово через canvas.
 
-   TODO(бэкенд): lib/submitLead.ts — заглушка на 900ms, реального
-   эндпоинта в проекте ещё нет. */
+   Отправка — lib/submitLead.ts → app/api/lead/route.ts → Telegram-группа. */
 
 'use client';
 
@@ -24,6 +23,8 @@ import { submitLead } from '@/lib/submitLead';
 type FieldName = 'name' | 'contact';
 type FieldErrors = Partial<Record<FieldName, string>>;
 type Status = 'idle' | 'loading' | 'success';
+
+const SUBMIT_ERROR_MESSAGE = 'Не получилось отправить. Попробуйте ещё раз или позвоните.';
 
 const REQUIRED_MESSAGES: Record<FieldName, string> = {
   name: 'Как к вам обращаться?',
@@ -83,6 +84,7 @@ export default function Contact() {
   const [comment, setComment] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>('idle');
+  const [submitError, setSubmitError] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   function validate(field: FieldName, value: string) {
@@ -108,8 +110,14 @@ export default function Contact() {
       return;
     }
     setStatus('loading');
-    await submitLead({ name, contact, comment });
-    setStatus('success');
+    setSubmitError(false);
+    try {
+      await submitLead({ name, contact, comment });
+      setStatus('success');
+    } catch {
+      setStatus('idle');
+      setSubmitError(true);
+    }
   }
 
   useEffect(() => {
@@ -267,6 +275,12 @@ export default function Contact() {
                 'Записаться на просмотр'
               )}
             </button>
+
+            {submitError && (
+              <p className={styles.error} role="alert">
+                {SUBMIT_ERROR_MESSAGE}
+              </p>
+            )}
 
             <p className={styles.legal}>
               Нажимая «Записаться», вы соглашаетесь с{' '}

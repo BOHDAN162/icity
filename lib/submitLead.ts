@@ -1,9 +1,9 @@
 /* iCITY 113Н — отправка заявки с формы записи на просмотр.
    Путь в проекте: lib/submitLead.ts
 
-   TODO(бэкенд): сейчас это заглушка — резолвится через 900ms без
-   сетевого запроса. Заменить на реальный API-роут или интеграцию
-   (Telegram/почта), когда бэкенд для лида появится. */
+   Уходит на app/api/lead/route.ts, который пересылает заявку в Telegram-группу
+   через Bot API. Токен и chat_id — переменные окружения TELEGRAM_BOT_TOKEN /
+   TELEGRAM_CHAT_ID, серверные, без NEXT_PUBLIC_. */
 
 export type LeadPayload = {
   name: string;
@@ -12,5 +12,12 @@ export type LeadPayload = {
 };
 
 export async function submitLead(payload: LeadPayload): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 900));
+  const response = await fetch('/api/lead', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error('Lead submission failed');
+  }
 }
