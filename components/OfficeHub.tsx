@@ -133,28 +133,28 @@ const ZONES: Record<ZoneId, Zone> = {
     label: 'Ресепшн',
     alt: 'Ресепшн с рифлёной плиткой и отделкой из светлого дуба',
     side: 'left',
-    lines: ['Отделка PRIDEX выполнена.', 'Мебель — по готовому дизайн-проекту.'],
+    lines: ['Свет, материалы, форма —\nвсё готово принимать гостей'],
   },
   corridor: {
     id: 'corridor',
     label: 'Коридор',
     alt: 'Коридор со стеклянными перегородками и дубовым полом',
     side: 'right',
-    lines: ['Стеклянные перегородки, дубовый пол.', 'Проект и согласования сделаны.'],
+    lines: [],
   },
   openspace: {
     id: 'openspace',
     label: 'Опенспейс',
     alt: 'Опенспейс на 26 рабочих мест с панорамным остеклением',
     side: 'left',
-    lines: ['26 рабочих мест.', 'Мебель входит в аренду, докупать нечего.'],
+    lines: ['26 рабочих мест.'],
   },
   meeting_lg: {
     id: 'meeting_lg',
     label: 'Переговорная',
     alt: 'Переговорная на шесть человек с круглым дубовым столом',
     side: 'right',
-    lines: ['На 6–8 человек.', 'Срок до въезда: день обращения, а не месяцы.'],
+    lines: ['На 6–8 человек.'],
   },
   kitchen: {
     id: 'kitchen',
@@ -309,7 +309,11 @@ export default function OfficeHub({ active }: Props) {
             <p className={`label ${styles.eyebrow}`}>
               Помещение 113Н{NBSP}·{NBSP}244,1{NBSP}м²
             </p>
-            <h2 className={styles.zoneName}>{zone.label}</h2>
+            {/* У зоны без описания (коридор) заголовок сам держит отбивку
+                до «Открыть планировку» — иначе кнопка липнет к имени. */}
+            <h2 className={`${styles.zoneName} ${zone.lines.length === 0 ? styles.zoneNameBare : ''}`}>
+              {zone.label}
+            </h2>
 
             {zone.zero && (
               <p className={styles.zeroRow}>
