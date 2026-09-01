@@ -1,8 +1,29 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { EB_Garamond } from "next/font/google";
 import Preloader from "@/components/Preloader";
 import "./globals.css";
+
+/* ВТОРАЯ ГАРНИТУРА — осознанное исключение из «Чего на сайте не будет»
+   (AGENTS.md), снятое заказчиком под первый экран. Живёт ровно в двух
+   местах: заголовок и знак-столбик в HeroVideo.module.css. Условия,
+   на которых она здесь:
+   - один вес 400 и только normal. Курсив система запрещает, а static-
+     инстанс его физически не отдаёт — нарушить нечем;
+   - сабсеты ровно под то, чем она набрана: кириллица для заголовка,
+     латиница для знака «iCITY / SPACE TOWER»;
+   - третья точка применения = исключение обсуждается заново.
+   Next 16 — свежая мажорная версия, сигнатура сверена по
+   node_modules/next/dist/compiled/@next/font/dist/google/index.d.ts,
+   а не по памяти. */
+const ebGaramond = EB_Garamond({
+  subsets: ["cyrillic", "latin"],
+  weight: "400",
+  style: "normal",
+  display: "swap",
+  variable: "--font-eb-garamond",
+});
 
 export const metadata: Metadata = {
   title: "Офис 244,1 м² на 23 этаже в iCITY — Space Tower, Москва-Сити",
@@ -21,7 +42,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ru" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html
+      lang="ru"
+      className={`${GeistSans.variable} ${GeistMono.variable} ${ebGaramond.variable}`}
+    >
       <body>
         <Preloader />
         {children}

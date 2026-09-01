@@ -41,7 +41,35 @@
 import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
+import {
+  getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
+} from '@/lib/curtain';
 import styles from './HeroVideo.module.css';
+
+/* U+202F, узкий неразрывный: число с единицей и разряды (AGENTS.md).
+   Экранированной последовательностью, а не литералом — литерал
+   не переживает перенос файла между редакторами. */
+const NBSP = ' ';
+
+/* Страховка на сигнал занавеса: копия первого экрана обязана появиться,
+   даже если прелоадер до openCurtain() не дошёл — его сняли из layout,
+   sessionStorage бросил исключение, эффект не отработал. 6 с с запасом
+   больше полного цикла прелоадера (1900 + 220 + 1550 = 3670 мс).
+   Та же дисциплина, что у PLAY_TIMEOUT_MS: у любого отказа есть выход. */
+const CURTAIN_FALLBACK_MS = 6000;
+
+/* Гашение амбиента к финалу ролика, в секундах currentTime. */
+const AUDIO_FADE_S = 0.9;
+
+/* Амбиент первого экрана. В четырёх mp4 полёта звуковой дорожки нет
+   (ffprobe: только video-поток), а пережимать их нельзя — вес и качество
+   утверждены, и каждый заезд mp4 остаётся в истории git навсегда
+   (AGENTS.md, «Hero-видео»). Поэтому звук едет отдельным <audio>
+   и синхронизируется от того же video.currentTime, что и всё остальное.
+   Пока файла нет — null: строка выбора звука не рендерится вовсе,
+   предлагать «Войти без звука» там, где звука нет, — обман.
+   Появится файл — меняется одна эта константа. */
+const AMBIENCE: { src: string; type: string } | null = null;
 
 /* Отметки ролика — в КАДРАХ, не в округлённых секундах. Рендер v3:
    24 fps, 235 кадров. На кадре 185 камера входит в «трамплин» и
@@ -126,6 +154,9 @@ type Props = {
 export default function HeroVideo({ onLift, onDone }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const idleRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  /** выбор звука, сделанный кнопкой входа; читается из rAF */
+  const soundOnRef = useRef(false);
   const rafRef = useRef(0);
   const failTimerRef = useRef(0);
   const doneRef = useRef(false);
@@ -143,6 +174,14 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     getPortraitSnapshot,
     getPortraitServerSnapshot,
   );
+
+  /* Занавес прелоадера. Один переход false → true за загрузку страницы,
+     один ре-рендер: дальше проявление ведёт CSS, React не участвует. */
+  const curtain = useSyncExternalStore(
+    subscribeCurtain,
+    getCurtainSnapshot,
+    getCurtainServerSnapshot,
+  );
   /* после клика вариант заморожен, до — следует за ориентацией */
   const [lockedVariant, setLockedVariant] = useState<VariantKey | null>(null);
   const variant: VariantKey = lockedVariant ?? (portrait ? 'mobile' : 'desktop');
@@ -156,6 +195,9 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     doneRef.current = true;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+    /* Снятие <audio> из DOM не глушит воспроизведение надёжно — гасим
+       явно, и здесь, потому что сюда сходятся все пять отказов. */
+    audioRef.current?.pause();
     onDone();
   }, [onDone]);
 
@@ -175,6 +217,15 @@ export default function HeroVideo({ onLift, onDone }: Props) {
         : FALLBACK_DURATION;
       const p = clamp01((v.currentTime - LIFT_START) / (duration - LIFT_START));
       onLift(easeInOutCubic(p));
+      /* Амбиент гаснет к финалу тем же currentTime, что ведёт выезд.
+         Отдельного таймера нет нарочно: вкладка в фоне разъехалась бы
+         с картинкой — та же причина, по которой весь полёт считается
+         от currentTime. Одна запись свойства на кадр, ре-рендеров нет. */
+      const a = audioRef.current;
+      if (a && soundOnRef.current) {
+        const left = duration - v.currentTime;
+        a.volume = left < AUDIO_FADE_S ? clamp01(left / AUDIO_FADE_S) : 1;
+      }
       if (v.ended) { finish(); return; }
       if (v.paused) v.play().catch(finish);
       rafRef.current = requestAnimationFrame(tick);
@@ -182,10 +233,26 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     rafRef.current = requestAnimationFrame(tick);
   }, [onLift, finish]);
 
-  const enter = useCallback(() => {
+  /* ВНИМАНИЕ при правке вызовов: onClick={enter} передал бы сюда
+     MouseEvent — истинный объект, и любой клик уехал бы «со звуком».
+     Обе кнопки зовут enter через стрелку, с явным аргументом. */
+  const enter = useCallback((withSound: boolean) => {
     if (started || doneRef.current) return;
     setStarted(true);
     setLockedVariant(variant);
+    soundOnRef.current = withSound;
+
+    /* Звук разблокируется ТОЛЬКО синхронно внутри жеста. Вызов из
+       onPlaying уже вне жеста — Safari и iOS его отклонят, и полёт
+       уедет молча. Поэтому audio.play() стоит здесь, рядом с
+       video.play(), а его reject проглатывается: молчащий первый экран
+       лучше сорванного полёта. В цепочку отказов видео звук не входит. */
+    const a = audioRef.current;
+    if (withSound && a) {
+      a.volume = 1;
+      a.currentTime = 0;
+      a.play().catch(() => {});
+    }
 
     const v = videoRef.current;
     if (reduced || !v || brokenRef.current) { finish(); return; }
@@ -194,6 +261,15 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     failTimerRef.current = window.setTimeout(finish, PLAY_TIMEOUT_MS);
     v.play().catch(finish);
   }, [started, reduced, finish, variant]);
+
+  /* Прогрев амбиента по наведению и фокусу: preload="none" держит его
+     вне бюджета первого экрана, а к клику файл уже едет. На тач-экране
+     наведения нет, и загрузка стартует с клика — ролик идёт 9,8 с,
+     сотня-другая килобайт успевает задолго до того, как понадобится. */
+  const warmAmbience = useCallback(() => {
+    const a = audioRef.current;
+    if (a && a.preload === 'none') { a.preload = 'auto'; a.load(); }
+  }, []);
 
   const onPlaying = useCallback(() => {
     if (doneRef.current) return;
@@ -249,9 +325,18 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     return () => { unIdle(); unMain(); };
   }, [variant, reduced, idleBroken, onIdleError, onVideoError]);
 
+  /* Страховка занавеса: если сигнал не пришёл, копия обязана появиться
+     сама — иначе первый экран остался бы пустым навсегда. */
+  useEffect(() => {
+    if (curtain) return undefined;
+    const t = window.setTimeout(openCurtain, CURTAIN_FALLBACK_MS);
+    return () => window.clearTimeout(t);
+  }, [curtain]);
+
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+    audioRef.current?.pause();
   }, []);
 
   const sources = SOURCES[variant];
@@ -317,29 +402,98 @@ export default function HeroVideo({ onLift, onDone }: Props) {
         </video>
       )}
 
-      <div className={`${styles.overlay} ${playingVisible ? styles.overlayOff : ''}`}>
-        <div className={styles.copy}>
-          <p className={styles.eyebrow}>iCITY · Space Tower · 23 этаж</p>
+      {/* Амбиент отдельным элементом, не дорожкой в mp4: ролики
+          пережимать нельзя. preload="none" — вне бюджета первого
+          экрана, прогрев по наведению на «Войти». */}
+      {AMBIENCE && !reduced && (
+        <audio ref={audioRef} preload="none" aria-hidden="true">
+          <source src={AMBIENCE.src} type={AMBIENCE.type} />
+        </audio>
+      )}
+
+      <div
+        className={[
+          styles.overlay,
+          curtain ? styles.revealed : '',
+          playingVisible ? styles.overlayOff : '',
+        ].filter(Boolean).join(' ')}
+      >
+        <div className={styles.stack}>
+          {/* Знак-столбик: те же три факта, что стояли одной строкой,
+              разложенные в три — как «111 / W / 57» в референсе.
+              text-transform нет нарочно: он превратил бы бренд в «ICITY». */}
+          <p className={styles.mark}>
+            iCITY
+            <br />
+            SPACE TOWER
+            <br />
+            23{NBSP}ЭТАЖ
+          </p>
+
+          {/* Три строки одним блоком: в референсе они проявляются
+              синхронно, не по буквам и не по строкам. Поэтому один
+              анимируемый элемент и <br>, а не span-ы.
+              В разметке текст СТРОЧНЫЙ, заглавные делает CSS: скринридер
+              читает нормальную фразу, а не побуквенную аббревиатуру. */}
           <h1 className={styles.title}>
-            В самом центре
+            В самом
+            <br />
+            центре
             <br />
             деловой Москвы
           </h1>
-          <div className={styles.divider} aria-hidden="true" />
+
           <p className={styles.lead}>
-            244,1 м² с отделкой от PRIDEX.
+            244,1{NBSP}м² с отделкой PRIDEX.
+            <br />
+            Ноль капитальных затрат до въезда.
           </p>
+
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={`btn ${styles.enterBtn}`}
+              onClick={() => enter(true)}
+              onPointerEnter={warmAmbience}
+              onFocus={warmAmbience}
+              disabled={started}
+            >
+              <span className={styles.enterFill} aria-hidden="true" />
+              <span className={styles.enterLabel}>
+                <span className={styles.enterLabelDefault}>Войти</span>
+                <span className={styles.enterLabelHover} aria-hidden="true">Войти</span>
+              </span>
+            </button>
+          </div>
         </div>
 
-        <div className={styles.enter}>
-          <button type="button" className={`btn ${styles.enterBtn}`} onClick={enter} disabled={started}>
-            <span className={styles.enterFill} aria-hidden="true" />
-            <span className={styles.enterLabel}>
-              <span className={styles.enterLabelDefault}>Войти</span>
-              <span className={styles.enterLabelHover} aria-hidden="true">Войти</span>
-            </span>
-          </button>
-        </div>
+        {/* Выбор звука — второй вход, а не переключатель: клик по нему
+            и есть тот жест, внутри которого браузер разрешает звук.
+            Одно решение — один жест, лишнего состояния между ними нет. */}
+        {AMBIENCE && !reduced && (
+          <div className={styles.sound}>
+            <button
+              type="button"
+              className={styles.mute}
+              onClick={() => enter(false)}
+              disabled={started}
+            >
+              <span className={styles.muteIcon} aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
+                  <path
+                    d="M4 9v6h4l5 4V5L8 9H4zm13 0 4 6m0-6-4 6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+              Войти без звука
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

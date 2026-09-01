@@ -28,6 +28,7 @@
 import {
   useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
+import { openCurtain } from '@/lib/curtain';
 import styles from './Preloader.module.css';
 
 const DURATION_MS = 1900;
@@ -85,6 +86,9 @@ export default function Preloader() {
   useEffect(() => {
     const forcedByHardReload = hasHardReloadFlag();
     if (!forcedByHardReload && sessionStorage.getItem(STORAGE_KEY)) {
+      /* Занавеса не будет вовсе — открываем его сразу, иначе копия
+         первого экрана осталась бы на нуле непрозрачности навсегда. */
+      openCurtain();
       /* setState вызывается из колбэка, а не синхронно из тела эффекта —
          так требует react-hooks/set-state-in-effect; микротаск успевает
          до отрисовки кадра, вспышки интерфейса нет. */
@@ -105,6 +109,13 @@ export default function Preloader() {
     };
 
     const open = () => {
+      /* Занавес объявляется открытым ЗДЕСЬ, а не после разъезда створок:
+         следом идут 220 мс на .uiOut, и задержка проявления копии
+         (--hero-in-delay, 200 мс) как раз укладывается в эту паузу —
+         створки трогаются ровно тогда, когда копия начинает проявляться.
+         Правишь одно из двух чисел — сверяйся со вторым.
+         Ветка reduced проходит здесь же, поэтому сигнал приходит всегда. */
+      openCurtain();
       if (reduced) {
         rootRef.current?.classList.add(styles.fade);
         window.setTimeout(finish, 260);

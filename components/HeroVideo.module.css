@@ -51,12 +51,21 @@
   opacity: 1;
 }
 
-/* Оверлей: копия сверху по центру, кнопка — в геометрическом центре
-   экрана. Слой не ловит указатель, кнопка возвращает его себе сама. */
+/* Оверлей: знак → заголовок → абзац → кнопка одной колонкой по центру,
+   выбор звука прижат к низу экрана — композиция референса.
+   Сетка 1fr auto, а не абсолютные проценты: строк стало пять, и прежний
+   «.enter { top: 69% }» на низком окне клал кнопку прямо на абзац.
+   Слой не ловит указатель, кнопки возвращают его себе сами. */
 .overlay {
   position: absolute;
   inset: 0;
   z-index: 5;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  justify-items: center;
+  padding: clamp(56px, 10svh, 128px) var(--pad-x) clamp(20px, 4svh, 40px);
+  text-align: center;
   pointer-events: none;
   transition: opacity var(--t-scene) ease, visibility 0s;
 }
@@ -67,45 +76,59 @@
   transition: opacity var(--t-scene) ease, visibility 0s var(--t-scene);
 }
 
-.copy {
-  text-align: center;
-  padding: clamp(96px, 27svh, 240px) var(--pad-x) 0;
+.stack {
+  display: grid;
+  justify-items: center;
 }
 
-.eyebrow {
-  font: var(--label);
-  letter-spacing: var(--tr-label);
-  text-transform: uppercase;
-  color: var(--ink-60);
-  margin: 0 0 var(--s-4);
-}
+/* ЦВЕТ ТЕКСТА ПЕРВОГО ЭКРАНА — ТОЛЬКО --ink, И ЭТО ЗАМЕР, А НЕ ВКУС.
+   Постер облаков светлый целиком: самый тёмный пиксель обоих постеров —
+   светло-серый. Замер по реальным пикселям (sRGB, относительная
+   яркость, сетка 10×6):
+     --ink    : худ 13,7 · сред 11,2 · лучш 5,8 (десктоп) / 4,4 (мобайл)
+     --ink-60 : худ 4,85 · сред 3,95 · лучш 2,05 — НЕ ПРОХОДИТ НИГДЕ
+     --alu    : 1,05–2,23 — границы не видно вовсе
+   Поэтому здесь нет ни одного --ink-60, хотя надзаголовок и подзаголовок
+   по системе были бы им. Тише они кеглем, трекингом и капителью,
+   а не цветом — тот же вывод и та же правка, что у .eyebrow в OfficeHub.
+   Вуаль под текстом не годится: маска поверх полноэкранного кадра
+   перерисовывает его на каждом тике (AGENTS.md). */
 
-.title {
-  font: var(--display-xl);
-  letter-spacing: var(--tr-xl);
+/* Знак-столбик. line-height ПОСЛЕ font: шорткат font сбрасывает его. */
+.mark {
+  font: var(--hero-mark);
+  line-height: 2.0;
+  letter-spacing: var(--tr-mark);
   color: var(--ink);
-  margin: 0 0 var(--s-4);
+  margin: 0 0 var(--s-7);
 }
 
-.divider {
-  width: min(420px, 100%);
-  height: 0;
-  margin: 0 auto var(--s-5);
-  border-top: 2px dotted var(--white);
+/* Заголовок — EB Garamond 400, три строки, ЗАГЛАВНЫМИ вразрядку.
+   Заглавные делает CSS, а не разметка: в DOM остаётся нормальная фраза
+   для скринридера.
+   Трекинг положительный, в отличие от всей остальной системы:
+   --tr-xl (−0.045em) — поправка под плотный набор Geist, Garamond
+   и так расставлен свободно, а минус на прописных их слепляет.
+   Хвостовой отступ последней буквы компенсирован text-indent, иначе
+   центрированный блок кажется сдвинутым влево на половину трекинга. */
+.title {
+  font: var(--hero-title);
+  letter-spacing: var(--tr-hero);
+  text-indent: var(--tr-hero);
+  text-transform: uppercase;
+  color: var(--ink);
+  margin: 0 0 var(--s-6);
 }
 
 .lead {
   font: var(--lead);
   letter-spacing: var(--tr-lead);
-  color: var(--ink-60);
-  margin: 0;
+  color: var(--ink);
+  max-width: 34rem;
+  margin: 0 0 var(--s-7);
 }
 
-.enter {
-  position: absolute;
-  top: 69%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.actions {
   pointer-events: auto;
 }
 
@@ -178,7 +201,137 @@ button.enterBtn {
   }
 }
 
+/* Выбор звука — третичный контроль: без плашки, круг обводкой.
+   44 px — минимум по цели нажатия и ничего сверх; 56/52 из §4
+   дизайн-системы у кнопки перехода между зонами, она несёт навигацию.
+   Обводка --ink, не --alu: --alu на этом постере 1,05–2,23:1,
+   границы не было бы видно вовсе. */
+.sound {
+  pointer-events: auto;
+}
+
+.mute {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.muteIcon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  transition: background var(--t-micro) var(--ease-out),
+              color var(--t-micro) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mute:hover .muteIcon { background: var(--ink); color: var(--paper); }
+}
+
+/* === ПРОЯВЛЕНИЕ ПЕРВОГО ЭКРАНА =======================================
+   Чистая opacity, без translateY и без блюра — так в референсе, и так
+   честнее: штатное появление системы (opacity + translateY 12px, 380 мс)
+   растянутое на 1900 мс превратилось бы в медленное всплытие и спорило
+   бы с полётом камеры, который начнётся следом.
+
+   Класс .revealed ставит React ровно один раз, по сигналу lib/curtain:
+   до него экран закрыт створками прелоадера, и анимация с монтирования
+   отыграла бы целиком за занавесом — зритель увидел бы готовый текст.
+   Дальше кадры ведёт композитор, React не участвует.
+
+   Четыре шага при пяти узлах — потолок «максимум четыре элемента»
+   из design-system.md §5: кнопка и строка звука идут одним шагом,
+   они читаются как один блок действия.
+
+   Тайминг от сигнала: старт 200 / 360 / 520 / 680 мс, полная
+   непрозрачность на 2100 / 2260 / 2420 / 2580 мс. Заголовок доходит
+   до единицы на 2,26 с — ровно измеренные 2,3 с референса. */
+@keyframes heroIn { from { opacity: 0; } to { opacity: 1; } }
+
+.revealed .mark {
+  animation: heroIn var(--t-hero-in) linear var(--hero-in-delay) both;
+}
+
+.revealed .title {
+  animation: heroIn var(--t-hero-in) linear
+             calc(var(--hero-in-delay) + var(--hero-in-stagger)) both;
+}
+
+.revealed .lead {
+  animation: heroIn var(--t-hero-in) linear
+             calc(var(--hero-in-delay) + var(--hero-in-stagger) * 2) both;
+}
+
+.revealed .actions,
+.revealed .sound {
+  animation: heroIn var(--t-hero-in) linear
+             calc(var(--hero-in-delay) + var(--hero-in-stagger) * 3) both;
+}
+
+/* Проявление и гашение не спорят: проявление — animation на детях,
+   гашение — transition на .overlay, они перемножаются. Спорный кадр
+   один: на повторной загрузке во вкладке прелоадера нет, проявление
+   идёт с нуля, и клик по «Войти» на 400-й мс наложил бы растущую
+   непрозрачность детей на падающую у родителя — копия дёрнулась бы
+   вверх перед тем, как погаснуть. Пауза замораживает детей там,
+   где они есть, и гасит их родителем. */
+.overlayOff .mark,
+.overlayOff .title,
+.overlayOff .lead,
+.overlayOff .actions,
+.overlayOff .sound {
+  animation-play-state: paused;
+}
+
+/* Фокус виден всегда, даже посреди проявления. Таб на 300-й мс иначе
+   увёл бы фокус на кнопку с непрозрачностью 0,05: .overlay не ловит
+   указатель, но .actions ловит, и кнопка кликабельна с первого кадра. */
+.actions:focus-within,
+.sound:focus-within {
+  animation: none;
+  opacity: 1;
+}
+
+/* Reduced-motion: весь текст и все числа на месте, просто без
+   проявления. Глобальный блок в tokens.css сжимает animation-duration
+   до 0,01 мс, но НЕ трогает animation-delay — с fill both копия
+   провисела бы на нуле до 680 мс и потом мигнула. Поэтому анимация
+   снимается целиком, как у .info в OfficeHub. Ни одно правило не ставит
+   opacity: 0 вне кейфрейма, поэтому снятие анимации оставляет всё
+   на естественной единице. */
+@media (prefers-reduced-motion: reduce) {
+  .revealed .mark,
+  .revealed .title,
+  .revealed .lead,
+  .revealed .actions,
+  .revealed .sound {
+    animation: none;
+  }
+}
+
 @media (max-width: 767px) {
-  .copy { padding-top: clamp(64px, 18svh, 160px); }
-  .enter { top: 78%; }
+  /* Пять блоков с десктопным ритмом выдавливают строку звука за 100svh.
+     Верхний отступ не опускать ниже 12svh: в левом верхнем углу
+     мобильного постера --ink даёт 4,4:1 — единственные ячейки обоих
+     постеров ниже порога, и стек туда заходить не должен. */
+  .overlay { padding-top: clamp(40px, 12svh, 96px); }
+  .mark { margin-bottom: var(--s-6); line-height: 1.9; }
+  .title { margin-bottom: var(--s-5); }
+  .lead { margin-bottom: var(--s-6); }
+
+  /* Иконка 44 px плюс капитель в одну строку на 350 px встают впритык */
+  .mute { flex-direction: column; gap: var(--s-2); }
 }
