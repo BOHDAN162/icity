@@ -3,23 +3,23 @@
   "items": {
     "park": {
       "file": "park.jpg",
-      "placeholder": true
+      "placeholder": false
     },
     "lobby": {
-      "file": "lobby.jpg",
-      "placeholder": true
+      "file": "lobby.webp",
+      "placeholder": false
     },
     "gallery": {
       "file": "gallery.jpg",
-      "placeholder": true
+      "placeholder": false
     },
     "elevators": {
-      "file": "elevators.jpg",
-      "placeholder": true
+      "file": "elevators.webp",
+      "placeholder": false
     },
     "parking": {
-      "file": "parking.jpg",
-      "placeholder": true
+      "file": "parking.webp",
+      "placeholder": false
     }
   }
 }

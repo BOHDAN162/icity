@@ -17,12 +17,12 @@
    помещения в этой секции не упоминается вовсе: речь про комплекс,
    а не про 113Н.
 
-   КАДРЫ — public/complex/{park,lobby,gallery,elevators,parking}.jpg.
-   Сейчас все пять заглушки: съёмки комплекса ещё не было. Признак
-   заглушки не угадывается по имени файла, а лежит в манифесте
-   public/complex/placeholders.json, который пишет
-   scripts/gen-complex-placeholders.mjs. Приедут настоящие кадры —
-   их кладут теми же именами, скрипт правит манифест, код не меняется.
+   КАДРЫ — public/complex/{park.jpg,lobby.webp,gallery.jpg,elevators.webp,
+   parking.webp}, все пять настоящие. Признак заглушки не угадывается
+   по имени файла, а лежит в манифесте public/complex/placeholders.json,
+   который пишет scripts/gen-complex-placeholders.mjs. Понадобится новый
+   кадр — кладут тем же именем и убирают ключ из манифеста (или удаляют
+   манифест целиком и гоняют скрипт заново), код не меняется.
 
    ЧТО ГРУЗИТСЯ И КОГДА. Ни одного байта до подхода к секции:
    IntersectionObserver с rootMargin 200px монтирует <img>, отписывается
@@ -70,10 +70,10 @@ const AMENITIES: Amenity[] = [
   },
   {
     key: 'gallery',
-    title: 'Торговая галерея',
+    title: 'Торговая галлерея',
     sub: 'РЕСТОРАНЫ · СЕРВИСЫ · МИНИ-МАРКЕТЫ',
-    caption: 'ТОРГОВАЯ ГАЛЕРЕЯ',
-    alt: 'Торговая галерея iCITY',
+    caption: 'ТОРГОВАЯ ГАЛЛЕРЕЯ',
+    alt: 'Торговая галлерея iCITY',
   },
   {
     key: 'elevators',
