@@ -12,6 +12,10 @@
   --hero-lift: 0;
   position: relative;
   z-index: 10;
-  transform: translateY(calc(var(--hero-lift) * -100svh));
+  /* -100dvh, а не -100svh: должно совпадать с высотой .hero
+     в HeroVideo.module.css в точности, иначе в кадре свапа контент
+     останавливается на волосок раньше или позже кромки hero — см.
+     комментарий там же про dvh/svh/vh. */
+  transform: translateY(calc(var(--hero-lift) * -100dvh));
   will-change: transform;
 }
