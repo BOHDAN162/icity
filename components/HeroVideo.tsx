@@ -85,8 +85,53 @@ const NBSP = ' ';
    Та же дисциплина, что у PLAY_TIMEOUT_MS: у любого отказа есть выход. */
 const CURTAIN_FALLBACK_MS = 11000;
 
-/* Гашение амбиента к финалу ролика, в секундах currentTime. */
-const AUDIO_FADE_S = 0.9;
+/* ГАШЕНИЕ АМБИЕНТА К ФИНАЛУ РОЛИКА, в секундах currentTime.
+
+   Гасим НЕ в тишину и НЕ обрубаем на свапе: к концу полёта звук
+   приглушается до тихого уровня, а дальше, уже поверх открывшегося
+   офиса, доигрывает AUDIO_TAIL_MS и уходит в ноль. Раньше здесь был
+   линейный спад в ноль за 0,9 с — заказчик попросил и раньше, и глубже,
+   и без обрыва (правка 1 сентября 2026).
+
+   Кривая, а не прямая: у прямой первые полсекунды почти не слышно,
+   что звук пошёл вниз. easeOut роняет громкость сразу и потом доводит —
+   «приглушили» читается с первого мгновения. Замер: осталось 1,2 с —
+   67 % базовой, 0,8 с — 44 %, 0,4 с — 30 %. */
+const AUDIO_DUCK_S = 1.6;
+/** до какой доли базовой громкости приглушаем к концу ролика */
+const AUDIO_DUCK_TO = 0.25;
+/** сколько амбиент тихо доигрывает уже поверх экрана офиса */
+const AUDIO_TAIL_MS = 1500;
+
+/* Хвост амбиента после свапа.
+
+   УЗЕЛ ПЕРЕЕЗЖАЕТ В BODY, и это не хитрость, а единственный надёжный
+   путь: через миг React снимет весь первый экран вместе с <audio>,
+   а снятие из DOM воспроизведение глушит ненадёжно — где-то
+   останавливает, где-то нет. Полагаться нельзя ни на то, ни на другое,
+   поэтому элемент выводится из-под React и гасится явно, своим rAF.
+
+   Предохранитель на таймере обязателен: rAF в фоновой вкладке встаёт,
+   и без него звук завис бы на последней громкости до возвращения. */
+const startAmbienceTail = (a: HTMLAudioElement) => {
+  document.body.appendChild(a);
+  const from = a.volume;
+  const t0 = performance.now();
+  let raf = 0;
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    a.pause();
+    a.remove();
+  };
+  const guard = window.setTimeout(stop, AUDIO_TAIL_MS + 500);
+  const step = () => {
+    const q = (performance.now() - t0) / AUDIO_TAIL_MS;
+    if (q >= 1) { window.clearTimeout(guard); stop(); return; }
+    a.volume = from * (1 - q);
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+};
 
 /* ЗАГОЛОВОК ПРОЯВЛЯЕТСЯ ПОБУКВЕННО И ВРАЗНОБОЙ.
    Замерено покадрово по референсу в нативном разрешении (метрика —
@@ -239,6 +284,9 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const idleRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  /* Хвост амбиента пошёл: узел уже не под React, и глушить его
+     на размонтировании нельзя — он для того и уведён. */
+  const tailRef = useRef(false);
   /** выбор звука, сделанный кнопкой входа; читается из rAF */
   const soundOnRef = useRef(false);
   const rafRef = useRef(0);
@@ -324,9 +372,16 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
-    /* Снятие <audio> из DOM не глушит воспроизведение надёжно — гасим
-       явно, и здесь, потому что сюда сходятся все пять отказов. */
-    audioRef.current?.pause();
+    /* Амбиент не обрывается на свапе: если он звучал, доигрывает
+       AUDIO_TAIL_MS тихо, уже поверх открывшегося офиса. Если не звучал
+       (вошли без звука, отказ до старта) — просто гасим. */
+    const a = audioRef.current;
+    if (a && !a.paused) {
+      tailRef.current = true;
+      startAmbienceTail(a);
+    } else {
+      a?.pause();
+    }
     onDone();
   }, [onDone]);
 
@@ -351,10 +406,11 @@ export default function HeroVideo({ onLift, onDone }: Props) {
          с картинкой — та же причина, по которой весь полёт считается
          от currentTime. Одна запись свойства на кадр, ре-рендеров нет. */
       const a = audioRef.current;
-      if (a && soundOnRef.current) {
+      if (a && soundOnRef.current && !tailRef.current) {
         const left = duration - v.currentTime;
-        a.volume = AMBIENCE_VOLUME
-          * (left < AUDIO_FADE_S ? clamp01(left / AUDIO_FADE_S) : 1);
+        const q = clamp01((AUDIO_DUCK_S - left) / AUDIO_DUCK_S);
+        const ease = 1 - (1 - q) * (1 - q);
+        a.volume = AMBIENCE_VOLUME * (1 - (1 - AUDIO_DUCK_TO) * ease);
       }
       if (v.ended) { finish(); return; }
       if (v.paused) v.play().catch(finish);
@@ -495,7 +551,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
-    audioRef.current?.pause();
+    if (!tailRef.current) audioRef.current?.pause();
     /* Только с настоящего размонтирования, после финала: doneRef отсекает
        двойное монтирование StrictMode, иначе URL отобрались бы у живого
        плеера ещё до первого клика. */
