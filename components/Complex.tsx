@@ -91,14 +91,6 @@ const AMENITIES: Amenity[] = [
   },
 ];
 
-/* Подпись внутри рамки не даёт принять заглушку за съёмку. Строка
-   обязана оставаться честной и после подмены файлов — поэтому её
-   вторая половина приходит из манифеста, а не из кода. */
-function captionFor(a: Amenity): string {
-  const shot = SHOTS[a.key];
-  return `${a.caption} · ${shot?.placeholder ? 'ПЛЕЙСХОЛДЕР' : 'ФОТО РЕАЛЬНОГО ОБЪЕКТА'}`;
-}
-
 function altFor(a: Amenity): string {
   return SHOTS[a.key]?.placeholder ? `Заглушка вместо кадра: ${a.caption}` : a.alt;
 }
@@ -219,7 +211,7 @@ export default function Complex() {
                 />
               ))}
 
-            <p className={styles.caption}>{captionFor(AMENITIES[active])}</p>
+            <p className={styles.caption}>{AMENITIES[active].caption}</p>
           </div>
         </div>
       </div>
