@@ -53,14 +53,12 @@ export default function Landing() {
         </dl>
 
         <p className={styles.para}>
-          244,1 м² с дизайнерской отделкой PRIDEX и открывающимися окнами.
-          Прямая аренда от собственника — без посредников и без
-          ожидания. Показ в день обращения.
+          Прямая аренда от собственника, дизайнерская отделка от PRIDEX.
         </p>
 
         <div className={styles.actions}>
-          <a className={`btn ${styles.action}`} href="tel:+79093798015">
-            Позвонить
+          <a className={`btn ${styles.action}`} href="#contact">
+            Записаться на просмотр
           </a>
         </div>
       </div>

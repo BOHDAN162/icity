@@ -17,7 +17,7 @@
    помещения в этой секции не упоминается вовсе: речь про комплекс,
    а не про 113Н.
 
-   КАДРЫ — public/complex/{atrium,garden,gallery,parking,smart}.jpg.
+   КАДРЫ — public/complex/{park,lobby,gallery,elevators,parking}.jpg.
    Сейчас все пять заглушки: съёмки комплекса ещё не было. Признак
    заглушки не угадывается по имени файла, а лежит в манифесте
    public/complex/placeholders.json, который пишет
@@ -55,39 +55,39 @@ type Amenity = {
 
 const AMENITIES: Amenity[] = [
   {
-    key: 'atrium',
-    title: 'Атриум под стеклянным куполом',
-    sub: 'ФУД-ХОЛЛ · КАФЕ · ЗИМНИЙ САД',
-    caption: 'АТРИУМ',
-    alt: 'Атриум между башнями iCITY под стеклянным куполом',
+    key: 'park',
+    title: 'Ландшафтный парк',
+    sub: 'ЗЕЛЁНАЯ ЗОНА, РАСПОЛОЖЕННАЯ НА 6 ЭТАЖЕ',
+    caption: 'ЛАНДШАФТНЫЙ ПАРК',
+    alt: 'Ландшафтный парк на кровле iCITY между башнями',
   },
   {
-    key: 'garden',
-    title: 'Сад на высоте',
-    sub: 'СТИЛОБАТ 14 760 М² · ТЕРРАСЫ',
-    caption: 'САД НА СТИЛОБАТЕ',
-    alt: 'Озеленённый стилобат iCITY с террасами',
+    key: 'lobby',
+    title: 'Лобби',
+    sub: 'Монументальный мраморный атриум',
+    caption: 'ЛОББИ',
+    alt: 'Мраморное лобби Space Tower с турникетами',
   },
   {
     key: 'gallery',
     title: 'Торговая галерея',
-    sub: 'РЕСТОРАНЫ · СЕРВИСЫ · МИНИ-МАРКЕТ',
+    sub: 'РЕСТОРАНЫ · СЕРВИСЫ · МИНИ-МАРКЕТЫ',
     caption: 'ТОРГОВАЯ ГАЛЕРЕЯ',
     alt: 'Торговая галерея iCITY',
   },
   {
-    key: 'parking',
-    title: 'Паркинг на 950 мест',
-    sub: '6 УРОВНЕЙ · ЗАЕЗД С ТТК · ЗАРЯДКИ EV',
-    caption: 'ПАРКИНГ',
-    alt: 'Подземный паркинг iCITY',
+    key: 'elevators',
+    title: 'Лифты',
+    sub: '48 скоростных лифтов',
+    caption: 'ЛИФТЫ',
+    alt: 'Лифтовый холл Space Tower',
   },
   {
-    key: 'smart',
-    title: 'Smart Building',
-    sub: 'БИОМЕТРИЯ · КЛИМАТ · БЕСШУМНЫЕ ЛИФТЫ',
-    caption: 'SMART BUILDING',
-    alt: 'Лобби Space Tower с биометрическим доступом',
+    key: 'parking',
+    title: 'Паркинг',
+    sub: 'Интеллектуальный паркинг на более 940 машин',
+    caption: 'ПАРКИНГ',
+    alt: 'Подземный паркинг iCITY',
   },
 ];
 
@@ -152,7 +152,7 @@ export default function Complex() {
             КОМПЛЕКС iCITY
           </p>
 
-          <h2 className={styles.title}>Всё, что этажами ниже</h2>
+          <h2 className={styles.title}>Благоустройство</h2>
         </div>
 
         <ul className={styles.list}>
