@@ -32,7 +32,7 @@ import { useEffect } from 'react';
 import {
   SCROLL_TAU,
   SCROLL_LINE_PX,
-  SCROLL_SETTLE_PX,
+  SCROLL_MIN_STEP_DPX,
   SCROLL_SYNC_PX,
 } from '@/lib/motion';
 
@@ -85,20 +85,36 @@ export default function SmoothScroll() {
          скрытая привязка к 60 Гц. Потолок 100 мс — на возврат из фоновой
          вкладки, где dt в секунды: страница просто оказывается в цели,
          а не пролетает её. */
-      const dt = last ? Math.min(t - last, 100) : 16.7;
+      const dt = Math.min(t - last, 100);
       last = t;
-      cur += (target - cur) * (1 - Math.exp(-dt / SCROLL_TAU));
 
-      const done = Math.abs(target - cur) < SCROLL_SETTLE_PX;
-      if (done) cur = target;
+      const gap = target - cur;
+      /* Пол шага в один физический пиксель: ниже него движения не видно,
+         и экспонента вырождается в тик через несколько кадров. */
+      const floor = SCROLL_MIN_STEP_DPX / (window.devicePixelRatio || 1);
+      const done = Math.abs(gap) <= floor;
+
+      if (done) {
+        cur = target;
+      } else {
+        const step = gap * (1 - Math.exp(-dt / SCROLL_TAU));
+        cur += Math.abs(step) < floor ? Math.sign(gap) * floor : step;
+      }
+
       window.scrollTo(0, cur);
       raf = done ? 0 : requestAnimationFrame(draw);
     };
 
-    /* Цикл живёт, только пока страница едет. */
+    /* Цикл живёт, только пока страница едет.
+
+       last СТАВИТСЯ ЗДЕСЬ, а не обнуляется. Прежде первый кадр после сна
+       считал dt по умолчанию 16,7 мс — и на 120-герцевом экране, где
+       кадр 8,3, начинал КАЖДЫЙ жест двойным шагом. Замер: щелчок в 100 px
+       из покоя двигал страницу на 9,5 px вместо 4,8. Отсчёт от момента
+       пробуждения даёт настоящие несколько миллисекунд до первого кадра. */
     const wake = () => {
       if (raf) return;
-      last = 0;
+      last = performance.now();
       raf = requestAnimationFrame(draw);
     };
 
