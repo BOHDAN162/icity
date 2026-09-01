@@ -1,61 +1,44 @@
-/* iCITY 113Н — локация (схема Яндекса + таблица времени).
+/* iCITY 113Н — локация (карта Яндекса + таблица времени).
    Путь в проекте: components/Location.tsx
 
-   Слева абзац и таблица времени в пути с точечным выносом, справа
-   рамка с картой. Рисованный SVG-чертёж, живший здесь раньше, удалён:
-   в рамке теперь монохромная схема Яндекса, components/YandexMap.tsx.
+   Слева таблица времени в пути с точечным выносом, справа рамка
+   с картой. Наведение на строку ведёт карту: до выбранной точки
+   прочерчивается красная связка, камера подбирает под неё рамку.
+   Приём тот же, что у списка удобств в Complex.tsx — одна строка,
+   один кадр, — только кадром здесь работает карта.
 
-   ЧИСЛА — docs/facts.md, раздел «Время в пути»: МЦД 1 мин пешком,
-   м. «Шелепиха» 5 мин пешком, «Москва-Сити» 15 мин пешком,
-   Кутузовский проспект 5 мин на машине. Про ТТК в фактах стоит
-   «1 мин на машине»; в строке написано «прямой», потому что речь
-   про заезд — у комплекса прямой съезд с ТТК в паркинг (та же
-   формулировка, что в списке удобств Complex.tsx). Строка
-   «Шелепиха · метро + МЦК» несёт 5 мин по метро; до платформы МЦК
-   в фактах 6 мин. Координаты точек — lib/geo.ts.
+   ДАННЫЕ ОДНИ НА ДВОИХ. И таблица, и карта читают LEGS из lib/geo.ts.
+   Строка таблицы и связка на карте обязаны быть одним объектом,
+   иначе они разъедутся при первой же правке. Числа — docs/facts.md.
 
    ИМЯ СТАНЦИИ. МЦД-1 «Тестовскую» переименовали в «Москва-Сити».
-   В заголовке и в таблице оставлено прежнее имя — по нему объект
-   ищут и его знают, — а метка на карте несёт оба.
+   В заголовке и таблице оставлено прежнее имя — по нему объект знают,
+   а на карте Яндекс подписывает станцию сам.
 
    ЧТО ГРУЗИТСЯ И КОГДА. Карта не едет, пока её не попросят кнопкой.
-   Причина не в весе, а в квоте: бесплатный тариф JavaScript API даёт
-   100 показов карты в сутки, и при автозагрузке их сожгла бы сотня
-   любых посетителей, доскроллевших до секции, — а карта на переговорах
-   молча не открылась бы. По клику до неё доходят единицы, и квоты
-   хватает с запасом. Заодно это снимает 250 КБ чужого скрипта с
-   первой загрузки страницы.
+   Причина не в весе, а в квоте: бесплатный тариф даёт 100 показов
+   карты в сутки, и при автозагрузке их сожгла бы сотня любых
+   посетителей, доскроллевших до секции, — а карта на переговорах
+   молча не открылась бы. Остальные внешние условия — в AGENTS.md.
 
    ЕСЛИ КАРТЫ НЕТ. Нет ключа, отказала сеть, отказал сам API — в рамке
-   остаётся честная заглушка с адресом и ссылкой на Яндекс Карты,
-   а не пустой прямоугольник. Вся фактура локации в любом случае
-   продублирована таблицей рядом, и она статична. */
+   остаётся адрес со ссылкой на Яндекс Карты, а не пустой прямоугольник.
+   Таблица статична и несёт всю фактуру в любом случае.
+
+   ДОСТУПНОСТЬ. Строки — настоящие <button>: Enter и Space приходят
+   сами, фокус ведёт карту так же, как мышь, aria-pressed говорит,
+   какая строка открыта. Глобальных обработчиков клавиш нет — их на
+   сайте нет нигде, кроме Esc в офисе (AGENTS.md). */
 
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { LEGS } from '@/lib/geo';
 import styles from './Location.module.css';
 
 /* ssr: false обязателен — модуль трогает document и window.ymaps3. */
 const YandexMap = dynamic(() => import('./YandexMap'), { ssr: false });
-
-type Leg = {
-  place: string;
-  /* U+202F между числом и единицей — узкий неразрывный, как в Economics */
-  time: string;
-  mode: 'ПЕШКОМ' | 'АВТО';
-  /* выделенная строка: та самая минута до МЦД */
-  hot?: boolean;
-};
-
-const LEGS: Leg[] = [
-  { place: 'Тестовская · МЦД',        time: '1 мин',  mode: 'ПЕШКОМ', hot: true },
-  { place: 'Шелепиха · метро + МЦК',  time: '5 мин',  mode: 'ПЕШКОМ' },
-  { place: 'Москва-Сити',             time: '15 мин', mode: 'ПЕШКОМ' },
-  { place: 'ТТК — выезд из паркинга', time: 'прямой', mode: 'АВТО' },
-  { place: 'Кутузовский проспект',    time: '5 мин',  mode: 'АВТО' },
-];
 
 /* Ссылка на объект в Яндекс Картах — из неё же взята точка комплекса. */
 const YANDEX_URL = 'https://yandex.ru/maps/-/CTTVAU6r';
@@ -64,6 +47,14 @@ export default function Location() {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [live, setLive] = useState(false);
+  const [active, setActive] = useState(0);
+
+  /* Ховером ведём карту только на точной мыши. Тач-события приходят
+     кликом — он же обслуживает и клавиатуру. Тот же ref, что в Complex. */
+  const fine = useRef(false);
+  useEffect(() => {
+    fine.current = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  }, []);
 
   const onFail = useCallback((reason: string) => {
     setFailed(true);
@@ -89,25 +80,39 @@ export default function Location() {
           </p>
 
           <ul className={styles.table}>
-            {LEGS.map((leg) => (
-              <li key={leg.place} className={`${styles.row} ${leg.hot ? styles.rowHot : ''}`}>
-                <span className={styles.place}>{leg.place}</span>
-                {/* Вынос. aria-hidden: точки ничего не сообщают, они ведут
-                    глаз от названия к цифре. */}
-                <span className={styles.dots} aria-hidden="true" />
-                <span className={styles.time}>{leg.time}</span>
-                <span className={styles.mode}>{leg.mode}</span>
-              </li>
-            ))}
+            {LEGS.map((leg, i) => {
+              const on = i === active;
+              return (
+                <li key={leg.key} className={styles.item}>
+                  <button
+                    type="button"
+                    className={`${styles.row} ${on ? styles.rowOn : ''}`}
+                    aria-pressed={on}
+                    onClick={() => setActive(i)}
+                    onFocus={() => setActive(i)}
+                    onPointerEnter={(e) => {
+                      if (fine.current && e.pointerType === 'mouse') setActive(i);
+                    }}
+                  >
+                    <span className={styles.place}>{leg.place}</span>
+                    {/* Вынос. aria-hidden: точки ничего не сообщают,
+                        они ведут глаз от названия к цифре. */}
+                    <span className={styles.dots} aria-hidden="true" />
+                    <span className={styles.time}>{leg.time}</span>
+                    <span className={styles.mode}>{leg.mode}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
         <div className={styles.mapWrap}>
           <div className={styles.frame}>
-            {open && !failed && <YandexMap onFail={onFail} onReady={onReady} />}
+            {open && !failed && <YandexMap active={active} onFail={onFail} onReady={onReady} />}
 
-            {/* Заглушка. Лежит под картой и уходит, когда та отрисовалась:
-                пока тайлы едут, в рамке стоит адрес, а не пустота. */}
+            {/* Заглушка. Уходит, когда карта отрисовалась: пока тайлы
+                едут, в рамке стоит адрес, а не пустота. */}
             {!live && (
               <div className={styles.stub}>
                 <p className={styles.stubAddr}>
@@ -115,9 +120,6 @@ export default function Location() {
                   <br />
                   Space Tower, 23 этаж
                 </p>
-                {/* Кнопка исчезает вместе с заглушкой, как только карта
-                    отрисовалась. Если карта не поехала — она тоже уходит,
-                    и остаётся адрес со ссылкой на Яндекс Карты. */}
                 {!failed && (
                   <button type="button" className={styles.stubBtn} onClick={() => setOpen(true)}>
                     {open ? 'Загружаем карту…' : 'Показать карту'}
@@ -129,12 +131,10 @@ export default function Location() {
             <p className={styles.caption}>МОСКВА-СИТИ · ЕРМАКОВА РОЩА, 1С1</p>
 
             {/* Ссылка «Открыть в Картах» — ТРЕБОВАНИЕ условий использования
-                API Яндекса, пункт 4.1.3.1. Но когда карта жива, API рисует
+                API Яндекса, пункт 4.1.3.1. Когда карта жива, API рисует
                 эту кнопку сам, в левом нижнем углу, и своя вторая только
-                налезала бы на неё — проверено на живой карте. Поэтому она
-                держится ровно в том состоянии, где кнопки Яндекса нет:
-                до загрузки и при отказе. Копирайт в правом нижнем углу
-                тоже рисует API, и он не трогается. */}
+                налезала бы на неё. Поэтому она держится ровно там, где
+                кнопки Яндекса нет: до загрузки и при отказе. */}
             {!live && (
               <a
                 className={styles.mapsLink}

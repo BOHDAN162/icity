@@ -1,45 +1,43 @@
 /* iCITY 113Н — карта локации на Яндекс JS API v3.
    Путь в проекте: components/YandexMap.tsx
 
-   Монохромная схема Яндекса вместо прежнего рисованного SVG. Модуль
-   грузится только через dynamic(..., { ssr: false }) из Location.tsx
-   и только когда секция подошла к экрану: скрипт api-maps.yandex.ru
-   весит порядка 250 КБ и в бюджет первого экрана не входит и входить
-   не должен — то же правило, что у чанка three.js под кукольный дом.
+   Монохромная схема Яндекса. Модуль грузится только через
+   dynamic(..., { ssr: false }) из Location.tsx и только по кнопке:
+   бесплатный тариф даёт 100 показов карты в сутки, подробности
+   и остальные внешние условия — в AGENTS.md, раздел «Карта локации».
 
-   КЛЮЧ. NEXT_PUBLIC_YANDEX_MAPS_KEY, берётся в Кабинете разработчика
-   Яндекса. Без ключа модуль ничего не рисует и сообщает об этом
-   вызывающему через onFail — рамка тогда показывает адрес и ссылку
-   на Яндекс Карты, а не пустоту.
+   ЧТО ПОКАЗЫВАЕТ. Ровно одну связку за раз — ту, на которой стоит
+   курсор в таблице слева. Приём тот же, что у списка удобств в
+   Complex.tsx: одна строка — один кадр. Здесь одна строка — одна
+   красная линия, одна метка назначения и своя рамка кадра.
+
+   ПОЧЕМУ КАМЕРА ЕЗДИТ. Связки очень разной длины: до МЦД 105 м, до
+   Кутузовского 1486 м. На одном зуме половина из них либо не влезает
+   в кадр, либо вырождается в точку. Поэтому под каждую строку камера
+   подбирает свою рамку — иначе «путь до каждого объекта» существует
+   только на бумаге.
+
+   РУЧНОЙ ЗУМ И КАМЕРА НЕ ДЕРУТСЯ. Как только зритель сам тронул карту
+   (кнопки, щипок, перетаскивание, двойной клик), автоподбор рамки
+   выключается насовсем — до кнопки сброса. Связки при этом продолжают
+   слушаться курсора: они географические, живут на любом зуме сами
+   и прятать их не нужно.
+
+   scrollZoom НЕ ВКЛЮЧАТЬ НИКОГДА. Колесо над картой посреди лендинга
+   перехватывало бы прокрутку страницы. Зум идёт кнопками, двойным
+   кликом и щипком. На тач-устройствах перетаскивание тоже выключено:
+   одним пальцем там прокручивают страницу, карту двигают двумя.
 
    ЦВЕТА ЗДЕСЬ ХЕКСАМИ, И ЭТО ВЫНУЖДЕННО. Кастомизация тайлов уезжает
    в WebGL Яндекса, CSS-переменные туда не доходят. Каждое значение
-   ниже — копия токена из app/tokens.css, и правится парой: сначала
-   токен, потом эта таблица. Это тот же компромисс, что у --hold-*,
-   продублированных в TowerSequence.tsx.
-
-   ЧТО ВЫКЛЮЧЕНО. Весь слой poi — иначе поверх схемы стоят «Пятёрочка»,
-   «Бэби-клуб» и «HookahPlace», и кадр перестаёт быть кадром о башне.
-   Подписи транспорта тоже: свои станции мы подписываем сами. Оставлены
-   только названия улиц и районов — ровно то, что несла рисованная схема.
-
-   ЖЕСТЫ. behaviors: [] — карта не таскается, не зумится и не ловит
-   прокрутку страницы. Это осознанно: AGENTS.md запрещает интерактивную
-   карту проезда, и перехват скролла на середине лендинга был бы худшим
-   из возможных решений. Карта здесь — живая подложка, а не инструмент.
-
-   САМОПРОЧЕРК. Три красные связки «станция → башня» и «башня → ТТК»
-   рисуют себя, наращивая геометрию линии от начала к концу за 450 мс
-   с шагом 180 мс. Через stroke-dashoffset, как было в SVG, не выйдет:
-   у StrokeStyle в API есть dash, но нет dash-offset. При запросе покоя
-   линии стоят готовыми с первого кадра. */
+   ниже — копия токена из app/tokens.css, правится парой с ним. */
 
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { YMap, YMapFeature, YMapMarker } from '@yandex/ymaps3-types';
-import type { Customization, LngLat } from '@yandex/ymaps3-types';
-import { ICITY, MCD, SHELEPIKHA, TTK, MAP_CENTER, MAP_ZOOM } from '@/lib/geo';
+import type { BehaviorType, Customization, LngLat, LngLatBounds } from '@yandex/ymaps3-types';
+import { ICITY, LEGS, MAP_CENTER, MAP_ZOOM, ZOOM_RANGE } from '@/lib/geo';
 import styles from './Location.module.css';
 
 declare global {
@@ -77,11 +75,10 @@ const CUSTOMIZATION: Customization = [
   /* Чужие точки интереса — вон целиком, вместе с иконками и подписями. */
   { tags: { all: ['poi'] }, elements: 'label', stylers: [{ visibility: 'off' }] },
   { tags: { all: ['poi'] }, elements: 'geometry', stylers: [{ visibility: 'off' }] },
-  /* Свои станции подписываем сами, чужие подписи транспорта не нужны. */
   { tags: { any: ['transit_location', 'transit_stop', 'transit_entrance'] }, elements: 'label', stylers: [{ visibility: 'off' }] },
 
-  /* Номера домов — вон. На кадре про башню «9с4», «34с10» и «13соор1»
-     читаются мусором и спорят с нашими подписями. */
+  /* Номера домов — вон. На кадре про башню «9с4» и «13соор1» читаются
+     мусором и спорят с нашими подписями. */
   { tags: { all: ['address'] }, elements: 'label', stylers: [{ visibility: 'off' }] },
 
   /* Остаются названия улиц и районов — ровно то, что несла схема. */
@@ -90,15 +87,8 @@ const CUSTOMIZATION: Customization = [
   { tags: { any: ['road', 'admin'] }, elements: 'label.icon', stylers: [{ visibility: 'off' }] },
 ];
 
-/* --- связки: порядок в массиве = порядок каскада ---------------------- */
-const LINKS: { from: LngLat; to: LngLat; label: string }[] = [
-  { from: MCD, to: ICITY, label: 'от МЦД к башне' },
-  { from: SHELEPIKHA, to: ICITY, label: 'от Шелепихи к башне' },
-  { from: ICITY, to: TTK, label: 'от башни к ТТК' },
-];
-
 const DRAW_MS = 450;
-const DRAW_STAGGER = 180;
+const FLY_MS = 620;
 
 /* Копия кривой --ease-soft из app/tokens.css: cubic-bezier(0.16,1,0.3,1).
    В JS она нужна потому, что геометрию линии наращивает rAF, а не CSS.
@@ -129,6 +119,58 @@ function bezier([x1, y1, x2, y2]: [number, number, number, number]) {
 
 const easeSoft = bezier(EASE_SOFT);
 
+/* Рамка под связку. LngLatBounds — это ЛЕВЫЙ ВЕРХНИЙ и ПРАВЫЙ НИЖНИЙ
+   углы, то есть [[запад, север], [восток, юг]], а не привычная пара
+   юго-запад / северо-восток. Минимальный отступ держит короткие связки:
+   без него кадр под 105-метровой линией до МЦД вырождался бы в улицу. */
+const MIN_PAD_LON = 0.0042;
+const MIN_PAD_LAT = 0.0023;
+
+function boundsFor(target: LngLat): LngLatBounds {
+  const padLon = Math.max(Math.abs(ICITY[0] - target[0]) * 0.4, MIN_PAD_LON);
+  const padLat = Math.max(Math.abs(ICITY[1] - target[1]) * 0.4, MIN_PAD_LAT);
+  return [
+    [Math.min(ICITY[0], target[0]) - padLon, Math.max(ICITY[1], target[1]) + padLat],
+    [Math.max(ICITY[0], target[0]) + padLon, Math.min(ICITY[1], target[1]) - padLat],
+  ];
+}
+
+/* --- метки: обычный DOM, стили — из модуля секции ---------------------
+   ymaps3 ставит на точку ЛЕВЫЙ ВЕРХНИЙ УГОЛ узла, а не его центр.
+   Поэтому корень нулевого размера, а маркер и подпись висят на нём
+   абсолютно — подробности в Location.module.css. */
+function towerPin(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = styles.pinTower;
+  const dot = document.createElement('span');
+  dot.className = styles.pinDiamond;
+  const text = document.createElement('span');
+  text.className = styles.pinLabelRed;
+  text.textContent = 'SPACE TOWER · 113Н';
+  wrap.append(dot, text);
+  return wrap;
+}
+
+function targetPin(): { el: HTMLElement; text: HTMLElement } {
+  const wrap = document.createElement('div');
+  wrap.className = styles.pinStation;
+  const dot = document.createElement('span');
+  dot.className = styles.pinCircle;
+  const text = document.createElement('span');
+  text.className = styles.pinLabel;
+  wrap.append(dot, text);
+  return { el: wrap, text };
+}
+
+type Props = {
+  /** индекс строки таблицы, на которой стоит курсор */
+  active: number;
+  /** зовётся, когда карта не поедет: нет ключа, отказ скрипта, отказ API */
+  onFail: (reason: string) => void;
+  /** зовётся один раз, когда карта отрисовалась */
+  onReady: () => void;
+};
+
 /* --- загрузка скрипта: один тег на страницу, один промис -------------- */
 let loader: Promise<void> | null = null;
 
@@ -149,53 +191,36 @@ function loadApi(apikey: string): Promise<void> {
   return loader;
 }
 
-/* --- метки: обычный DOM, стили — из модуля секции --------------------- */
-function towerPin(): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = styles.pinTower;
-  const dot = document.createElement('span');
-  dot.className = styles.pinDiamond;
-  const text = document.createElement('span');
-  text.className = styles.pinLabelRed;
-  text.textContent = 'SPACE TOWER · 113Н';
-  wrap.append(dot, text);
-  return wrap;
-}
-
-function stationPin(label: string, flip = false): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = `${styles.pinStation}${flip ? ` ${styles.pinFlip}` : ''}`;
-  const dot = document.createElement('span');
-  dot.className = styles.pinCircle;
-  const text = document.createElement('span');
-  text.className = styles.pinLabel;
-  text.textContent = label;
-  wrap.append(dot, text);
-  return wrap;
-}
-
-type Props = {
-  /** зовётся, когда карта не поедет: нет ключа, отказ скрипта, отказ API */
-  onFail: (reason: string) => void;
-  /** зовётся один раз, когда карта отрисовалась */
-  onReady: () => void;
-};
-
-export default function YandexMap({ onFail, onReady }: Props) {
+export default function YandexMap({ active, onFail, onReady }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+
   /* Колбэки в ref: пересоздавать карту из-за новой ссылки на функцию
-     нельзя, а класть их в зависимости эффекта пришлось бы. */
+     нельзя. Синхронизация в эффекте — писать в ref во время рендера
+     React запрещает. */
   const fail = useRef(onFail);
   const ready = useRef(onReady);
-  /* Синхронизация — в эффекте, а не в теле: писать в ref во время
-     рендера React запрещает, и правило react-hooks/refs это ловит.
-     Эффект объявлен выше основного, поэтому к монтированию карты
-     ссылки уже свежие. */
   useEffect(() => {
     fail.current = onFail;
     ready.current = onReady;
   });
 
+  /* Карта строится асинхронно: пока грузится скрипт и ждётся ymaps3.ready,
+     mapRef пуст. Без этого флага эффект отрисовки связки отрабатывал бы
+     на монтировании вхолостую и больше не перезапускался — active-то
+     не менялся, и первая связка не появлялась вовсе. */
+  const [built, setBuilt] = useState(false);
+  const mapRef = useRef<YMap | null>(null);
+  const routeRef = useRef<YMapFeature | null>(null);
+  const targetRef = useRef<YMapMarker | null>(null);
+  const targetTextRef = useRef<HTMLElement | null>(null);
+  const rafRef = useRef(0);
+  const reducedRef = useRef(false);
+  /* Зритель тронул карту сам — автоподбор рамки больше не вмешивается */
+  const takenOverRef = useRef(false);
+  /* Первая отрисовка кадрируется без анимации: ехать неоткуда */
+  const firstFrameRef = useRef(true);
+
+  /* --- 1. монтирование карты: один раз на жизнь модуля ---------------- */
   useEffect(() => {
     const host = hostRef.current;
     const apikey = process.env.NEXT_PUBLIC_YANDEX_MAPS_KEY;
@@ -206,8 +231,6 @@ export default function YandexMap({ onFail, onReady }: Props) {
     }
 
     let alive = true;
-    let map: YMap | null = null;
-    let raf = 0;
 
     loadApi(apikey)
       .then(async () => {
@@ -216,69 +239,67 @@ export default function YandexMap({ onFail, onReady }: Props) {
         await ymaps3.ready;
         if (!alive) return;
 
-        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapFeature, YMapMarker } = ymaps3;
+        const {
+          YMap,
+          YMapDefaultSchemeLayer,
+          YMapDefaultFeaturesLayer,
+          YMapFeature,
+          YMapMarker,
+          YMapListener,
+        } = ymaps3;
 
-        map = new YMap(host, {
+        reducedRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        /* Одним пальцем на телефоне прокручивают страницу, поэтому
+           перетаскивание там выключено — карту двигают двумя пальцами.
+           scrollZoom не включается ни при каких обстоятельствах. */
+        const fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+        const behaviors: BehaviorType[] = fine
+          ? ['drag', 'pinchZoom', 'dblClick']
+          : ['pinchZoom'];
+
+        const map = new YMap(host, {
           location: { center: MAP_CENTER, zoom: MAP_ZOOM },
-          /* Ни одного жеста: карта не перехватывает прокрутку страницы */
-          behaviors: [],
+          behaviors,
+          zoomRange: ZOOM_RANGE,
           theme: 'light',
           copyrightsPosition: 'bottom right',
         });
+        mapRef.current = map;
 
         map.addChild(new YMapDefaultSchemeLayer({ customization: CUSTOMIZATION }));
         map.addChild(new YMapDefaultFeaturesLayer({}));
 
-        /* Связки. В покое — сразу целиком, иначе растут из начала. */
-        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        const features: YMapFeature[] = LINKS.map((link) => {
-          const feature = new YMapFeature({
-            geometry: {
-              type: 'LineString',
-              coordinates: reduced ? [link.from, link.to] : [link.from, link.from],
-            },
-            style: { stroke: [{ color: FRIT, width: 2 }], zIndex: 10 },
-            properties: { label: link.label },
-          });
-          map!.addChild(feature);
-          return feature;
+        /* Связка. Геометрия из двух одинаковых точек — это пустая линия;
+           её наращивает эффект под active. */
+        const route = new YMapFeature({
+          geometry: { type: 'LineString', coordinates: [ICITY, ICITY] },
+          style: { stroke: [{ color: FRIT, width: 2 }], zIndex: 10 },
         });
+        map.addChild(route);
+        routeRef.current = route;
 
-        /* Метки поверх связок. */
-        const markers: YMapMarker[] = [
-          new YMapMarker({ coordinates: ICITY, zIndex: 30 }, towerPin()),
-          /* Своё имя станции короткое: «Москва-Сити» карта подписывает
-             сама, а 254 px подписи упирались в правый край кадра. */
-          new YMapMarker({ coordinates: MCD, zIndex: 20 }, stationPin('ТЕСТОВСКАЯ · 1 МИН')),
-          new YMapMarker({ coordinates: SHELEPIKHA, zIndex: 20 }, stationPin('ШЕЛЕПИХА · 5 МИН')),
-        ];
-        markers.forEach((m) => map!.addChild(m));
+        const { el, text } = targetPin();
+        targetTextRef.current = text;
+        const target = new YMapMarker({ coordinates: ICITY, zIndex: 20 }, el);
+        map.addChild(target);
+        targetRef.current = target;
 
+        map.addChild(new YMapMarker({ coordinates: ICITY, zIndex: 30 }, towerPin()));
+
+        /* Любой жест зрителя навсегда отбирает камеру у автоподбора —
+           до кнопки сброса. Иначе наведение на строку дёргало бы карту
+           из-под руки того, кто её только что отмасштабировал. */
+        map.addChild(
+          new YMapListener({
+            onActionStart: () => {
+              takenOverRef.current = true;
+            },
+          })
+        );
+
+        setBuilt(true);
         ready.current();
-
-        if (reduced) return;
-
-        /* Прочерк. Один rAF на все три линии: три отдельных цикла
-           дали бы три независимых кадра и рваный каскад. */
-        const total = DRAW_MS + DRAW_STAGGER * (LINKS.length - 1);
-        const started = performance.now();
-        const tick = (now: number) => {
-          if (!alive) return;
-          const elapsed = now - started;
-          LINKS.forEach((link, i) => {
-            const local = (elapsed - i * DRAW_STAGGER) / DRAW_MS;
-            const p = easeSoft(Math.min(1, Math.max(0, local)));
-            const head: LngLat = [
-              link.from[0] + (link.to[0] - link.from[0]) * p,
-              link.from[1] + (link.to[1] - link.from[1]) * p,
-            ];
-            features[i].update({
-              geometry: { type: 'LineString', coordinates: [link.from, head] },
-            });
-          });
-          if (elapsed < total) raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
       })
       .catch((e: unknown) => {
         if (alive) fail.current(e instanceof Error ? e.message : 'ymaps3: отказ');
@@ -286,10 +307,90 @@ export default function YandexMap({ onFail, onReady }: Props) {
 
     return () => {
       alive = false;
-      cancelAnimationFrame(raf);
-      map?.destroy();
+      cancelAnimationFrame(rafRef.current);
+      mapRef.current?.destroy();
+      mapRef.current = null;
     };
   }, []);
 
-  return <div ref={hostRef} className={styles.mapHost} />;
+  /* --- 2. смена строки: перерисовать связку и подобрать рамку --------- */
+  useEffect(() => {
+    const map = mapRef.current;
+    const route = routeRef.current;
+    const target = targetRef.current;
+    const text = targetTextRef.current;
+    const leg = LEGS[active];
+    if (!map || !route || !target || !text || !leg) return;
+
+    text.textContent = leg.pin;
+    target.update({ coordinates: leg.point });
+
+    /* Камера. Первый кадр ставится без анимации — ехать неоткуда;
+       дальше плавно, и только пока зритель не взял карту в руки. */
+    if (!takenOverRef.current) {
+      const duration = firstFrameRef.current || reducedRef.current ? 0 : FLY_MS;
+      map.update({ location: { bounds: boundsFor(leg.point), duration, easing: 'ease-in-out' } });
+    }
+    firstFrameRef.current = false;
+
+    cancelAnimationFrame(rafRef.current);
+
+    if (reducedRef.current) {
+      route.update({ geometry: { type: 'LineString', coordinates: [ICITY, leg.point] } });
+      return;
+    }
+
+    /* Прочерк: линия растёт от башни к цели. Через stroke-dashoffset,
+       как было в SVG, не выйдет — у StrokeStyle в API есть dash,
+       но нет dash-offset. */
+    const started = performance.now();
+    const tick = (now: number) => {
+      const p = easeSoft(Math.min(1, (now - started) / DRAW_MS));
+      const head: LngLat = [
+        ICITY[0] + (leg.point[0] - ICITY[0]) * p,
+        ICITY[1] + (leg.point[1] - ICITY[1]) * p,
+      ];
+      route.update({ geometry: { type: 'LineString', coordinates: [ICITY, head] } });
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [active, built]);
+
+  /* --- 3. ручной зум ------------------------------------------------- */
+  const nudge = (delta: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    takenOverRef.current = true;
+    const zoom = Math.min(ZOOM_RANGE.max, Math.max(ZOOM_RANGE.min, map.zoom + delta));
+    map.update({ location: { center: map.center as LngLat, zoom, duration: 220, easing: 'ease-in-out' } });
+  };
+
+  const reset = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    takenOverRef.current = false;
+    const leg = LEGS[active];
+    map.update({
+      location: { bounds: boundsFor(leg ? leg.point : ICITY), duration: FLY_MS, easing: 'ease-in-out' },
+    });
+  };
+
+  return (
+    <>
+      <div ref={hostRef} className={styles.mapHost} />
+      <div className={styles.zoom}>
+        <button type="button" className={styles.zoomBtn} onClick={() => nudge(1)} aria-label="Приблизить карту">
+          +
+        </button>
+        <button type="button" className={styles.zoomBtn} onClick={() => nudge(-1)} aria-label="Отдалить карту">
+          −
+        </button>
+        <button type="button" className={styles.zoomBtn} onClick={reset} aria-label="Вернуть карту к маршруту">
+          ⟲
+        </button>
+      </div>
+    </>
+  );
 }

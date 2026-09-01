@@ -52,22 +52,46 @@
   border-block-start: 1px solid var(--ink);
 }
 
+.item {
+  border-block-end: 1px solid var(--alu);
+}
+
 /* align-items: baseline ставит точечный вынос на базовую линию строки:
    у пустого блока без текста базовой линией служит его нижняя кромка,
    поэтому полоса точек садится ровно под буквы, а не по центру строки. */
 .row {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  width: 100%;
   display: flex;
   align-items: baseline;
   gap: var(--s-3);
   padding: var(--s-4) 0;
-  border-block-end: 1px solid var(--alu);
+  text-align: start;
+  cursor: pointer;
+  color: var(--ink);
 }
 
+/* Фокус ведёт по кромке строки: глобальный outline-offset 2px вылез бы
+   за колонку, строка занимает её целиком. Тот же приём, что в Complex. */
+.row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Вес меняется, ширина — нет: точечный вынос рядом растяжимый и съедает
+   разницу целиком, а высота строки держится на неизменном кегле.
+   Раскладка при переборе строк не шевелится — это проверялось замером
+   на секции комплекса и остаётся правилом. */
 .place {
-  font: var(--small);
-  color: var(--ink);
   flex: 0 1 auto;
   min-width: 0;
+  font: 400 15px / 1.5 var(--sans);
+  transition: font-weight var(--motion-fast) var(--ease-standard);
+}
+
+.rowOn .place {
+  font-weight: 500;
 }
 
 /* Тот же растр, что у .dot-underline в tokens.css, только цветом линии
@@ -88,12 +112,15 @@
   font: 400 15px / 1.5 var(--mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--tr-num);
-  color: var(--ink);
+  color: var(--ink-60);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
-/* Выделенная строка — та самая минута до МЦД. Красный текст только
-   на --frit-deep: на чистом --frit контраст падает ниже AA. */
-.rowHot .time {
+/* Открытая строка — красное время. Только на --frit-deep: на чистом
+   --frit контраст падает ниже AA. По умолчанию открыта первая строка,
+   поэтому в покое секция выглядит ровно как прежде: красная минута
+   до МЦД, остальные серые. */
+.rowOn .time {
   color: var(--frit-deep);
   font-weight: 500;
 }
@@ -104,6 +131,16 @@
   font: 500 10px / 1.5 var(--mono);
   letter-spacing: var(--tr-label);
   color: var(--ink-60);
+}
+
+/* --- ховер: только точная мышь ----------------------------------------
+   Состояние строки ведёт JS (класс .rowOn), поэтому здесь остаётся одно —
+   мгновенный отклик времени на наведение, до того как доедет камера.
+   На тач-устройствах блок не применяется, «залипшего» ховера не бывает. */
+@media (hover: hover) and (pointer: fine) {
+  .row:hover .time {
+    color: var(--frit-deep);
+  }
 }
 
 /* --- рамка карты ------------------------------------------------------ */
@@ -222,6 +259,43 @@
 
 .mapsLink:hover {
   border-color: var(--frit-deep);
+}
+
+/* --- ручной зум -------------------------------------------------------
+   Свои кнопки, а не колесо: scrollZoom над картой посреди лендинга
+   перехватывал бы прокрутку страницы. Стоят в правом верхнем углу —
+   левый нижний занят кнопкой Яндекса, правый нижний копирайтом. */
+
+.zoom {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: var(--s-3);
+  inset-inline-end: var(--s-3);
+  display: grid;
+  gap: var(--s-1);
+}
+
+/* 44 px — цель нажатия по норме доступности. Радиус 2 px как у всех
+   кнопок проекта, теней нет ни одной. */
+.zoomBtn {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: 400 17px / 1 var(--sans);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+}
+
+.zoomBtn:hover {
+  border-color: var(--ink);
+  background: var(--white);
 }
 
 /* --- метки поверх карты -----------------------------------------------
