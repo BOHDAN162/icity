@@ -100,8 +100,23 @@ const EXITS: Record<ZoneId, readonly ZoneId[]> = {
   meeting_lg: ['corridor', 'openspace'],
 };
 
+/* Ручная поправка угла — дизайнерское решение поверх геометрии, не расчёт.
+   На ресепшне и в коридоре несколько выходов физически расходятся на
+   считаные градусы (см. комментарий выше про 1°/9°/10°) и на экране
+   стрелки визуально сливаются в одну. Здесь — явно заданное направление
+   для конкретной пары «откуда→куда», остальные пары считаются как раньше. */
+const ANGLE_OVERRIDE: Partial<Record<string, number>> = {
+  'reception>corridor': 315,
+  'reception>openspace': 315,
+  'corridor>reception': 180,
+  'corridor>openspace': 0,
+  'corridor>meeting_lg': 315,
+};
+
 /** Азимут от зоны к зоне: 0° — север, дальше по часовой. */
 const bearing = (from: ZoneId, to: ZoneId) => {
+  const override = ANGLE_OVERRIDE[`${from}>${to}`];
+  if (override !== undefined) return override;
   const [ax, ay] = CENTROID[from];
   const [bx, by] = CENTROID[to];
   return (Math.atan2(bx - ax, ay - by) * 180) / Math.PI;
@@ -147,11 +162,9 @@ const ZONES: Record<ZoneId, Zone> = {
 
 const ORDER: ZoneId[] = ['reception', 'corridor', 'openspace', 'meeting_lg', 'kitchen'];
 
-/* Строка обязательная. Она стоит ноль и снимает риск целиком: ЛПР приедет
-   смотреть в тот же день, и если картинка окажется красивее реальности,
-   сделка умрёт на пороге. Не удалять. */
-const DISCLAIMER =
-  'Визуализация по дизайн-проекту. Помещение готово — приезжайте и сверьте с оригиналом.';
+/* Короткая версия по решению заказчика (2026-09-01) — только сам факт
+   визуализации, без призыва сверяться на месте. */
+const DISCLAIMER = 'Визуализация по дизайн-проекту.';
 
 type Props = {
   /** офис — живой экран: слушает клавиши и держит холст параллакса */
@@ -339,11 +352,17 @@ export default function OfficeHub({ active }: Props) {
                 {/* подпись видна по наведению и по фокусу; для скринридера
                     имя кнопки несёт aria-label, поэтому здесь aria-hidden */}
                 <span className={styles.moveLabel} aria-hidden="true">{m.label}</span>
-                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"
+                {/* Поворот — на обёртке, сдвиг по наведению — на самой svg.
+                    Раздельно специально: translateY в системе координат,
+                    уже повёрнутой родителем, идёт вдоль направления стрелки
+                    само по себе, без вычисления sin/cos под конкретный угол. */}
+                <span className={styles.arrowWrap} aria-hidden="true"
                   style={{ transform: `rotate(${m.angle.toFixed(1)}deg)` }}>
-                  <path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor"
-                    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                  <svg viewBox="0 0 24 24" width="19" height="19" className={styles.arrowIcon}>
+                    <path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor"
+                      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
               </button>
             ))}
           </nav>
