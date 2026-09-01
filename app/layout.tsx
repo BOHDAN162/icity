@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Literata, Golos_Text, JetBrains_Mono } from "next/font/google";
 import Preloader from "@/components/Preloader";
 import Cursor from "@/components/Cursor";
+import SmoothScroll from "@/components/SmoothScroll";
 import "./globals.css";
 
 /* ТИПОГРАФИКА ПРОЕКТА — три гарнитуры с жёстко разведёнными ролями.
@@ -81,6 +82,11 @@ export default function RootLayout({
             и при prefers-reduced-motion он не стартует и системную
             стрелку не трогает. */}
         <Cursor />
+        {/* Плавная прокрутка: та же постоянная времени, что у кольца
+            курсора, — страница и указатель едут одним характером.
+            Ничего не рисует и на тач-устройстве не делает ничего:
+            touch-события модуль не слушает вовсе. */}
+        <SmoothScroll />
       </body>
     </html>
   );
