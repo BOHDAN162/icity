@@ -146,7 +146,7 @@ function towerPin(): HTMLElement {
   dot.className = styles.pinDiamond;
   const text = document.createElement('span');
   text.className = styles.pinLabelRed;
-  text.textContent = 'SPACE TOWER · 113Н';
+  text.textContent = 'ICITY';
   wrap.append(dot, text);
   return wrap;
 }
