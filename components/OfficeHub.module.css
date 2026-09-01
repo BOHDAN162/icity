@@ -152,7 +152,6 @@
 
 .bottom {
   display: grid;
-  grid-template-rows: auto auto auto;
   gap: var(--s-6);
   align-content: end;
 }
@@ -368,14 +367,15 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--s-5);
+  gap: var(--s-6);
   justify-self: center;
+  margin-bottom: var(--s-4);
 }
 
 .move {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 1px solid var(--alu);
   background: var(--paper);
@@ -485,8 +485,8 @@
   .info, .infoRight { justify-self: stretch; max-width: none; }
   .zoneName { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-3); }
   .line { font: var(--body); }
-  .nav { gap: var(--s-4); }
-  .move { width: 52px; height: 52px; }
+  .nav { gap: var(--s-5); margin-bottom: var(--s-3); }
+  .move { width: 58px; height: 58px; }
   /* На узкой колонке под кругами сразу мелкий шрифт — подписи некуда
      выезжать вниз без наезда на него. Возвращаем её наверх, к блоку
      зоны, где есть запас (как было до правки под десктоп-референс). */

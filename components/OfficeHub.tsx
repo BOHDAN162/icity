@@ -95,7 +95,7 @@ const CENTROID: Record<ZoneId, readonly [number, number]> = {
 const EXITS: Record<ZoneId, readonly ZoneId[]> = {
   reception: ['corridor', 'openspace'],
   corridor: ['reception', 'kitchen', 'openspace', 'meeting_lg'],
-  kitchen: ['corridor', 'openspace'],
+  kitchen: ['openspace', 'corridor'],
   openspace: ['reception', 'corridor', 'kitchen', 'meeting_lg'],
   meeting_lg: ['corridor', 'openspace'],
 };
@@ -111,6 +111,11 @@ const ANGLE_OVERRIDE: Partial<Record<string, number>> = {
   'corridor>reception': 180,
   'corridor>openspace': 0,
   'corridor>meeting_lg': 315,
+  'openspace>reception': 45,
+  'openspace>corridor': 45,
+  'openspace>kitchen': 67.5,
+  'openspace>meeting_lg': 90,
+  'meeting_lg>openspace': 180,
 };
 
 /** Азимут от зоны к зоне: 0° — север, дальше по часовой. */
@@ -372,7 +377,7 @@ export default function OfficeHub({ active }: Props) {
             ))}
           </nav>
 
-          <p className={styles.fine}>{DISCLAIMER}</p>
+          {zoneId === 'reception' && <p className={styles.fine}>{DISCLAIMER}</p>}
         </div>
       </div>
 
