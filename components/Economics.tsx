@@ -11,8 +11,10 @@
    (красный текст), по design-system.md §1.
 
    Движение — one-shot по входу шкалы в кадр (IntersectionObserver,
-   threshold 0.5, отписка после срабатывания). Всё остальное —
-   заголовок, абзацы, полоса фактов — статично, это сознательно.
+   threshold 0.5, отписка после срабатывания). Вместе с ним от нуля
+   прокручиваются и сами числа — ставка на маркере, границы рынка
+   и строка «СТАВКА» в полосе фактов (lib/countUp.ts). Заголовок
+   и абзацы статичны, это сознательно.
 
    Три фазы:
    idle   — состояние SSR и prefers-reduced-motion: всё в финальном
@@ -25,10 +27,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useCountUpOnView } from '@/lib/countUp';
 import styles from './Economics.module.css';
 
+/* Узкий неразрывный пробел записан кодом, а не символом: невидимый
+   U+202F теряется при переносе файла между редакторами. Тот же приём,
+   что у NBSP в PlanDollhouse.tsx.
+
+   `count: true` — значение прокручивается счётчиком. Помечена одна
+   ставка: в «эксплуатация · НДС» считать нечего, а «2 месяца · от 11
+   месяцев» — условия договора, а не величина, и мельтешение цифр
+   в них читалось бы как ошибка. */
+const NNBSP = '\u202F';
+
 const FACTS = [
-  { key: 'СТАВКА', value: '1 300 000 ₽ / мес' },
+  { key: 'СТАВКА', value: `1${NNBSP}300${NNBSP}000 ₽ / мес`, count: true },
   { key: 'ВКЛЮЧЕНО В СТАВКУ', value: 'эксплуатация · НДС' },
   { key: 'ДЕПОЗИТ · СРОК', value: '2 месяца · от 11 месяцев' },
 ];
@@ -39,11 +52,29 @@ const MARKER_LEFT = '64%';
 const BAND_LEFT = '80%';
 const BAND_WIDTH = '20%';
 
+/* Тексты чисел шкалы — константами: они же уезжают в data-count
+   как финал счёта, и держать их в двух местах нельзя. */
+const MARKER_VALUE = `≈ 64${NNBSP}000 ₽`;
+const BAND_TEXT = `рынок · 80${NNBSP}000 – 100${NNBSP}000`;
+
+/* Числа шкалы стартуют не с появлением секции, а вместе с маркером:
+   его подписи до 550 мс держит opacity: 0 (см. .played .markerLabels),
+   и счёт, начатый раньше, прошёл бы четверть пути за занавесом. */
+const SCALE_COUNT_DELAY = 550;
+const COUNT_MS = 2000;
+
 type Phase = 'idle' | 'armed' | 'played';
 
 export default function Economics() {
   const scaleRef = useRef<HTMLDivElement>(null);
+  const factsRef = useRef<HTMLDListElement>(null);
   const [phase, setPhase] = useState<Phase>('idle');
+
+  /* Два счётчика, а не один на секцию: шкала и полоса фактов разъезжаются
+     по экрану на добрую его половину, и общий наблюдатель запускал бы
+     нижние числа задолго до того, как их видно. Каждый ждёт своего. */
+  useCountUpOnView(scaleRef, { duration: COUNT_MS, delay: SCALE_COUNT_DELAY });
+  useCountUpOnView(factsRef, { duration: COUNT_MS });
 
   useEffect(() => {
     /* reduce: остаёмся в idle — финальный вид без движения,
@@ -107,8 +138,8 @@ export default function Economics() {
             style={{ left: BAND_LEFT, width: BAND_WIDTH }}
             aria-hidden="true"
           />
-          <span className={styles.bandLabel} aria-hidden="true">
-            рынок · 80{' '}000 – 100{' '}000
+          <span className={styles.bandLabel} data-count={BAND_TEXT} aria-hidden="true">
+            {BAND_TEXT}
           </span>
           <span
             className={styles.marker}
@@ -120,7 +151,15 @@ export default function Economics() {
             style={{ left: MARKER_LEFT }}
             aria-hidden="true"
           >
-            <span className={styles.markerValue}>≈ 64{' '}000 ₽</span>
+            {/* Сетка 1×1 с призрачным дублем: пока идёт счёт, знаков
+                в числе меньше, а .markerLabels отцентрован по маркеру
+                через translateX(-50%) — без дубля подпись ездила бы
+                влево-вправо на каждом разряде. Тот же приём, что
+                у .numGhost в Landing. */}
+            <span className={styles.markerValue}>
+              <span data-count={MARKER_VALUE}>{MARKER_VALUE}</span>
+              <span className={styles.markerGhost} aria-hidden="true">{MARKER_VALUE}</span>
+            </span>
             <span className={styles.markerCaption}>113Н · SPACE TOWER</span>
           </span>
           <span className={styles.ruler} aria-hidden="true">
@@ -155,11 +194,13 @@ export default function Economics() {
           готово.
         </p>
 
-        <dl className={styles.facts}>
+        <dl ref={factsRef} className={styles.facts}>
           {FACTS.map((f) => (
             <div key={f.key} className={styles.fact}>
               <dt className={styles.factKey}>{f.key}</dt>
-              <dd className={styles.factValue}>{f.value}</dd>
+              <dd className={styles.factValue} data-count={f.count ? f.value : undefined}>
+                {f.value}
+              </dd>
             </div>
           ))}
         </dl>

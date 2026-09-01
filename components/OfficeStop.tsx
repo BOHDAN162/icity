@@ -94,6 +94,38 @@ const PHASE_SEAM = 0.62;
 /** мёртвая зона вокруг порога: без неё дрожание скролла дёргает setState */
 const PHASE_HYST = 0.005;
 
+/* --- автодоводка от офиса к кадру вида ---------------------------------
+   Зритель толкает страницу вниз из офиса — и дальше её доводит сцена,
+   до той самой выдержки, ради которой всё и затевалось: кадр стоит
+   во весь экран, подпись пришла, шва ещё нет.
+
+   ТОЛЬКО ВНИЗ. Доводка есть ровно в одну сторону, офис → вид. Наверх
+   зритель уходит сам: перехватывать возврат значит не пускать обратно.
+
+   НЕ НА СТАРТ ПРОКРУТКИ, А НА ЕЁ КОНЕЦ. Между «пошло движение» и
+   доводкой стоит SNAP_IDLE_MS тишины. Иначе доводка дерётся с инерцией
+   трекпада и iOS: там программный scrollTo не отменяет уже запущенный
+   импульс, а складывается с ним, и кадр дёргается. Ждём, пока инерция
+   кончится сама, — и только тогда ведём.
+
+   ЛЮБОЙ ЖЕСТ ОТМЕНЯЕТ. Колесо, палец, клавиша во время доводки
+   возвращают управление зрителю немедленно и навсегда: второй попытки
+   на этом проходе не будет. Заново доводка взводится, только если
+   зритель поднялся обратно в офис (p < SNAP_ARM). */
+const SNAP_TARGET = 0.58;
+/** «листать начали»: примерно один щелчок колеса */
+const SNAP_ARM = 0.015;
+/** тишина, после которой считаем, что инерция кончилась */
+const SNAP_IDLE_MS = 110;
+/** мс на пиксель хода плюс потолок и пол: короткий добор не должен ползти */
+const SNAP_MS_PER_PX = 0.85;
+const SNAP_MS_MIN = 420;
+const SNAP_MS_MAX = 1200;
+
+/* Разгон и торможение симметричны: доводка — это не появление элемента,
+   а движение камеры, и обрывать её резким приходом нельзя. */
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2);
+
 type Phase = 'office' | 'photo' | 'seam';
 
 const phaseFor = (p: number, cur: Phase): Phase => {
@@ -157,6 +189,68 @@ export default function OfficeStop() {
     let listening = false;
     let curPhase: Phase = 'office';
 
+    /* --- состояние доводки ------------------------------------------- */
+    let snapRaf = 0;
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    let snapping = false;
+    let spent = false;          // доводка на этом проходе уже отработала
+    let from = 0;
+    let to = 0;
+    let dur = 0;
+    let began = 0;
+    let owned = 0;              // куда доводка поставила страницу сама
+    let lastP = 0;
+    let lastY = window.scrollY;
+    let down = false;           // последнее движение было вниз
+
+    const stopSnap = () => {
+      if (snapRaf) { cancelAnimationFrame(snapRaf); snapRaf = 0; }
+      snapping = false;
+    };
+
+    /* Жест зрителя отбирает управление насовсем — до следующего
+       возвращения в офис. Ровно то же правило, что у карты локации:
+       автоподбор рамки не спорит с рукой. */
+    const giveUp = () => {
+      if (!snapping) return;
+      stopSnap();
+      spent = true;
+    };
+
+    const snapFrame = (now: number) => {
+      const t = Math.min(1, (now - began) / dur);
+      owned = Math.round(from + (to - from) * easeInOut(t));
+      window.scrollTo(0, owned);
+      if (t < 1) {
+        snapRaf = requestAnimationFrame(snapFrame);
+      } else {
+        snapRaf = 0;
+        snapping = false;
+        spent = true;
+      }
+    };
+
+    const settle = () => {
+      if (spent || snapping) return;
+      if (!down) return;                                // доводка в одну сторону
+      if (lastP < SNAP_ARM || lastP >= SNAP_TARGET) return;
+
+      const rect = wrap.getBoundingClientRect();
+      const travel = rect.height - window.innerHeight;
+      if (travel <= 0) return;
+
+      from = window.scrollY;
+      to = Math.round(rect.top + from + SNAP_TARGET * travel);
+      const span = to - from;
+      if (span <= 0) return;
+
+      dur = Math.min(SNAP_MS_MAX, Math.max(SNAP_MS_MIN, span * SNAP_MS_PER_PX));
+      began = performance.now();
+      owned = from;
+      snapping = true;
+      snapRaf = requestAnimationFrame(snapFrame);
+    };
+
     const measure = () => {
       const rect = wrap.getBoundingClientRect();
       const travel = rect.height - window.innerHeight;
@@ -164,6 +258,18 @@ export default function OfficeStop() {
 
       // единственная запись в DOM на кадр — и ни одного ре-рендера React
       stage.style.setProperty('--p', p.toFixed(4));
+
+      const y = window.scrollY;
+      if (y !== lastY) down = y > lastY;
+      /* Страницу подвинули не мы — значит, зритель. Сравниваем с тем,
+         куда доводка поставила её сама: событие прокрутки от нашего же
+         scrollTo приходит ровно на `owned`. */
+      if (snapping && Math.abs(y - owned) > 12) giveUp();
+      lastY = y;
+      lastP = p;
+
+      // вернулись в офис — доводка снова взведена
+      if (p < SNAP_ARM) spent = false;
 
       const next = phaseFor(p, curPhase);
       if (next !== curPhase) {
@@ -173,6 +279,10 @@ export default function OfficeStop() {
     };
 
     const onScroll = () => {
+      if (!snapping) {
+        if (idle) clearTimeout(idle);
+        idle = setTimeout(settle, SNAP_IDLE_MS);
+      }
       if (raf) return;
       raf = requestAnimationFrame(() => { raf = 0; measure(); });
     };
@@ -182,6 +292,9 @@ export default function OfficeStop() {
       listening = true;
       window.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', onScroll, { passive: true });
+      window.addEventListener('wheel', giveUp, { passive: true });
+      window.addEventListener('touchstart', giveUp, { passive: true });
+      window.addEventListener('keydown', giveUp);
       measure();
     };
 
@@ -190,6 +303,11 @@ export default function OfficeStop() {
       listening = false;
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
+      window.removeEventListener('wheel', giveUp);
+      window.removeEventListener('touchstart', giveUp);
+      window.removeEventListener('keydown', giveUp);
+      if (idle) clearTimeout(idle);
+      stopSnap();
     };
 
     const io = new IntersectionObserver(
@@ -246,21 +364,13 @@ export default function OfficeStop() {
           <div className={styles.veil} aria-hidden="true" />
 
           <div className={styles.caption}>
-            <div className={styles.copy}>
-              <p className={`label ${styles.eyebrow}`}>23 ЭТАЖ</p>
-              <h2 className={styles.title}>Панорама на десятки километров вокруг</h2>
-            </div>
+            <h2 className={styles.title}>Панорама</h2>
 
             <dl className={styles.figures}>
               {VIEW_FIGURES.map((f) => (
                 <div key={f.caption} className={styles.figure}>
                   <dt className={`label ${styles.figCaption}`}>{f.caption}</dt>
-                  <dd className={styles.figValue}>
-                    <span className={styles.num}>{f.value}</span>
-                    <span className={styles.numGhost} aria-hidden="true">
-                      {f.value}
-                    </span>
-                  </dd>
+                  <dd className={styles.figValue}>{f.value}</dd>
                 </div>
               ))}
             </dl>

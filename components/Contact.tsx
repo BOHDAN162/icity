@@ -11,14 +11,40 @@
    формы: чек собирается из точек растра фритты на холсте, тот же язык,
    что у растра по всему сайту, только покадрово через canvas.
 
-   Отправка — lib/submitLead.ts → app/api/lead/route.ts → Telegram-группа. */
+   Отправка — lib/submitLead.ts → app/api/lead/route.ts → Telegram-группа.
+
+   ДВА ОКНА ИЗ ПОДВАЛА. Рядом с почтой стоят «Чертёж» и «3D-модель» —
+   те же самые PlanOverlay и PlanDollhouse, что открываются из офиса,
+   без единой копии. Оба в position: fixed поверх страницы и оба уже
+   умеют Esc, поэтому «нажал Esc — вернулся к форме» получается само:
+   окно закрывается, страница под ним стоит там же, где стояла.
+   Пока окно открыто, прокрутка страницы под ним заперта.
+
+   Клик по зоне внутри модели ведёт зрителя в офис: страница мгновенно
+   переезжает к секции офиса и переключает её на выбранную зону, пока
+   экран ещё закрыт оверлеем. Канал — lib/officeZone.ts. */
 
 'use client';
 
-import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 'react';
+import {
+  useCallback, useEffect, useRef, useState, type FocusEvent, type FormEvent,
+} from 'react';
+import dynamic from 'next/dynamic';
 import styles from './Contact.module.css';
 import { contacts } from '@/lib/contacts';
+import { prefetchPlan, type RenderKey } from '@/lib/interior';
+import { requestZone, scrollToOffice } from '@/lib/officeZone';
 import { submitLead } from '@/lib/submitLead';
+
+/* Оба окна — те же самые, что открываются из офиса, а не их копии.
+   dynamic({ ssr: false }) обязателен обоим: за 3D-моделью едет чанк
+   three.js, за чертежом — лист и геометрия. Ни то, ни другое не имеет
+   права попасть в первый экран (AGENTS.md, «Бюджеты»); здесь они
+   уезжают по клику, ровно как из офиса. */
+const PlanDollhouse = dynamic(() => import('./PlanDollhouse'), { ssr: false });
+const PlanOverlay = dynamic(() => import('./PlanOverlay'), { ssr: false });
+
+type Overlay = null | 'sheet' | 'model';
 
 type FieldName = 'name' | 'contact';
 type FieldErrors = Partial<Record<FieldName, string>>;
@@ -31,13 +57,9 @@ const REQUIRED_MESSAGES: Record<FieldName, string> = {
   contact: 'Нужен контакт для ответа',
 };
 
-/* Презентации в public/ нет — ссылка временная, см. отчёт задачи. */
-const PDF_HREF = '#';
 /* Страницы политики обработки персональных данных в проекте нет —
    легал-строка и подвал ссылаются сюда же, до появления реальной страницы. */
 export const POLICY_HREF = '#';
-
-const MAX_HREF = contacts.maxUrl === 'VERIFY_WITH_BOGDAN' ? '#' : contacts.maxUrl;
 
 /* Чек собирается из точек вдоль той же ломаной, что рисует галочку:
    (0.16,0.55) → (0.42,0.78) → (0.86,0.24), нормировано на сторону холста. */
@@ -85,7 +107,35 @@ export default function Contact() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>('idle');
   const [submitError, setSubmitError] = useState(false);
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  /* Пока окно открыто, страница под ним не ездит. Иначе колесо над
+     оверлеем уносило бы форму куда-нибудь в локацию, и Esc возвращал
+     бы зрителя не туда, откуда он ушёл. Оверлеи — position: fixed
+     во весь вьюпорт, поэтому пропажу полосы прокрутки под ними
+     физически не видно, и компенсировать её нечем. */
+  useEffect(() => {
+    if (!overlay) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [overlay]);
+
+  const closeOverlay = useCallback(() => setOverlay(null), []);
+
+  /* Клик по зоне внутри 3D-модели. Приходит за 400 мс до того, как
+     оверлей закроется, — это его штатный шов (см. PlanDollhouse), и
+     страницу мы переставляем именно в эту щель, пока экран закрыт.
+
+     ЗАМОК СНИМАЕМ ПЕРВЫМ ДЕЛОМ: при overflow: hidden на body
+     window.scrollTo не делает ровно ничего, и офис остался бы там,
+     где был, а оверлей открылся бы над формой записи. */
+  const enterZone = useCallback((key: RenderKey) => {
+    document.body.style.overflow = '';
+    scrollToOffice();
+    requestZone(key);
+  }, []);
 
   function validate(field: FieldName, value: string) {
     setErrors((prev) => ({
@@ -304,17 +354,49 @@ export default function Contact() {
             <a className={styles.dottedLink} href={`mailto:${contacts.email}`}>
               {contacts.email}
             </a>
-            <a className={styles.dottedLink} href={MAX_HREF}>
-              Написать в Max
-            </a>
-            <a className={styles.dottedLink} href={PDF_HREF}>
-              Презентация <span className={styles.pdfTag}>PDF</span>
-            </a>
+            {/* Ссылки на профиль в Max может не быть — у мессенджера нет
+                формата «чат по номеру», нужен личный max.ru/u/… самой
+                Оксаны. Мёртвую кнопку на переговорах лучше не показывать
+                вовсе, чем показать ведущей в никуда. */}
+            {contacts.maxUrl && (
+              <a className={styles.dottedLink} href={contacts.maxUrl}>
+                Написать в Max
+              </a>
+            )}
+            {/* Чертёж и модель — те же окна, что в офисе. Esc внутри них
+                уже реализован и закрывает ровно одно окно, поэтому
+                возврат к форме получается сам собой. */}
+            <button
+              type="button"
+              className={`${styles.dottedLink} ${styles.linkButton}`}
+              onClick={() => setOverlay('sheet')}
+            >
+              Чертёж
+            </button>
+            <button
+              type="button"
+              className={`${styles.dottedLink} ${styles.linkButton}`}
+              onClick={() => setOverlay('model')}
+              onPointerEnter={prefetchPlan}
+              onFocus={prefetchPlan}
+            >
+              3D-модель
+            </button>
           </div>
 
           <p className={styles.quiet}>Аренда от собственника.</p>
         </div>
       </div>
+
+      {/* Монтируются по клику, а не прячутся пропом. У dynamic() чанк
+          едет в момент ОТРИСОВКИ, а не в момент, когда компонент решит
+          что-то показать: <PlanOverlay open={false}> отрисован, значит
+          уже утащил бы свой код на первый экран. Поэтому оба стоят
+          за условием, и у PlanOverlay `open` всегда true. */}
+      {overlay === 'sheet' && <PlanOverlay open onClose={closeOverlay} />}
+      {overlay === 'model' && (
+        <PlanDollhouse onClose={closeOverlay} onEnterZone={enterZone} />
+      )}
     </section>
   );
 }

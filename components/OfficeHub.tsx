@@ -38,13 +38,14 @@
    раздел «Вуаль». */
 
 import {
-  useCallback, useMemo, useRef, useState,
+  useCallback, useEffect, useMemo, useRef, useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import dynamic from 'next/dynamic';
 import {
   RENDER_NATIVE, prefetchPlan, renderSmallest, renderSrcSet, type RenderKey,
 } from '@/lib/interior';
+import { onZoneRequest } from '@/lib/officeZone';
 import styles from './OfficeHub.module.css';
 
 /* Кукольный дом тянет за собой three.js. Импорт динамический и без SSR:
@@ -189,6 +190,12 @@ export default function OfficeHub({ active }: Props) {
     setSeen((prev) => (prev.has(to) ? prev : new Set(prev).add(to)));
     setZoneId((current) => { setCameFrom(current); return to; });
   }, []);
+
+  /* Тот же переход, но по зову со стороны. Кукольный дом открывают
+     ещё и кнопкой «3D-модель» в подвале, у формы записи, — там между
+     ним и офисом полстраницы и шесть чужих секций. Канал объявлен
+     в lib/officeZone.ts, страницу к офису двигает вызывающий. */
+  useEffect(() => onZoneRequest(go), [go]);
 
   /* Сброса зоны на ресепшн больше нет нигде: башня ушла вместе со
      скролл-секвенцией, hero-видео назад не пускает (только перезагрузка).

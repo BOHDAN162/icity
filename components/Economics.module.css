@@ -107,11 +107,27 @@
   white-space: nowrap;
 }
 
+/* Сетка 1×1 под счётчик: видимое число и призрачный дубль в полном
+   виде лежат в одной ячейке, ширину задаёт дубль. Родитель отцентрован
+   по маркеру через translateX(-50%) — без дубля коробка сжималась бы
+   вместе с растущим числом и подпись ездила бы влево-вправо. Тот же
+   приём, что у .numGhost в Landing.module.css. */
 .markerValue {
   font: 500 26px/1 var(--mono);
   letter-spacing: var(--tr-num);
   color: var(--frit-deep);
   font-variant-numeric: tabular-nums;
+  display: grid;
+  justify-items: center;
+}
+
+.markerValue > * {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+.markerGhost {
+  visibility: hidden;
 }
 
 .markerCaption {
