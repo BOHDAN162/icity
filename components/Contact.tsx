@@ -33,7 +33,7 @@ import dynamic from 'next/dynamic';
 import styles from './Contact.module.css';
 import { contacts } from '@/lib/contacts';
 import { prefetchPlan, type RenderKey } from '@/lib/interior';
-import { requestZone, scrollToOffice } from '@/lib/officeZone';
+import { requestZone, scrollToOffice, setOfficeReturn } from '@/lib/officeZone';
 import { submitLead } from '@/lib/submitLead';
 
 /* Оба окна — те же самые, что открываются из офиса, а не их копии.
@@ -60,6 +60,11 @@ const REQUIRED_MESSAGES: Record<FieldName, string> = {
 /* Страницы политики обработки персональных данных в проекте нет —
    легал-строка и подвал ссылаются сюда же, до появления реальной страницы. */
 export const POLICY_HREF = '#';
+
+/* Якорь секции. На него ведёт кнопка «Записаться на просмотр» с Landing
+   (href="#contact") и он же уезжает крошкой возврата в officeZone —
+   поэтому не литерал в разметке, чтобы эти трое не разъехались. */
+export const CONTACT_ID = 'contact';
 
 /* Чек собирается из точек вдоль той же ломаной, что рисует галочку:
    (0.16,0.55) → (0.42,0.78) → (0.86,0.24), нормировано на сторону холста. */
@@ -109,6 +114,9 @@ export default function Contact() {
   const [submitError, setSubmitError] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /* Цель возврата фокуса, когда зритель вернётся сюда из офиса по Esc.
+     Кнопка переживает всю эту дорогу: Contact не размонтируется. */
+  const modelBtnRef = useRef<HTMLButtonElement>(null);
 
   /* Пока окно открыто, страница под ним не ездит. Иначе колесо над
      оверлеем уносило бы форму куда-нибудь в локацию, и Esc возвращал
@@ -132,6 +140,11 @@ export default function Contact() {
      window.scrollTo не делает ровно ничего, и офис остался бы там,
      где был, а оверлей открылся бы над формой записи. */
   const enterZone = useCallback((key: RenderKey) => {
+    /* Крошка возврата ставится ЗДЕСЬ, а не в onClick кнопки: открыть
+       модель и закрыть её, не выбрав зону, — это не переход в офис,
+       и обратной дороги после такого оставаться не должно. Тратит
+       крошку OfficeHub, при закрытии плана по Esc или «Закрыть». */
+    setOfficeReturn({ id: CONTACT_ID, focus: modelBtnRef.current });
     document.body.style.overflow = '';
     scrollToOffice();
     requestZone(key);
@@ -229,7 +242,7 @@ export default function Contact() {
   }, [status]);
 
   return (
-    <section className={styles.section} id="contact" aria-labelledby="contact-eyebrow">
+    <section className={styles.section} id={CONTACT_ID} aria-labelledby="contact-eyebrow">
       <div className={styles.inner}>
         <p className={`label ${styles.eyebrow}`} id="contact-eyebrow">
           ЗАПИСЬ НА ПРОСМОТР
@@ -374,6 +387,7 @@ export default function Contact() {
               Чертёж
             </button>
             <button
+              ref={modelBtnRef}
               type="button"
               className={`${styles.dottedLink} ${styles.linkButton}`}
               onClick={() => setOverlay('model')}

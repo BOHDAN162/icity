@@ -7,20 +7,40 @@
    информационный слой и ведёт передачу управления обратно офису.
    Сам этаж рисует либо PlanScene (three.js), либо PlanFlat (SVG).
 
-   ДВА СОСТОЯНИЯ И ОДИН ШОВ. Состояние A — план. Состояние B — рендер
+   ДВА СОСТОЯНИЯ И ОДИН ПЕРЕХОД. Состояние A — план. Состояние B — рендер
    зоны, и это уже не наша забота: рендеры показывает OfficeHub, он это
-   и так умеет. Наводим шов так, чтобы его не было видно:
+   и так умеет. Наша забота — чтобы между A и B было ровно одно событие:
 
-     0 мс     клик по зоне, камера пошла к точке съёмки
-     800 мс   офису сказано переключиться на эту зону — он кросс-фейдит
-              под нами, за 620 мс, и этого никто не видит
-     800 мс   поверх холста начинает проявляться тот же кадр, 400 мс
-     1200 мс  оверлей закрывается. Под ним уже ровно та картинка,
-              которая только что проявилась сверху. Мигания нет.
+     0 мс     клик. Камера пошла нырять к точке съёмки И ОДНОВРЕМЕННО
+              офису сказано переключиться на эту зону. Он отыгрывает свой
+              переход (620 мс, --t-scene), грузит кадр и поднимает вуали
+              с подписями — всё это под ещё непрозрачным оверлеем
+     1390 мс  погружение дочитано (97,6 % пути при easeInOutCubic), и
+              ровно здесь оверлей начинает растворяться ЦЕЛИКОМ
+              (REVEAL_AT). Последние 2,4 % камера проходит уже под
+              растворением — кадра, где всё замерло, не существует
+     1870 мс  растворение кончилось (REVEAL_MS), оверлей снят. Зритель
+              увидел: камера нырнула в нужный ракурс — и сразу открылся
+              нужный экран. Между этими двумя ничего нет.
 
-   Порядок важен: если закрыть оверлей раньше, чем офис доехал, зритель
-   поймает кадр предыдущей зоны. Числа лежат в lib/interior.ts, чтобы
-   сцена и оболочка считали по одним и тем же.
+   Темп нырка правится ОДНИМ числом — FLIGHT_MS в lib/interior.ts, —
+   но REVEAL_AT обязан переехать следом: он равен 0,818 × FLIGHT_MS.
+
+   ТРИ ОТДЕЛЬНЫХ СОБЫТИЯ, КОТОРЫЕ БЫЛИ ЗДЕСЬ ДО ЭТОГО, И КАЖДОЕ ЧИТАЛОСЬ
+   КАК РЫВОК. Не повторять:
+     1. Камера прилетала и ЗАМИРАЛА на белой нетекстурированной модели.
+        Виновата кривая: easeOutQuart проходила 97 % пути за 58 % времени,
+        и последние 42 % перелёта камера ехала только формально.
+     2. Кадр зоны проявлялся поверх холста отдельным слоем — «через
+        секунду появляется другой кадр».
+     3. Оверлей снимался, и разом появлялись вуали OfficeHub (.scrimInfo,
+        белая заливка на 56 % ширины — «белый туман»), подписи и стрелки.
+   Лечится это тремя вещами разом, и убрать любую значит вернуть рывок:
+   кривая перелёта распределяет ход до самого конца (easeInOutCubic),
+   офису дают команду в момент клика, а уходит оверлей целиком.
+
+   Числа лежат в lib/interior.ts, чтобы сцена и оболочка считали
+   по одним и тем же.
 
    ТРИ ПРИЧИНЫ НЕ ГРУЗИТЬ 3D: медленная сеть, отсутствие WebGL, просьба
    убрать движение. Во всех трёх — плоский план, и информационный слой
@@ -29,12 +49,27 @@
    ЧЕГО ЗДЕСЬ НЕТ. Метража отдельных зон. Полигоны из zones_cameras.json —
    это области попадания курсора: их сумма 200,9 м² против 244,1 м²
    по документам. Подписать зону площадью значит выдумать число, а этого
-   docs/facts.md прямо не разрешает. Подписано имя, метраж — общий. */
+   docs/facts.md прямо не разрешает. Подписано имя, метраж — общий.
+
+   РИСУЕМСЯ ЧЕРЕЗ ПОРТАЛ В BODY, и это не украшение архитектуры.
+   Из офиса план монтируется внутрь слоя A липкой сцены, а тот накрыт
+   `inert={!officeLive}` (OfficeStop.tsx) — то есть всё, кроме самой
+   макушки секции офиса, для клавиатуры и указателя мертво. Esc теперь
+   открывает план из любого места страницы, и без портала он приезжал
+   бы туда неинтерактивным: ни зону выбрать, ни «Закрыть» нажать.
+   Портал заодно снимает вторую, давнюю опасность — трансформированного
+   предка: у него `position: fixed` считает координаты от себя, и план
+   разъезжался бы (этому посвящены отдельные абзацы в AGENTS.md про
+   `.lifted` в HeroGate и про запрет transform на корне OfficeHub).
+   Портал стоит ЗДЕСЬ, а не у вызывающих: экземпляра два — из офиса
+   и из подвала, — и оба должны получить его без своих правок. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import {
-  CROSSFADE_MS, RENDER_NATIVE, hasWebGL, isSlowNetwork, loadPlan,
+  REVEAL_AT, REVEAL_CAP_MS, REVEAL_MS, RENDER_NATIVE,
+  hasWebGL, isSlowNetwork, loadPlan,
   prefetchRender, renderSrcSet, renderSmallest,
   type Plan, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
@@ -71,26 +106,46 @@ const FACTS: readonly { value: string; caption: string }[] = [
 const FACADE_NOTE = 'Панорамный фасад по трём сторонам, скошенный угол в зоне отдыха.';
 
 type Props = {
-  onClose: () => void;
+  /* ПОЧЕМУ ЗАКРЫЛИСЬ — вызывающему это нужно знать, и вот зачем.
+     Зону закрытие не трогает ни в одном случае, тут разницы нет.
+     Но зритель, попавший в офис из подвала кнопкой «3D-модель», имеет
+     право уехать обратно к форме записи (крошка в lib/officeZone.ts),
+     и тратится это право только на `dismiss`. После `entered` зритель
+     никуда не уходил — он только что выбрал зону и остался в офисе,
+     увозить его к форме было бы прямо против его действия.
+
+       dismiss — Esc или кнопка «Закрыть»
+       entered — finish(), закрытие само собой после выбора зоны */
+  onClose: (reason: 'dismiss' | 'entered') => void;
   /** офис переключается на эту зону, пока оверлей ещё закрывает экран */
   onEnterZone: (key: RenderKey) => void;
+  /* ОБРАТНЫЙ НЫРОК. Зона, из которой открыли план: камера начнёт с её
+     ракурса съёмки — то есть ровно с того, что зритель видит на
+     фотографии, — и отъедет в изометрию. Зеркало погружения.
+     null — обычное открытие, план сразу в изометрии; так открывают
+     кнопкой и так же приходит открытие из подвала, где под оверлеем
+     не зона, а форма записи, и отъезжать было бы не от чего. */
+  backFrom?: RenderKey | null;
 };
 
 /* Пропа `open` нет: смонтирован — значит открыт. Так чанк с three.js
    уезжает из первого экрана сам собой, а закрытие гарантированно
    отпускает WebGL-контекст, а не оставляет его висеть невидимым. */
-export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
+export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }: Props) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [failed, setFailed] = useState(false);
   const [hovered, setHovered] = useState<ZoneKey | null>(null);
   const [flyTo, setFlyTo] = useState<RenderKey | null>(null);
-  /* Две ступени одного кадра. `arriving` вешает <picture> в DOM в момент
-     клика — с этой секунды браузер качает картинку, и у неё есть все
-     800 мс перелёта. `revealed` включает проявление. Если делать это
-     одним состоянием, загрузка стартует на 800-й миллисекунде и зритель
-     ловит пустоту там, где должен быть кадр. */
+  /* `arriving` вешает <picture> кадра зоны в DOM в момент клика. Видимым
+     он больше не бывает НИКОГДА — это зонд загрузки, и только. Тот же
+     кадр в ту же секунду начинает грузить и сам OfficeHub (onEnterZone
+     зовётся из pick), запрос у них общий, поэтому onLoad здесь —
+     честный ответ на вопрос «фотография под оверлеем уже готова?».
+     Без него растворение могло бы открыть белый прямоугольник. */
   const [arriving, setArriving] = useState<RenderKey | null>(null);
-  const [revealed, setRevealed] = useState(false);
+  /* Оверлей растворяется в готовый экран зоны. Одно состояние на весь
+     переход: отдельного проявления кадра поверх холста больше нет. */
+  const [leaving, setLeaving] = useState(false);
   const [chip, setChip] = useState<{ x: number; y: number } | null>(null);
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -144,47 +199,99 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || sheetOpen) return;
       e.preventDefault();
+      /* stopPropagation здесь несёт вторую службу, кроме «не пускать Esc
+         в офис»: на window в bubble-фазе висит тумблер, открывающий этот
+         же план (OfficeHub). Событие, остановленное в capture, до bubble
+         на том же window не доходит — значит Esc закроет план и не
+         откроет его тут же обратно. Уберёшь — получишь мигающий оверлей. */
       e.stopPropagation();
-      onClose();
+      onClose('dismiss');
     };
     // capture: пока план открыт, Esc принадлежит ему и до офиса не доходит
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose, sheetOpen]);
 
-  const crossfade = useCallback((key: RenderKey) => {
-    setRevealed(true);
-    onEnterZone(key);
-  }, [onEnterZone]);
-
+  /* finish() зовётся только в конце растворения — зона выбрана, офис уже
+     на неё переключён (onEnterZone отработал ещё в pick).
+     К этому моменту оверлей стоит на нулевой непрозрачности, поэтому
+     снятие flyTo (сцена возвращает камеру домой одним кадром) уже
+     не видно — раньше этот кадр успевал мелькнуть. */
   const finish = useCallback(() => {
     flyRef.current = null;
     setFlyTo(null);
     setArriving(null);
-    setRevealed(false);
+    setLeaving(false);
     setHovered(null);
-    onClose();
+    onClose('entered');
   }, [onClose]);
 
-  const onPhase = useCallback((phase: 'crossfade' | 'done') => {
-    if (phase === 'crossfade') {
-      const key = flyRef.current;
-      if (key) crossfade(key);
-      return;
-    }
-    finish();
-  }, [crossfade, finish]);
+  /* Растворение стартует по совпадению ДВУХ условий, и ни одно нельзя
+     выкинуть: `dueRef` — камера дошла до REVEAL_AT и ещё едет, `readyRef` —
+     фотография зоны догрузилась. Порядок между ними не определён:
+     из кэша кадр готов раньше камеры, на холодной сети — позже. */
+  const dueRef = useRef(false);
+  const readyRef = useRef(false);
+  const goneRef = useRef(false);
 
-  /* Плоский план не летит: там шов держат таймеры, а не камера. */
+  const tryReveal = useCallback(() => {
+    if (goneRef.current || !dueRef.current || !readyRef.current) return;
+    goneRef.current = true;
+    setLeaving(true);
+    timersRef.current.push(setTimeout(finish, REVEAL_MS));
+  }, [finish]);
+
+  const onPhase = useCallback((phase: 'reveal' | 'done') => {
+    if (phase !== 'reveal') return;
+    dueRef.current = true;
+    tryReveal();
+  }, [tryReveal]);
+
+  /* Плоский план не летит — там точку старта растворения задаёт таймер,
+     а не камера. Всё остальное у обоих режимов общее. */
   const pick = useCallback((key: RenderKey) => {
     if (flyRef.current) return;
     flyRef.current = key;
     setFlyTo(key);
-    setArriving(key);           // качать начинаем сейчас, а не при проявлении
-    if (mode === 'solid') return;
-    crossfade(key);
-    timersRef.current.push(setTimeout(finish, CROSSFADE_MS));
-  }, [mode, crossfade, finish]);
+    setArriving(key);
+
+    /* Офису говорим переключиться СРАЗУ, а не в середине перелёта.
+       Он весь свой переход (620 мс, --t-scene) отыгрывает под ещё
+       непрозрачным оверлеем, и к растворению под нами стоит готовый,
+       устоявшийся экран зоны — с фотографией, вуалями и подписями.
+       Раньше офису давали команду на 800-й мс, и его вуали с подписями
+       появлялись уже ПОСЛЕ снятия оверлея, отдельным событием. */
+    onEnterZone(key);
+
+    if (mode !== 'solid') {
+      timersRef.current.push(setTimeout(() => {
+        dueRef.current = true;
+        tryReveal();
+      }, REVEAL_AT));
+    }
+
+    /* Потолок ожидания загрузки: кадр не приехал — уходим всё равно. */
+    timersRef.current.push(setTimeout(() => {
+      dueRef.current = true;
+      readyRef.current = true;
+      tryReveal();
+    }, REVEAL_CAP_MS));
+  }, [mode, onEnterZone, tryReveal]);
+
+  const onShotReady = useCallback(() => {
+    readyRef.current = true;
+    tryReveal();
+  }, [tryReveal]);
+
+  /* Кадр мог приехать ДО того, как React повесил onLoad: по наведению
+     на зону работает prefetchRender, и к клику картинка обычно уже
+     в кэше — событие load для неё не повторится. Тогда единственный
+     честный признак — img.complete в момент появления узла. Без этой
+     проверки самый частый путь (навёлся, кликнул) упирался бы
+     в REVEAL_CAP_MS, и оверлей стоял бы столбом 2,6 с. */
+  const probeRef = useCallback((el: HTMLImageElement | null) => {
+    if (el?.complete) onShotReady();
+  }, [onShotReady]);
 
   /* Слежение за указателем и перетаскивание. Оба живут на поле плана
      целиком; на плоском SVG не нужны — там доворачивать нечего. */
@@ -294,9 +401,19 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
     [plan],
   );
 
-  return (
+  /* Портал в body — см. шапку файла. document здесь заведомо есть:
+     компонент приезжает через dynamic({ ssr: false }) и на сервере
+     не рендерится вовсе. */
+  return createPortal(
     <div
-      className={styles.root}
+      className={[
+        styles.root,
+        /* Класс ставится только у объёмного плана: у плоского камеры нет
+           и отъезжать нечем, а более долгий вход там читался бы просто
+           как задержка. */
+        backFrom && mode === 'solid' ? styles.backIn : '',
+        leaving ? styles.leaving : '',
+      ].filter(Boolean).join(' ')}
       role="dialog"
       aria-modal="true"
       aria-label="Планировка помещения 113Н"
@@ -311,7 +428,12 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
           <button type="button" className={styles.sheetLink} onClick={() => setSheetOpen(true)}>
             Чертёж
           </button>
-          <button ref={closeRef} type="button" className={styles.close} onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className={styles.close}
+            onClick={() => onClose('dismiss')}
+          >
             Закрыть
           </button>
         </div>
@@ -336,6 +458,7 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
             onHover={setHovered}
             onPick={pick}
             flyTo={flyTo}
+            backFrom={backFrom}
             onPhase={onPhase}
             wobble={!calm}
             compact={calm}
@@ -346,19 +469,28 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
           <PlanFlat plan={plan} hovered={hovered} onHover={setHovered} onPick={pick} />
         )}
 
-        {/* Кадр зоны наезжает поверх плана и гасит его. К моменту, когда
-            оверлей уйдёт, ровно этот кадр уже стоит в офисе под нами. */}
+        {/* ЗОНД ЗАГРУЗКИ, А НЕ КАРТИНКА. Виден он не бывает никогда:
+            зритель смотрит фотографию в самом OfficeHub, сквозь
+            растворяющийся оверлей. Здесь тот же кадр нужен ровно затем,
+            чтобы поймать onLoad — по нему решается, можно ли начинать
+            растворение. Запрос общий с OfficeHub (те же srcSet и sizes,
+            тот же выбранный источник), второй загрузки не происходит. */}
         {arriving && (
-          <picture className={`${styles.arrival} ${revealed ? styles.arrivalOn : ''}`}>
+          <picture className={styles.probe}>
             <source type="image/avif" srcSet={renderSrcSet(arriving, 'avif')} sizes="100vw" />
             <source type="image/webp" srcSet={renderSrcSet(arriving, 'webp')} sizes="100vw" />
             <img
+              ref={probeRef}
               src={renderSmallest(arriving)}
               alt=""
               aria-hidden="true"
               width={RENDER_NATIVE[arriving][0]}
               height={RENDER_NATIVE[arriving][1]}
               decoding="async"
+              onLoad={onShotReady}
+              /* Кадр не приехал — это не повод держать зрителя
+                 в оверлее: уходим, под нами всё равно офис. */
+              onError={onShotReady}
             />
           </picture>
         )}
@@ -409,6 +541,7 @@ export default function PlanDollhouse({ onClose, onEnterZone }: Props) {
       </div>
 
       <PlanOverlay open={sheetOpen} onClose={() => setSheetOpen(false)} />
-    </div>
+    </div>,
+    document.body,
   );
 }
