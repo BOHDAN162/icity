@@ -6,10 +6,10 @@
    бесплатный тариф даёт 100 показов карты в сутки, подробности
    и остальные внешние условия — в AGENTS.md, раздел «Карта локации».
 
-   ЧТО ПОКАЗЫВАЕТ. Ровно одну связку за раз — ту, на которой стоит
-   курсор в таблице слева. Приём тот же, что у списка удобств в
-   Complex.tsx: одна строка — один кадр. Здесь одна строка — одна
-   красная линия, одна метка назначения и своя рамка кадра.
+   ЧТО ПОКАЗЫВАЕТ. Ноль или одну связку. В покое не выбрано ничего:
+   карта стоит общим планом, на ней только башня. Клик по строке слева
+   строит одну красную линию, ставит метку назначения и подбирает рамку;
+   повторный клик по той же строке всё снимает и возвращает общий план.
 
    ПОЧЕМУ КАМЕРА ЕЗДИТ. Связки очень разной длины: до МЦД 105 м, до
    Кутузовского 1486 м. На одном зуме половина из них либо не влезает
@@ -163,8 +163,8 @@ function targetPin(): { el: HTMLElement; text: HTMLElement } {
 }
 
 type Props = {
-  /** индекс строки таблицы, на которой стоит курсор */
-  active: number;
+  /** индекс выбранной строки таблицы; null — не выбрано ничего */
+  active: number | null;
   /** зовётся, когда карта не поедет: нет ключа, отказ скрипта, отказ API */
   onFail: (reason: string) => void;
   /** зовётся один раз, когда карта отрисовалась */
@@ -280,6 +280,7 @@ export default function YandexMap({ active, onFail, onReady }: Props) {
         routeRef.current = route;
 
         const { el, text } = targetPin();
+        el.classList.add(styles.pinOff); /* в покое цели нет */
         targetTextRef.current = text;
         const target = new YMapMarker({ coordinates: ICITY, zIndex: 20 }, el);
         map.addChild(target);
@@ -319,10 +320,29 @@ export default function YandexMap({ active, onFail, onReady }: Props) {
     const route = routeRef.current;
     const target = targetRef.current;
     const text = targetTextRef.current;
-    const leg = LEGS[active];
-    if (!map || !route || !target || !text || !leg) return;
+    if (!map || !route || !target || !text) return;
+
+    const leg = active === null ? null : LEGS[active];
+
+    cancelAnimationFrame(rafRef.current);
+
+    /* Ничего не выбрано: связка схлопывается в точку, метка прячется,
+       камера возвращается к общему плану. Метку именно прячем классом,
+       а не убираем из карты: пересоздавать маркер на каждый клик —
+       лишняя работа и лишний мусор для сборщика. */
+    if (!leg) {
+      route.update({ geometry: { type: 'LineString', coordinates: [ICITY, ICITY] } });
+      text.parentElement?.classList.add(styles.pinOff);
+      if (!takenOverRef.current) {
+        const duration = firstFrameRef.current || reducedRef.current ? 0 : FLY_MS;
+        map.update({ location: { center: MAP_CENTER, zoom: MAP_ZOOM, duration, easing: 'ease-in-out' } });
+      }
+      firstFrameRef.current = false;
+      return;
+    }
 
     text.textContent = leg.pin;
+    text.parentElement?.classList.remove(styles.pinOff);
     target.update({ coordinates: leg.point });
 
     /* Камера. Первый кадр ставится без анимации — ехать неоткуда;
@@ -332,8 +352,6 @@ export default function YandexMap({ active, onFail, onReady }: Props) {
       map.update({ location: { bounds: boundsFor(leg.point), duration, easing: 'ease-in-out' } });
     }
     firstFrameRef.current = false;
-
-    cancelAnimationFrame(rafRef.current);
 
     if (reducedRef.current) {
       route.update({ geometry: { type: 'LineString', coordinates: [ICITY, leg.point] } });
@@ -371,10 +389,12 @@ export default function YandexMap({ active, onFail, onReady }: Props) {
     const map = mapRef.current;
     if (!map) return;
     takenOverRef.current = false;
-    const leg = LEGS[active];
-    map.update({
-      location: { bounds: boundsFor(leg ? leg.point : ICITY), duration: FLY_MS, easing: 'ease-in-out' },
-    });
+    const leg = active === null ? null : LEGS[active];
+    map.update(
+      leg
+        ? { location: { bounds: boundsFor(leg.point), duration: FLY_MS, easing: 'ease-in-out' } }
+        : { location: { center: MAP_CENTER, zoom: MAP_ZOOM, duration: FLY_MS, easing: 'ease-in-out' } }
+    );
   };
 
   return (

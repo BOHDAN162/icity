@@ -15,20 +15,34 @@
    В заголовке и таблице оставлено прежнее имя — по нему объект знают,
    а на карте Яндекс подписывает станцию сам.
 
-   ЧТО ГРУЗИТСЯ И КОГДА. Карта не едет, пока её не попросят кнопкой.
-   Причина не в весе, а в квоте: бесплатный тариф даёт 100 показов
-   карты в сутки, и при автозагрузке их сожгла бы сотня любых
-   посетителей, доскроллевших до секции, — а карта на переговорах
-   молча не открылась бы. Остальные внешние условия — в AGENTS.md.
+   ЧТО ГРУЗИТСЯ И КОГДА. Карта начинает грузиться за два экрана до
+   секции — на границе ряда чисел и экономики. Замерено: от верха
+   «Экономики» до верха «Локации» 1841 px при экране 900, поэтому
+   запас 1600 px даёт тайлам порядка двух экранов прокрутки, чтобы
+   доехать. К моменту, когда зритель добирается до локации, карта
+   уже стоит. Наблюдатель одноразовый.
+
+   ЦЕНА АВТОЗАГРУЗКИ. Бесплатный тариф даёт 100 показов карты в сутки,
+   и теперь их тратит каждый, кто долистал до экономики, а не только
+   тот, кто захотел карту. Для лендинга на десятки просмотров это
+   с запасом; счётчик виден в кабинете Яндекса. Остальные внешние
+   условия — в AGENTS.md.
 
    ЕСЛИ КАРТЫ НЕТ. Нет ключа, отказала сеть, отказал сам API — в рамке
    остаётся адрес со ссылкой на Яндекс Карты, а не пустой прямоугольник.
    Таблица статична и несёт всю фактуру в любом случае.
 
+   ВЫБОР СТРОКИ — ПО КЛИКУ, НЕ ПО НАВЕДЕНИЮ. В покое не выбрана
+   ни одна: карта стоит общим планом, связок нет. Клик строит связку
+   и ведёт камеру, повторный клик по той же строке всё снимает.
+   Наведение ничего не строит — иначе связка дёргалась бы под
+   курсором, пока зритель просто ведёт мышь к нужной строке.
+
    ДОСТУПНОСТЬ. Строки — настоящие <button>: Enter и Space приходят
-   сами, фокус ведёт карту так же, как мышь, aria-pressed говорит,
-   какая строка открыта. Глобальных обработчиков клавиш нет — их на
-   сайте нет нигде, кроме Esc в офисе (AGENTS.md). */
+   сами и работают тем же переключателем, что и клик, aria-pressed
+   говорит, какая строка открыта. Фокус связку НЕ строит: перебор
+   табом не должен гонять камеру. Глобальных обработчиков клавиш
+   нет — их на сайте нет нигде, кроме Esc в офисе (AGENTS.md). */
 
 'use client';
 
@@ -43,17 +57,38 @@ const YandexMap = dynamic(() => import('./YandexMap'), { ssr: false });
 /* Ссылка на объект в Яндекс Картах — из неё же взята точка комплекса. */
 const YANDEX_URL = 'https://yandex.ru/maps/-/CTTVAU6r';
 
+/* Запас, за который до секции начинает грузиться карта. Замер на
+   1440×900: от верха «Экономики» до верха «Локации» 1841 px. */
+const PRELOAD_MARGIN = '1600px';
+
 export default function Location() {
+  const sectionRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [live, setLive] = useState(false);
-  const [active, setActive] = useState(0);
+  /* null — не выбрана ни одна строка: связок на карте нет */
+  const [active, setActive] = useState<number | null>(null);
 
-  /* Ховером ведём карту только на точной мыши. Тач-события приходят
-     кликом — он же обслуживает и клавиатуру. Тот же ref, что в Complex. */
-  const fine = useRef(false);
   useEffect(() => {
-    fine.current = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const el = sectionRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.unobserve(el);
+        io.disconnect(); /* одноразовый: второго монтирования нет */
+        setOpen(true);
+      },
+      { rootMargin: PRELOAD_MARGIN }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  /* Клик по открытой строке её закрывает. Отсюда и весь переключатель:
+     зритель убирает связку тем же движением, которым построил. */
+  const toggle = useCallback((i: number) => {
+    setActive((prev) => (prev === i ? null : i));
   }, []);
 
   const onFail = useCallback((reason: string) => {
@@ -66,7 +101,7 @@ export default function Location() {
   const onReady = useCallback(() => setLive(true), []);
 
   return (
-    <section className={styles.section} id="location" aria-labelledby="location-eyebrow">
+    <section ref={sectionRef} className={styles.section} id="location" aria-labelledby="location-eyebrow">
       <div className={styles.inner}>
         <div className={styles.text}>
           <p className={`label ${styles.eyebrow}`} id="location-eyebrow">
@@ -88,11 +123,7 @@ export default function Location() {
                     type="button"
                     className={`${styles.row} ${on ? styles.rowOn : ''}`}
                     aria-pressed={on}
-                    onClick={() => setActive(i)}
-                    onFocus={() => setActive(i)}
-                    onPointerEnter={(e) => {
-                      if (fine.current && e.pointerType === 'mouse') setActive(i);
-                    }}
+                    onClick={() => toggle(i)}
                   >
                     <span className={styles.place}>{leg.place}</span>
                     {/* Вынос. aria-hidden: точки ничего не сообщают,
@@ -120,11 +151,6 @@ export default function Location() {
                   <br />
                   Space Tower, 23 этаж
                 </p>
-                {!failed && (
-                  <button type="button" className={styles.stubBtn} onClick={() => setOpen(true)}>
-                    {open ? 'Загружаем карту…' : 'Показать карту'}
-                  </button>
-                )}
               </div>
             )}
 
