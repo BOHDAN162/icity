@@ -20,7 +20,7 @@
    пунктир виден ровно там, где стены нет. Считать пересечения не нужно. */
 
 import { useMemo } from 'react';
-import type { Door, Drawing, Furn, Ring, Room } from '@/lib/plan';
+import type { Door, Drawing, Furn, Ring, Room, Wall } from '@/lib/plan';
 import { pickLabel } from '@/lib/plan';
 import styles from './PlanOverlay.module.css';
 
@@ -56,6 +56,13 @@ export const viewBoxOf = (d: Drawing, k: number) => {
 };
 
 const pts = (r: Ring) => r.map(([x, y]) => `${x},${y}`).join(' ');
+
+/** Стена прямоугольником. Стены не сливаются в один полигон и не должны:
+    на стыке два прямоугольника одного цвета дают ровно то же поше, что
+    и объединение, а считать булеву операцию — лишний код и лишний риск. */
+const wallRect = (w: Wall) => (w.o === 'h'
+  ? { x: w.p1, y: w.a, width: w.p2 - w.p1, height: w.b - w.a }
+  : { x: w.a, y: w.p1, width: w.b - w.a, height: w.p2 - w.p1 });
 
 /** Прямоугольник вокруг отрезка — так диагональная стена получает толщину. */
 const thick = (x1: number, y1: number, x2: number, y2: number, th: number): Ring => {
@@ -223,12 +230,21 @@ export default function PlanSheet({ drawing, layers, k, hovered, onHover }: Prop
         )}
       </g>
 
-      <g className={styles.wall}>
-        {drawing.walls.map((w, i) => <polygon key={i} points={pts(w)} />)}
+      {/* Наружная стена — обводка контура двойной толщины, обрезанная самим
+          контуром: внешняя половина уходит под clip, внутри остаётся ровно
+          полоса shellTh. Смещать многоугольник со скошенным углом ради
+          этого не нужно. Стены и колонны тоже режем контуром — трассировка
+          местами на пару сантиметров выходит за плиту. */}
+      <g className={styles.wall} clipPath="url(#planSlab)">
+        <polygon className={styles.shell} points={slab} strokeWidth={drawing.shellTh * 2} />
+        {drawing.walls.map((w, i) => <rect key={i} {...wallRect(w)} />)}
         {drawing.diag.map((d, i) => (
-          <polygon key={`d${i}`} points={pts(thick(d.x1, d.y1, d.x2, d.y2, drawing.wallTh))} />
+          <polygon key={`d${i}`} points={pts(thick(d.x1, d.y1, d.x2, d.y2, drawing.shellTh))} />
         ))}
         {drawing.columns.map((c, i) => <circle key={`c${i}`} cx={c.cx} cy={c.cy} r={c.d / 2} />)}
+        {drawing.columnsSq.map((c, i) => (
+          <rect key={`s${i}`} x={c.x} y={c.y} width={c.w} height={c.h} />
+        ))}
       </g>
       <polygon className={styles.outline} points={slab} />
 

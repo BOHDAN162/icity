@@ -58,14 +58,20 @@ export type Dim = {
 };
 
 export type Seg = { x1: number; y1: number; x2: number; y2: number };
+/** Стена прямоугольником: a/b — грани, p1/p2 — протяжённость. */
+export type Wall = { o: 'h' | 'v'; a: number; b: number; p1: number; p2: number };
 export type Column = { cx: number; cy: number; d: number };
+/** Квадратная несущая колонна. */
+export type ColumnSq = { x: number; y: number; w: number; h: number };
 
 export type Drawing = {
   slab: Ring;
-  walls: Ring[];
+  walls: Wall[];
   diag: Seg[];
-  wallTh: number;
+  /** наружная стена — полоса такой ширины внутрь от контура плиты */
+  shellTh: number;
   columns: Column[];
+  columnsSq: ColumnSq[];
   glazingFacade: Seg[];
   glazingInterior: Seg[];
   mullions: { cx: number; cy: number }[];
@@ -83,10 +89,11 @@ export type Drawing = {
 
 type Raw = {
   slab: number[][];
-  wall_polygons: { outer: number[][] }[];
+  walls: Wall[];
   walls_diag: Seg[];
-  wall_th: number;
+  shell_th: number;
   columns: Column[];
+  columns_sq: ColumnSq[];
   glazing_facade: Seg[];
   glazing_interior: Seg[];
   mullions: { cx: number; cy: number }[];
@@ -109,10 +116,11 @@ const parse = (raw: Raw): Drawing => {
   const ys = raw.slab.map((p) => p[1]);
   return {
     slab: ring(raw.slab),
-    walls: raw.wall_polygons.map((w) => ring(w.outer)),
+    walls: raw.walls,
     diag: raw.walls_diag,
-    wallTh: raw.wall_th,
+    shellTh: raw.shell_th,
     columns: raw.columns,
+    columnsSq: raw.columns_sq,
     glazingFacade: raw.glazing_facade,
     glazingInterior: raw.glazing_interior,
     mullions: raw.mullions,

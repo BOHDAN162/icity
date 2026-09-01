@@ -183,6 +183,7 @@
 }
 
 .wall { fill: var(--ink); }
+.shell { fill: none; stroke: var(--ink); }
 
 .outline {
   fill: none;

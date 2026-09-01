@@ -233,7 +233,7 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
           {room
             ? `${room.label} · ${fmtArea(room.area_m2)}${roomBox ? ` · ${num(roomBox.w)} × ${num(roomBox.h)} м` : ''}`
             : drawing
-              ? `244,1 м² по документам · ${num(drawing.areaNet)} м² в чистоте · перегородки и колонны ${num(drawing.areaStructure)} м²`
+              ? `244,1 м² по документам · ${num(drawing.areaDoc)} по обмеру контура · ${num(drawing.areaNet)} в чистоте · ${num(drawing.areaStructure)} конструкции`
               : ''}
         </p>
       </div>

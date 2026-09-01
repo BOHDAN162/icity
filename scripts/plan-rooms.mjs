@@ -18,7 +18,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { ROOMS, FURNITURE, DOORS, DIMENSIONS } from './plan-source.mjs';
+import { ROOMS, FURNITURE, DOORS, DIMENSIONS, WALLS, COLUMNS_SQ, SHELL_TH } from './plan-source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GEOM = join(ROOT, 'public/interior/geometry.json');
@@ -46,11 +46,35 @@ const thickSegment = ({ x1, y1, x2, y2 }, th) => {
   return [[x1 + nx, y1 + ny], [x2 + nx, y2 + ny], [x2 - nx, y2 - ny], [x1 - nx, y1 - ny]];
 };
 
+/** Квадрат расстояния от точки до отрезка — нужен наружному кольцу. */
+const distSq = (px, py, x1, y1, x2, y2) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  let t = l2 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = x1 + t * dx - px;
+  const qy = y1 + t * dy - py;
+  return qx * qx + qy * qy;
+};
+
+/** Прямоугольник стены как кольцо. */
+const wallRing = (w) => (w.o === 'h'
+  ? [[w.p1, w.a], [w.p2, w.a], [w.p2, w.b], [w.p1, w.b]]
+  : [[w.a, w.p1], [w.b, w.p1], [w.b, w.p2], [w.a, w.p2]]);
+
 const main = async () => {
   const geom = JSON.parse(await readFile(GEOM, 'utf8'));
   const slab = geom.slab;
-  const walls = geom.wall_polygons.map((w) => w.outer);
-  const diag = geom.walls_diag.map((d) => thickSegment(d, geom.wall_th));
+  const walls = WALLS.map(wallRing);
+  const diag = geom.walls_diag.map((d) => thickSegment(d, SHELL_TH));
+  /* Наружная стена — полоса внутрь от контура плиты. Считаем её не
+     полигоном, а расстоянием до кромки: смещать многоугольник со скошенным
+     углом честно дороже, чем померить расстояние, а на растре 1 см разницы
+     между этими двумя способами нет. */
+  const edges = slab.map((p, i) => [...p, ...slab[(i + 1) % slab.length]]);
+  const shellSq = SHELL_TH * SHELL_TH;
+  const inShell = (px, py) => edges.some((e) => distSq(px, py, e[0], e[1], e[2], e[3]) < shellSq);
 
   const xs = slab.map((p) => p[0]);
   const ys = slab.map((p) => p[1]);
@@ -80,7 +104,9 @@ const main = async () => {
       slabCells += 1;
       const solid = walls.some((w) => inPoly(px, py, w))
         || diag.some((w) => inPoly(px, py, w))
-        || geom.columns.some((c) => Math.hypot(px - c.cx, py - c.cy) <= c.d / 2);
+        || geom.columns.some((c) => Math.hypot(px - c.cx, py - c.cy) <= c.d / 2)
+        || COLUMNS_SQ.some((c) => px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h)
+        || inShell(px, py);
 
       let own = null;
       let hits = 0;
@@ -211,6 +237,7 @@ const main = async () => {
   console.log(`  плита по контуру      ${(slabCells * A).toFixed(2)} м²  (в файле ${geom.area_check_m2})`);
   console.log(`  чистого пола          ${(free * A).toFixed(2)} м²`);
   console.log(`  перегородки и колонны ${((slabCells - free) * A).toFixed(2)} м²`);
+  console.log('  по документам         244.10 м²  (ТЗ)');
   console.log(`  клеток без зоны       ${orphan}${orphan ? `  например ${JSON.stringify(orphanSample)}` : ''}`);
   console.log(`  клеток в двух зонах   ${doubled}`);
 
@@ -219,14 +246,18 @@ const main = async () => {
     return;
   }
 
-  geom.version = 18;
+  geom.version = 20;
+  geom.walls = WALLS;
+  geom.columns_sq = COLUMNS_SQ;
+  geom.shell_th = SHELL_TH;
+  delete geom.wall_polygons;   // v17-наследие: толщина 250 у всего подряд
   geom.area_net_m2 = +(free * A).toFixed(1);
   geom.structure_m2 = +((slabCells - free) * A).toFixed(1);
   geom.rooms = rows;
   geom.furniture = FURNITURE;
   geom.doors = DOORS;
   geom.dimensions = DIMENSIONS;
-  geom.notes = `${geom.notes} v18: добавлены rooms/furniture/doors/dimensions; площади зон считает scripts/plan-rooms.mjs, руками не править.`;
+  geom.notes = `${geom.notes} v20: стены пересняты с растра (перегородки 132 мм, капитальные 296, шахта 425), наружная стена — кольцо ${SHELL_TH} внутрь от контура; wall_polygons удалены; добавлены две квадратные несущие колонны и подсобная в северо-восточном углу. Площади считает scripts/plan-rooms.mjs, руками не править.`;
   await writeFile(GEOM, `${JSON.stringify(geom)}\n`);
   console.log('\n  записано в public/interior/geometry.json');
 };
