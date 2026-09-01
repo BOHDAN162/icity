@@ -20,7 +20,6 @@ import Location from '@/components/Location';
 import Faq from '@/components/Faq';
 import Contact from '@/components/Contact';
 import Footer from '@/components/Footer';
-import ScrollRail from '@/components/ScrollRail';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -45,7 +44,6 @@ export default function Home() {
           {/* 8. Contact — запись на просмотр: последняя секция страницы,
                 её эмоциональная кульминация. После неё только тихий Footer. */}
           <Contact />
-          <ScrollRail />
         </div>
         <Footer />
       </HeroGate>
