@@ -55,7 +55,7 @@
 
 import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
-  type CSSProperties,
+  type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
@@ -95,20 +95,21 @@ const CURTAIN_FALLBACK_MS = 11000;
 
    Кривая, а не прямая: у прямой первые полсекунды почти не слышно,
    что звук пошёл вниз. easeOut роняет громкость сразу и потом доводит —
-   «приглушили» читается с первого мгновения. Замер: осталось 1,2 с —
-   67 % базовой, 0,8 с — 44 %, 0,4 с — 30 %. */
+   «приглушили» читается с первого мгновения. Замер на середине спада:
+   доля 0,28 против 0,50 у прежней прямой, и начинается это на 0,7 с
+   раньше. */
 const AUDIO_DUCK_S = 1.6;
 /** до какой доли базовой громкости приглушаем к концу ролика */
 const AUDIO_DUCK_TO = 0.25;
 /** сколько амбиент тихо доигрывает уже поверх экрана офиса
 
-    Было 1500, стало 3000 — попросили ещё полторы секунды сверх. Спад
+    Было 1500, потом 3000, теперь 4000 — добавляли трижды. Спад
     линейный по амплитуде, и это как раз то, что нужно: в децибелах
     линейная амплитуда почти весь свой диапазон проходит в последней
     десятой доле времени, то есть звук слышно почти весь хвост, а потом
     он быстро исчезает. Кривая, «правильная» на глаз, здесь сделала бы
     из трёх секунд полсекунды музыки и две с половиной тишины. */
-const AUDIO_TAIL_MS = 3000;
+const AUDIO_TAIL_MS = 4000;
 
 /* Хвост амбиента после свапа.
 
@@ -467,6 +468,36 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (a && a.preload === 'none') { a.preload = 'auto'; a.load(); }
   }, []);
 
+  /* Круг заливки «Войти» растёт ИЗ ТОЧКИ КУРСОРА и схлопывается в точку,
+     где курсор ушёл, — значит эти две точки должен кто-то сообщить: CSS
+     позиции указателя не знает, а :hover знает только факт наведения.
+     Отсюда обработчик, и он ровно один на оба события: и на входе,
+     и на выходе задача одна — переставить центр круга под курсор.
+     Пишем в inline-стиль узла, а не в состояние React: это координата
+     кадра, ре-рендер ради неё был бы лишним (то же соображение, что
+     у --p в OfficeStop).
+     Диаметр меряется здесь же, а не задаётся константой: кегль кнопки
+     идёт от --sans, и ширина «Войти» уедет вместе с гарнитурой. Две
+     диагонали — условие невидимости переброса центра, разбор в
+     .module.css у .enterFill. */
+  const aimFill = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    /* ТОЧКА ПОДРЕЗАЕТСЯ КОРОБКОЙ КНОПКИ, и это обязательно.
+       Круг в две диагонали накрывает кнопку из любой ВНУТРЕННЕЙ точки —
+       снаружи гарантия не действует. А pointerleave приходит именно
+       снаружи: браузер отдаёт настоящее положение указателя в кадре,
+       когда тот уже ушёл, и на быстром движении это десятки пикселей
+       за краем (замер синтетикой: --fill-x 726 px при ширине кнопки
+       119). Центр уезжал бы туда вместе с раскрытым кругом, тот
+       переставал бы накрывать кнопку — и заливка не схлопывалась бы,
+       а пропадала одним кадром. */
+    const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max);
+    el.style.setProperty('--fill-x', `${clamp(e.clientX - r.left, r.width)}px`);
+    el.style.setProperty('--fill-y', `${clamp(e.clientY - r.top, r.height)}px`);
+    el.style.setProperty('--fill-d', `${2 * Math.hypot(r.width, r.height)}px`);
+  }, []);
+
   const onPlaying = useCallback(() => {
     if (doneRef.current) return;
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
@@ -738,7 +769,8 @@ export default function HeroVideo({ onLift, onDone }: Props) {
                 'btn', styles.enterBtn, waiting ? styles.enterWaiting : '',
               ].filter(Boolean).join(' ')}
               onClick={() => enter(true)}
-              onPointerEnter={warmAmbience}
+              onPointerEnter={(e) => { warmAmbience(); aimFill(e); }}
+              onPointerLeave={aimFill}
               onFocus={warmAmbience}
               disabled={started || waiting}
               aria-busy={waiting}
