@@ -462,8 +462,8 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           aria-hidden="true"
           onError={onIdleError}
         >
-          <source src={sources.idleHevc.src} type={sources.idleHevc.type} />
-          <source src={sources.idleH264.src} type={sources.idleH264.type} onError={onIdleError} />
+          <source src={sources.idle[0].src} type={sources.idle[0].type} />
+          <source src={sources.idle[1].src} type={sources.idle[1].type} onError={onIdleError} />
         </video>
       )}
 
@@ -484,8 +484,8 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           onEnded={finish}
           onError={onVideoError}
         >
-          <source src={sources.hevc.src} type={sources.hevc.type} />
-          <source src={sources.h264.src} type={sources.h264.type} onError={onVideoError} />
+          <source src={sources.flight[0].src} type={sources.flight[0].type} />
+          <source src={sources.flight[1].src} type={sources.flight[1].type} onError={onVideoError} />
         </video>
       )}
 
