@@ -3,11 +3,12 @@
    значения самой шкалы (11px подписи, 26px число маркера, 28px полоса,
    60px маркер) — спецификация блока B3, локальные переменные ниже.
 
-   Движение: полоса рынка растёт 1000ms, маркер приходит 700ms
-   с задержкой 550ms, кривая везде --ease-soft. Состояния навешивает
-   Economics.tsx: .armed — спрятано, .played — переход в финал.
-   Без JS и при prefers-reduced-motion классов нет — базовые правила
-   ниже и есть финальный вид. */
+   Движение: полоса рынка растёт 500ms, маркер приходит 350ms
+   с задержкой 275ms, кривая везде --ease-soft — вдвое быстрее
+   прежних 1000/700/550, синхронно с COUNT_MS в Economics.tsx.
+   Состояния навешивает Economics.tsx: .armed — спрятано, .played —
+   переход в финал. Без JS и при prefers-reduced-motion классов нет —
+   базовые правила ниже и есть финальный вид. */
 
 .section {
   position: relative;
@@ -181,15 +182,15 @@
 
 /* played: переход в финальные (базовые) значения */
 .played .band {
-  transition: width 1000ms var(--ease-soft);
+  transition: width 500ms var(--ease-soft);
 }
 
 .played .marker {
-  transition: transform 700ms var(--ease-soft) 550ms;
+  transition: transform 350ms var(--ease-soft) 275ms;
 }
 
 .played .markerLabels {
-  transition: opacity 700ms var(--ease-soft) 550ms;
+  transition: opacity 350ms var(--ease-soft) 275ms;
 }
 
 /* Страховка: даже если reduce включили после монтирования,

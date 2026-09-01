@@ -1,8 +1,8 @@
 /* iCITY 113Н — прелоадер: лифт + занавес. Токены — из app/tokens.css,
    значения нигде не переопределяются. Двигаются только transform
-   и opacity: рельса растёт scaleX, текущий тик удлиняется тоже scaleX
-   (не width), створки едут translateX (не left). Вендорных префиксов
-   нет — их расставляет Lightning CSS по браузерным целям. */
+   и opacity: текущий тик удлиняется scaleX (не width), створки едут
+   translateX (не left). Вендорных префиксов нет — их расставляет
+   Lightning CSS по браузерным целям. */
 
 /* Фона у самого root нет нарочно: закраску держат только створки
    .door. Иначе они разъезжались бы поверх собственного сплошного
@@ -120,25 +120,6 @@
 .numLabel {
   display: block;
   margin-top: var(--s-4);
-}
-
-.rail {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--paper-2);
-}
-
-.railFill {
-  display: block;
-  height: 100%;
-  width: 100%;
-  transform: scaleX(0);
-  transform-origin: left;
-  background: var(--frit-deep);
-  will-change: transform;
 }
 
 @media (max-width: 767px) {

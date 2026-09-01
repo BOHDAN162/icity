@@ -5,9 +5,9 @@
 
    ЧТО ЭТО. Полноэкранная накладка поверх всего на первой загрузке.
    Слева лестница этажей 01→23 (буквальная метафора «подняться на 23»,
-   не проценты), справа крупный номер этажа моно, снизу растёт красная
-   рельса. По завершении интерфейс гаснет, двери-створки расходятся
-   в стороны, открывая {children} страницы — компонент размонтируется.
+   не проценты), справа крупный номер этажа моно. По завершении интерфейс
+   гаснет, двери-створки расходятся в стороны, открывая {children}
+   страницы — компонент размонтируется.
 
    ПРОГРЕСС — РЕАЛЬНЫЕ БАЙТЫ ДВУХ ВИДЕО ПЕРВОГО ЭКРАНА. Луп облаков плюс
    ролик полёта, вариант под текущую ориентацию; счётчик — lib/heroPreload.ts,
@@ -33,13 +33,12 @@
 
    ПОЕЗДКА КОНЧАЕТСЯ, КОГДА НА ТАБЛО 23, а не когда float дошёл до 1:
    этаж — это метафора, а не проценты. 23 загорается на 21,5/22 = 0,9773,
-   и ждать оставшиеся два процента незачем — они не видны нигде, кроме
-   ширины рельсы, которую finish() всё равно доводит draw(1).
+   и ждать оставшиеся два процента незачем — они нигде не видны.
 
    Один rAF на компонент, ре-рендеров React на кадрах нет: floor
-   и рельса пишутся в DOM напрямую (textContent, style.transform),
-   классы тиков — через classList. Единственное состояние React —
-   `visible`, и меняется оно ровно один раз, на размонтировании.
+   пишется в DOM напрямую (textContent), классы тиков — через
+   classList. Единственное состояние React — `visible`, и меняется
+   оно ровно один раз, на размонтировании.
 
    ЖЁСТКАЯ ПЕРЕЗАГРУЗКА ПОКАЗЫВАЕТ ЭКРАН СНОВА. sessionStorage помнит
    показ до конца вкладки, но Cmd/Ctrl+Shift+R должен пробивать эту
@@ -51,7 +50,7 @@ import {
 } from 'react';
 import { openCurtain } from '@/lib/curtain';
 import {
-  heroPreloadProgress, startHeroPreload, type HeroVariant,
+  currentHeroVariant, heroPreloadProgress, startHeroPreload, type HeroVariant,
 } from '@/lib/heroPreload';
 import styles from './Preloader.module.css';
 
@@ -73,6 +72,15 @@ const CREEP_RATE = 0.3;
 const RUSH_RATE = 0.55;
 /* Порог, на котором на табло загорается 23: round(1 + p*22) === 23. */
 const FLOOR_23 = 21.5 / 22;
+/* Стоянка на 23-м этаже перед створками. Лифт доехал — и секунду стоит:
+   без неё прибытие читается как проскок, номер загорается и тут же
+   гаснет вместе с интерфейсом. Это часть впечатления, а не задержка:
+   поездка кончилась, дальше открываются двери.
+   К предохранителю прибавляется тоже — иначе на медленной сети финал
+   поездки выглядел бы обрубленным ровно там, где он и так вынужденный.
+   Створки в худшем случае идут на MAX_MS + HOLD_23_MS = 9 с. */
+const HOLD_23_MS = 1000;
+
 /* Ветка reduced-motion: ни лестницы, ни створок, ни единого байта видео —
    ждать нечего и держать зрителя три секунды не за чем. Прежняя пауза,
    ровно столько, сколько нужно openCurtain() и .fade. */
@@ -100,11 +108,6 @@ function hasHardReloadFlag(): boolean {
     .split('; ')
     .some((entry) => entry.startsWith(`${HARD_RELOAD_COOKIE}=`));
 }
-
-/* Ориентация — тем же вопросом, что задаёт себе HeroVideo, иначе
-   прелоадер качал бы один вариант, а плеер просил второй. */
-const currentVariant = (): HeroVariant =>
-  (window.matchMedia('(orientation: portrait)').matches ? 'mobile' : 'desktop');
 
 type Ride = { shown: number; fuseAt: number; fuseFrom: number };
 
@@ -156,7 +159,6 @@ export default function Preloader() {
   const rootRef = useRef<HTMLDivElement>(null);
   const uiRef = useRef<HTMLDivElement>(null);
   const numRef = useRef<HTMLSpanElement>(null);
-  const railRef = useRef<HTMLSpanElement>(null);
   const doorLRef = useRef<HTMLDivElement>(null);
   const doorRRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
@@ -168,7 +170,7 @@ export default function Preloader() {
      видео там не монтируется, трафика ноль. */
   useEffect(() => {
     if (reduced) return;
-    startHeroPreload(currentVariant());
+    startHeroPreload(currentHeroVariant());
   }, [reduced]);
 
   useEffect(() => {
@@ -189,6 +191,7 @@ export default function Preloader() {
       : [];
     const start = performance.now();
     let raf = 0;
+    let hold = 0;
     let finished = false;
 
     const finish = () => {
@@ -223,7 +226,6 @@ export default function Preloader() {
     const draw = (p: number) => {
       const floor = Math.max(1, Math.round(1 + p * 22));
       if (numRef.current) numRef.current.textContent = String(floor).padStart(2, '0');
-      if (railRef.current) railRef.current.style.transform = `scaleX(${p})`;
       for (const tick of ticks) {
         const f = Number(tick.dataset.f);
         tick.classList.toggle(styles.past, f < floor);
@@ -246,7 +248,7 @@ export default function Preloader() {
     const ride: Ride = { shown: 0, fuseAt: 0, fuseFrom: 0 };
     /* Вариант замеряется один раз: поворот экрана в первые три секунды
        не должен переписать знаменатель поездки на середине. */
-    const variant = currentVariant();
+    const variant = currentHeroVariant();
     let last = start;
 
     const loop = () => {
@@ -260,14 +262,16 @@ export default function Preloader() {
       draw(p);
       if (!finished && done) {
         finished = true;
+        /* rAF останавливается здесь: на табло 23, рельса доведена, менять
+           больше нечего — секунду стоянки незачем крутить кадрами. */
         draw(1);
-        open();
+        hold = window.setTimeout(open, HOLD_23_MS);
         return;
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(hold); };
   }, [reduced]);
 
   if (!visible) return null;
@@ -291,9 +295,6 @@ export default function Preloader() {
         <div className={styles.big}>
           <span ref={numRef} className={styles.num}>01</span>
           <span className={`label ${styles.numLabel}`}>Этаж</span>
-        </div>
-        <div className={styles.rail}>
-          <span ref={railRef} className={styles.railFill} />
         </div>
       </div>
     </div>

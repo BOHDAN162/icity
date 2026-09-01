@@ -41,8 +41,10 @@ export default function Landing() {
 
             CountUpScope прокручивает числа от нуля, когда ряд входит
             в кадр: `data-count` — финальный текст, он же остаётся
-            в разметке для сервера, скринридера и ветки без JS. */}
-        <CountUpScope as="dl" className={styles.figures}>
+            в разметке для сервера, скринридера и ветки без JS.
+            Секунда, не дефолтные две: заказчик попросил счёт вдвое
+            быстрее именно в этом ряду. */}
+        <CountUpScope as="dl" className={styles.figures} duration={1000}>
           {FIGURES.map((f) => (
             <div
               key={f.caption}
