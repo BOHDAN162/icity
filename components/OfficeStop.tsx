@@ -248,7 +248,7 @@ export default function OfficeStop() {
           <div className={styles.caption}>
             <div className={styles.copy}>
               <p className={`label ${styles.eyebrow}`}>23 ЭТАЖ</p>
-              <h2 className={styles.title}>Вид</h2>
+              <h2 className={styles.title}>Панорама на десятки километров вокруг</h2>
             </div>
 
             <dl className={styles.figures}>
