@@ -15,22 +15,20 @@
    В заголовке и таблице оставлено прежнее имя — по нему объект знают,
    а на карте Яндекс подписывает станцию сам.
 
-   ЧТО ГРУЗИТСЯ И КОГДА. Карта начинает грузиться за два экрана до
-   секции — на границе ряда чисел и экономики. Замерено: от верха
-   «Экономики» до верха «Локации» 1841 px при экране 900, поэтому
-   запас 1600 px даёт тайлам порядка двух экранов прокрутки, чтобы
-   доехать. К моменту, когда зритель добирается до локации, карта
-   уже стоит. Наблюдатель одноразовый.
-
-   ЦЕНА АВТОЗАГРУЗКИ. Бесплатный тариф даёт 100 показов карты в сутки,
-   и теперь их тратит каждый, кто долистал до экономики, а не только
-   тот, кто захотел карту. Для лендинга на десятки просмотров это
-   с запасом; счётчик виден в кабинете Яндекса. Остальные внешние
-   условия — в AGENTS.md.
+   ЧТО ГРУЗИТСЯ И КОГДА. Карта не едет, пока её не попросят кнопкой.
+   Причина не в весе, а в квоте: бесплатный тариф даёт 100 показов
+   карты в сутки. Автозагрузка по IntersectionObserver тут была
+   и снята заказчиком: она тратила показ на каждого, кто просто
+   долистал до экономики, — сотня таких за день, и карта молча
+   не открылась бы ровно на переговорах. По клику до неё доходят
+   единицы. Остальные внешние условия — в AGENTS.md.
 
    ЕСЛИ КАРТЫ НЕТ. Нет ключа, отказала сеть, отказал сам API — в рамке
-   остаётся адрес со ссылкой на Яндекс Карты, а не пустой прямоугольник.
-   Таблица статична и несёт всю фактуру в любом случае.
+   остаётся адрес со ссылкой на Яндекс Карты, а не пустой прямоугольник,
+   и кнопка превращается в «Повторить». Отказ здесь не приговор:
+   api-maps.yandex.ru отвечает не всегда, живой ERR_CONNECTION_RESET
+   ловился на одной попытке из трёх. Таблица статична и несёт всю
+   фактуру в любом случае.
 
    ВЫБОР СТРОКИ — ПО КЛИКУ, НЕ ПО НАВЕДЕНИЮ. В покое не выбрана
    ни одна: карта стоит общим планом, связок нет. Клик строит связку
@@ -46,7 +44,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { LEGS } from '@/lib/geo';
 import styles from './Location.module.css';
@@ -57,33 +55,12 @@ const YandexMap = dynamic(() => import('./YandexMap'), { ssr: false });
 /* Ссылка на объект в Яндекс Картах — из неё же взята точка комплекса. */
 const YANDEX_URL = 'https://yandex.ru/maps/-/CTTVAU6r';
 
-/* Запас, за который до секции начинает грузиться карта. Замер на
-   1440×900: от верха «Экономики» до верха «Локации» 1841 px. */
-const PRELOAD_MARGIN = '1600px';
-
 export default function Location() {
-  const sectionRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [live, setLive] = useState(false);
   /* null — не выбрана ни одна строка: связок на карте нет */
   const [active, setActive] = useState<number | null>(null);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return;
-        io.unobserve(el);
-        io.disconnect(); /* одноразовый: второго монтирования нет */
-        setOpen(true);
-      },
-      { rootMargin: PRELOAD_MARGIN }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
 
   /* Клик по открытой строке её закрывает. Отсюда и весь переключатель:
      зритель убирает связку тем же движением, которым построил. */
@@ -91,17 +68,25 @@ export default function Location() {
     setActive((prev) => (prev === i ? null : i));
   }, []);
 
+  /* Отказ снимает модуль и возвращает кнопку: повтор должен быть
+     возможен без перезагрузки страницы. */
   const onFail = useCallback((reason: string) => {
     setFailed(true);
+    setOpen(false);
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Location] карта не поехала: ${reason}`);
     }
   }, []);
 
+  const load = useCallback(() => {
+    setFailed(false);
+    setOpen(true);
+  }, []);
+
   const onReady = useCallback(() => setLive(true), []);
 
   return (
-    <section ref={sectionRef} className={styles.section} id="location" aria-labelledby="location-eyebrow">
+    <section className={styles.section} id="location" aria-labelledby="location-eyebrow">
       <div className={styles.inner}>
         <div className={styles.text}>
           <p className={`label ${styles.eyebrow}`} id="location-eyebrow">
@@ -140,7 +125,7 @@ export default function Location() {
 
         <div className={styles.mapWrap}>
           <div className={styles.frame}>
-            {open && !failed && <YandexMap active={active} onFail={onFail} onReady={onReady} />}
+            {open && <YandexMap active={active} onFail={onFail} onReady={onReady} />}
 
             {/* Заглушка. Уходит, когда карта отрисовалась: пока тайлы
                 едут, в рамке стоит адрес, а не пустота. */}
@@ -151,6 +136,16 @@ export default function Location() {
                   <br />
                   Space Tower, 23 этаж
                 </p>
+                {/* Кнопка исчезает вместе с заглушкой, как только карта
+                    отрисовалась. При отказе она остаётся и зовёт повторить. */}
+                <button
+                  type="button"
+                  className={styles.stubBtn}
+                  onClick={load}
+                  disabled={open}
+                >
+                  {open ? 'Загружаем карту…' : failed ? 'Повторить' : 'Показать карту'}
+                </button>
               </div>
             )}
 

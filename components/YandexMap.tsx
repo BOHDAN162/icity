@@ -171,12 +171,16 @@ type Props = {
   onReady: () => void;
 };
 
-/* --- загрузка скрипта: один тег на страницу, один промис -------------- */
+/* --- загрузка скрипта: один тег на страницу, один промис --------------
+   Отказ НЕ кэшируется. api-maps.yandex.ru отвечает не всегда — ловили
+   живой ERR_CONNECTION_RESET на одной попытке из трёх. Оставь здесь
+   отклонённый промис — и повтор по кнопке возвращал бы ту же ошибку
+   до перезагрузки страницы. */
 let loader: Promise<void> | null = null;
 
 function loadApi(apikey: string): Promise<void> {
   if (loader) return loader;
-  loader = new Promise((resolve, reject) => {
+  loader = new Promise<void>((resolve, reject) => {
     if (window.ymaps3) {
       resolve();
       return;
@@ -185,8 +189,14 @@ function loadApi(apikey: string): Promise<void> {
     el.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(apikey)}&lang=ru_RU`;
     el.async = true;
     el.onload = () => resolve();
-    el.onerror = () => reject(new Error('ymaps3: скрипт не загрузился'));
+    el.onerror = () => {
+      el.remove(); /* мёртвый тег не должен мешать повтору */
+      reject(new Error('ymaps3: скрипт не загрузился'));
+    };
     document.head.appendChild(el);
+  }).catch((e) => {
+    loader = null;
+    throw e;
   });
   return loader;
 }
