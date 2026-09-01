@@ -9,7 +9,7 @@
    1. HeroVideo — постер → ролик полёта, внутри HeroGate.
    2. OfficeStop — офис-остановка и кадр вида из окна, один липкий
       экран на две сцены со швом между ними.
-   3. Landing — ряд чисел, абзац и кнопка «Позвонить». */
+   3. Landing — ряд чисел, абзац и кнопка «Записаться на просмотр». */
 
 import HeroGate from '@/components/HeroGate';
 import OfficeStop from '@/components/OfficeStop';
@@ -20,7 +20,7 @@ import Location from '@/components/Location';
 import Faq from '@/components/Faq';
 import Contact from '@/components/Contact';
 import Footer from '@/components/Footer';
-import ScrollIndicator from '@/components/ScrollIndicator';
+import ScrollRail from '@/components/ScrollRail';
 import styles from './page.module.css';
 
 export default function Home() {
@@ -45,9 +45,9 @@ export default function Home() {
           {/* 8. Contact — запись на просмотр: последняя секция страницы,
                 её эмоциональная кульминация. После неё только тихий Footer. */}
           <Contact />
+          <ScrollRail />
         </div>
         <Footer />
-        <ScrollIndicator />
       </HeroGate>
     </main>
   );
