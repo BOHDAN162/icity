@@ -142,7 +142,7 @@ export default function Location() {
                 <p className={styles.stubAddr}>
                   Москва, улица Ермакова Роща, 1с1
                   <br />
-                  Space Tower, 23 этаж
+                  Space Tower
                 </p>
                 {/* Кнопка исчезает вместе с заглушкой, как только карта
                     отрисовалась. При временном отказе остаётся и зовёт
