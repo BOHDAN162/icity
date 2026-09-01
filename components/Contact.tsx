@@ -189,8 +189,8 @@ export default function Contact() {
           <div className={styles.success} role="status">
             <canvas ref={canvasRef} className={styles.successCanvas} width={64} height={64} aria-hidden="true" />
             <div>
-              <p className={styles.successTitle}>Заявка у Оксаны</p>
-              <p className={styles.successNote}>Перезвоним в течение 15 минут в рабочее время.</p>
+              <p className={styles.successTitle}>Благодарим за Ваш интерес</p>
+              <p className={styles.successNote}>Наш менеджер свяжется с Вами в самое ближайшее время.</p>
             </div>
           </div>
         ) : (
