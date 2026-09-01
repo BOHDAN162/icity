@@ -52,7 +52,7 @@ GLB — Y вверх, и он ложится на план один в один:
 ```
 public/interior/dollhouse.glb       281 КБ, 2592 треугольника, 7 мешей
 public/interior/zones_cameras.json    9 зон, 5 камер
-public/interior/geometry.json         только справка, код её не читает
+public/interior/geometry.json         источник чертежа, см. docs/plan-sheet.md
 public/interior/renders/             40 файлов, 1,9 МБ, WebP + AVIF × 4 ширины
 ```
 

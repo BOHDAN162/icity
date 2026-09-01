@@ -6,7 +6,7 @@
   z-index: 80;
   background: var(--paper);
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;   /* шапка · лист · панель слоёв */
   animation: fade var(--t-reveal) var(--ease-out) both;
 }
 
@@ -76,19 +76,191 @@
 .grab { cursor: grab; }
 .grab:active { cursor: grabbing; }
 
+.stage { display: block; }
+.state { margin: 0; }
+
+/* --- панель слоёв ------------------------------------------------------ */
+
+.panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-5);
+  padding: var(--s-3) var(--pad-x);
+  background: var(--paper);
+  border-top: 1px solid var(--alu);
+}
+
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink-60);
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--t-micro) var(--ease-out), border-color var(--t-micro) var(--ease-out);
+}
+
+.toggle:hover { border-color: var(--ink); color: var(--ink); }
+.toggle[aria-pressed='true'] { color: var(--ink); }
+
+/* Квадрат 10×10: пустой у выключенного слоя, залитый у включённого.
+   Заливка идёт на --frit-deep — чистая фритта живёт только в растре
+   и волосяных линиях, см. docs/design-system.md §1. */
+.swatch {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--frit-deep);
+  background: transparent;
+  transition: background var(--t-micro) var(--ease-out);
+}
+
+.toggle[aria-pressed='true'] .swatch { background: var(--frit-deep); }
+
+.toggleWide { text-transform: none; letter-spacing: 0; font: var(--small); }
+
+.totals { margin: 0; text-transform: none; letter-spacing: 0; font: 400 13px/1.3 var(--mono); }
+
+/* Данные для клавиатуры и скринридера: на листе фокусировать нечего. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- лист --------------------------------------------------------------- */
+
 .sheet {
   display: block;
-  max-width: none;
-  height: auto;
-  background: var(--white);
+  width: 100%;
+  height: 100%;
+  background: var(--paper);
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
   user-select: none;
+}
+
+.paper { fill: var(--white); }
+
+.grid {
+  fill: none;
+  stroke: var(--paper-3);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Растр наведения — ровно --frit-mid из токенов, размеченный в экранных
+   пикселях: точка 1,1 px с шагом 12 px на любом зуме. */
+.hot { fill: url(#planFrit); pointer-events: none; }
+
+/* Границы зон, у которых нет стены: это разметка, а не перегородка.
+   Слой рисуется ДО поше — там, где стена есть, она пунктир закрывает. */
+.zoneEdge polygon {
+  fill: none;
+  stroke: var(--alu);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.wall { fill: var(--ink); }
+
+.outline {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.glazing line {
+  stroke: var(--alu);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.glazingIn line {
+  stroke: var(--alu);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.mullion { fill: var(--ink); }
+
+.door :where(path) {
+  fill: none;
+  stroke: var(--alu);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.door .leaf { stroke: var(--ink); stroke-width: 2; }
+
+/* vector-effect не наследуется — его нельзя повесить на группу, иначе
+   stroke-width: 1 останется в пользовательских единицах, то есть метром,
+   и мебель превратится в серые кляксы. Перечисляем фигуры поимённо. */
+.furn :where(rect, circle, line, path) {
+  fill: none;
+  stroke: var(--alu);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+
+.hit { fill: transparent; cursor: default; }
+
+.labels text { fill: var(--ink); text-anchor: middle; dominant-baseline: middle; }
+.zoneName { font-family: var(--sans); font-weight: 400; }
+.zoneArea { font-family: var(--mono); fill: var(--ink-60); }
+
+.dims text {
+  fill: var(--ink-60);
+  font-family: var(--mono);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.dims .dimLine, .dims .ext {
+  fill: none;
+  stroke: var(--alu);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.dims .dimTick {
+  fill: none;
+  stroke: var(--frit);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 @media (max-width: 767px) {
   .bar { flex-wrap: wrap; gap: var(--s-2); }
-  .view { padding: var(--s-4) var(--s-4); }
+  .view { padding: var(--s-4) var(--s-3); }
+  .panel { padding: var(--s-3) var(--s-3); }
+  .toggleWide { font: 400 13px/1.3 var(--sans); }
+  .totals { font-size: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .root { animation: none; }
+  .swatch { transition: none; }
 }

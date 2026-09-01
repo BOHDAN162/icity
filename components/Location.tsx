@@ -132,18 +132,24 @@ export default function Location() {
                   <br />
                   Space Tower, 23 этаж
                 </p>
-                <a
-                  className={styles.stubLink}
-                  href={YANDEX_URL}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  Открыть в Яндекс Картах
-                </a>
               </div>
             )}
 
             <p className={styles.caption}>МОСКВА-СИТИ · ЕРМАКОВА РОЩА, 1С1</p>
+
+            {/* Ссылка «Открыть в Картах» — ТРЕБОВАНИЕ условий использования
+                API Яндекса, пункт 4.1.3.1: её и копирайт скрывать нельзя.
+                Поэтому она живёт постоянно, а не только в заглушке, как
+                было сначала. Копирайт Яндекса рисует сам API в правом
+                нижнем углу — он тоже не трогается. */}
+            <a
+              className={styles.mapsLink}
+              href={YANDEX_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Открыть в Яндекс Картах
+            </a>
           </div>
         </div>
       </div>
