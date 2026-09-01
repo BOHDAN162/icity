@@ -36,7 +36,7 @@ const LAYER_LABEL: Record<keyof Layers, string> = {
   grid: 'Сетка',
   dim: 'Размеры',
   label: 'Названия',
-  furn: 'Дизайн-проект мебели (в ставку не входит)',
+  furn: 'Дизайн-проект мебели',
 };
 
 const num = (v: number) => v.toFixed(1).replace('.', ',');
@@ -47,6 +47,10 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
   const [zoom, setZoom] = useState(ZOOM_MIN);
   const [layers, setLayers] = useState<Layers>({ grid: true, dim: true, label: true, furn: false });
   const [hovered, setHovered] = useState<string | null>(null);
+  /* Позиция курсора нужна только под подсказку, а подсказка живёт только
+     при включённой мебели. В остальное время не пишем состояние вовсе:
+     это движение мыши, и лишний setState на каждом кадре здесь не нужен. */
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const [k0, setK0] = useState(0);            // пикселей на метр при зуме 100 %
 
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +114,13 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
   }, []);
 
   const endDrag = useCallback(() => { dragRef.current = null; }, []);
+
+  const onMove = useCallback((e: React.PointerEvent) => {
+    onPointerMove(e);
+    if (!layers.furn) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    setTip({ x: e.clientX - box.left, y: e.clientY - box.top });
+  }, [onPointerMove, layers.furn]);
 
   /* Зум держит центр окна: иначе на 400 % уезжаешь в угол и теряешься. */
   const changeZoom = useCallback((next: number) => {
@@ -179,12 +190,12 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
         ref={viewRef}
         className={`${styles.view} ${zoom > ZOOM_MIN ? styles.grab : ''}`}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
+        onPointerMove={onMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         /* палец уходит с листа без mouseleave — подсветка зависла бы
            вместе со строкой габарита в подвале */
-        onPointerLeave={() => { endDrag(); setHovered(null); }}
+        onPointerLeave={() => { endDrag(); setHovered(null); setTip(null); }}
       >
         {drawing && vb && sheetW > 0 && (
           <div className={styles.stage} style={{ width: sheetW, height: (sheetW * vb.h) / vb.w }}>
@@ -196,6 +207,22 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
               onHover={setHovered}
             />
           </div>
+        )}
+        {/* Подсказка у курсора: то же имя и метраж, что были бы на листе.
+            Смещаем вправо; у правой кромки окна переставляем влево, иначе
+            подсказка уезжает за край и её не прочитать. */}
+        {layers.label && layers.furn && room && tip && (
+          <p
+            className={`label ${styles.tip}`}
+            style={{
+              left: tip.x + 16,
+              top: tip.y - 10,
+              transform: tip.x > (viewRef.current?.clientWidth ?? 0) - 220 ? 'translateX(-100%) translateX(-32px)' : undefined,
+            }}
+            aria-hidden="true"
+          >
+            {room.label} · {fmtArea(room.area_m2)}
+          </p>
         )}
         {!drawing && (
           <p className={`label ${styles.state}`}>
@@ -229,12 +256,13 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
           </button>
         </div>
 
+        {/* Строка сводных площадей снята по решению заказчика 1 сентября 2026:
+            на листе остаётся только то, что показывает наведение. Место
+            под неё держим всегда, иначе панель дёргается под курсором. */}
         <p className={`label ${styles.totals}`}>
           {room
             ? `${room.label} · ${fmtArea(room.area_m2)}${roomBox ? ` · ${num(roomBox.w)} × ${num(roomBox.h)} м` : ''}`
-            : drawing
-              ? `244,1 м² по документам · ${num(drawing.areaDoc)} по обмеру контура · ${num(drawing.areaNet)} в чистоте · ${num(drawing.areaStructure)} конструкции`
-              : ''}
+            : ''}
         </p>
       </div>
 

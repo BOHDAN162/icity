@@ -18,7 +18,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { ROOMS, FURNITURE, DOORS, DIMENSIONS, WALLS, COLUMNS_SQ, SHELL_TH } from './plan-source.mjs';
+import { ROOMS, FURNITURE, DOORS, DIMENSIONS, WALLS, WALL_TH, SOLIDS, SHELL_TH } from './plan-source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GEOM = join(ROOT, 'public/interior/geometry.json');
@@ -59,9 +59,13 @@ const distSq = (px, py, x1, y1, x2, y2) => {
 };
 
 /** Прямоугольник стены как кольцо. */
-const wallRing = (w) => (w.o === 'h'
-  ? [[w.p1, w.a], [w.p2, w.a], [w.p2, w.b], [w.p1, w.b]]
-  : [[w.a, w.p1], [w.b, w.p1], [w.b, w.p2], [w.a, w.p2]]);
+const wallRing = (w) => {
+  const a = w.pos - WALL_TH / 2;
+  const b = w.pos + WALL_TH / 2;
+  return w.o === 'h'
+    ? [[w.p1, a], [w.p2, a], [w.p2, b], [w.p1, b]]
+    : [[a, w.p1], [b, w.p1], [b, w.p2], [a, w.p2]];
+};
 
 const main = async () => {
   const geom = JSON.parse(await readFile(GEOM, 'utf8'));
@@ -75,6 +79,16 @@ const main = async () => {
   const edges = slab.map((p, i) => [...p, ...slab[(i + 1) % slab.length]]);
   const shellSq = SHELL_TH * SHELL_TH;
   const inShell = (px, py) => edges.some((e) => distSq(px, py, e[0], e[1], e[2], e[3]) < shellSq);
+
+  /* Документальные 244,1 м² — это не площадь по контуру. Обмер показал,
+     что число сходится, если считать по ВНУТРЕННИМ граням фасадных стен
+     и по НАРУЖНЫМ граням смежных со соседями. Ровно так и меряет БТИ.
+     Считаем это отдельно: цифра из ТЗ должна на неё ложиться, иначе
+     где-то уехал контур. Фасады — четыре ребра, помеченные в geometry. */
+  const facadeEdges = edges.filter((e) => (geom.facade_sides ?? []).some(
+    (f) => Math.hypot(e[0] - f[0], e[1] - f[1]) < 1e-6 && Math.hypot(e[2] - f[2], e[3] - f[3]) < 1e-6,
+  ));
+  const inFacadeShell = (px, py) => facadeEdges.some((e) => distSq(px, py, e[0], e[1], e[2], e[3]) < shellSq);
 
   const xs = slab.map((p) => p[0]);
   const ys = slab.map((p) => p[1]);
@@ -92,6 +106,7 @@ const main = async () => {
   const gross = new Map(ROOMS.map((r) => [r.key, 0]));
   let free = 0;
   let slabCells = 0;
+  let btiCells = 0;
   let orphan = 0;
   let doubled = 0;
   const orphanSample = [];
@@ -102,10 +117,11 @@ const main = async () => {
       const px = minX + (gx + 0.5) * CELL;
       if (!inPoly(px, py, slab)) continue;
       slabCells += 1;
+      if (!inFacadeShell(px, py)) btiCells += 1;
       const solid = walls.some((w) => inPoly(px, py, w))
         || diag.some((w) => inPoly(px, py, w))
         || geom.columns.some((c) => Math.hypot(px - c.cx, py - c.cy) <= c.d / 2)
-        || COLUMNS_SQ.some((c) => px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h)
+        || SOLIDS.some((c) => px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h)
         || inShell(px, py);
 
       let own = null;
@@ -237,7 +253,7 @@ const main = async () => {
   console.log(`  плита по контуру      ${(slabCells * A).toFixed(2)} м²  (в файле ${geom.area_check_m2})`);
   console.log(`  чистого пола          ${(free * A).toFixed(2)} м²`);
   console.log(`  перегородки и колонны ${((slabCells - free) * A).toFixed(2)} м²`);
-  console.log('  по документам         244.10 м²  (ТЗ)');
+  console.log(`  по граням фасадов     ${(btiCells * A).toFixed(2)} м²  ← сюда должны лечь 244,10 из ТЗ`);
   console.log(`  клеток без зоны       ${orphan}${orphan ? `  например ${JSON.stringify(orphanSample)}` : ''}`);
   console.log(`  клеток в двух зонах   ${doubled}`);
 
@@ -246,12 +262,15 @@ const main = async () => {
     return;
   }
 
-  geom.version = 20;
+  geom.version = 21;
   geom.walls = WALLS;
-  geom.columns_sq = COLUMNS_SQ;
+  geom.wall_th = WALL_TH;
+  geom.solids = SOLIDS;
+  delete geom.columns_sq;
   geom.shell_th = SHELL_TH;
   delete geom.wall_polygons;   // v17-наследие: толщина 250 у всего подряд
   geom.area_net_m2 = +(free * A).toFixed(1);
+  geom.area_bti_m2 = +(btiCells * A).toFixed(1);
   geom.structure_m2 = +((slabCells - free) * A).toFixed(1);
   geom.rooms = rows;
   geom.furniture = FURNITURE;

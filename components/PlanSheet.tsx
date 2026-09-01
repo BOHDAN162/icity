@@ -60,9 +60,9 @@ const pts = (r: Ring) => r.map(([x, y]) => `${x},${y}`).join(' ');
 /** Стена прямоугольником. Стены не сливаются в один полигон и не должны:
     на стыке два прямоугольника одного цвета дают ровно то же поше, что
     и объединение, а считать булеву операцию — лишний код и лишний риск. */
-const wallRect = (w: Wall) => (w.o === 'h'
-  ? { x: w.p1, y: w.a, width: w.p2 - w.p1, height: w.b - w.a }
-  : { x: w.a, y: w.p1, width: w.b - w.a, height: w.p2 - w.p1 });
+const wallRect = (w: Wall, th: number) => (w.o === 'h'
+  ? { x: w.p1, y: w.pos - th / 2, width: w.p2 - w.p1, height: th }
+  : { x: w.pos - th / 2, y: w.p1, width: th, height: w.p2 - w.p1 });
 
 /** Прямоугольник вокруг отрезка — так диагональная стена получает толщину. */
 const thick = (x1: number, y1: number, x2: number, y2: number, th: number): Ring => {
@@ -237,17 +237,26 @@ export default function PlanSheet({ drawing, layers, k, hovered, onHover }: Prop
           местами на пару сантиметров выходит за плиту. */}
       <g className={styles.wall} clipPath="url(#planSlab)">
         <polygon className={styles.shell} points={slab} strokeWidth={drawing.shellTh * 2} />
-        {drawing.walls.map((w, i) => <rect key={i} {...wallRect(w)} />)}
+        {drawing.walls.map((w, i) => <rect key={i} {...wallRect(w, drawing.wallTh)} />)}
         {drawing.diag.map((d, i) => (
           <polygon key={`d${i}`} points={pts(thick(d.x1, d.y1, d.x2, d.y2, drawing.shellTh))} />
         ))}
         {drawing.columns.map((c, i) => <circle key={`c${i}`} cx={c.cx} cy={c.cy} r={c.d / 2} />)}
-        {drawing.columnsSq.map((c, i) => (
+        {drawing.solids.map((c, i) => (
           <rect key={`s${i}`} x={c.x} y={c.y} width={c.w} height={c.h} />
         ))}
       </g>
       <polygon className={styles.outline} points={slab} />
 
+      {/* Окно — это разрыв в стене, а не линия поверх неё. Сначала пробиваем
+          проём во всю толщину наружного кольца, потом кладём в него нитку
+          стекла. Иначе на чёрном поше остекления просто не видно. */}
+      <g className={styles.opening}>
+        {drawing.glazingFacade.map((g, i) => (
+          <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}
+            strokeWidth={drawing.shellTh} />
+        ))}
+      </g>
       <g className={styles.glazing}>
         {drawing.glazingFacade.map((g, i) => (
           <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} />
@@ -290,7 +299,10 @@ export default function PlanSheet({ drawing, layers, k, hovered, onHover }: Prop
         )))}
       </g>
 
-      {layers.label && (
+      {/* Слой мебели и подписи зон на одном листе спорят: линии мебели
+          лезут под текст. Поэтому при включённой мебели имя и метраж
+          уходят к курсору — их показывает оболочка. */}
+      {layers.label && !layers.furn && (
         <g className={styles.labels} aria-hidden="true">
           {labels.map((l) => (
             <g key={l.key} transform={l.rot ? `rotate(-90 ${l.c[0]} ${l.c[1]})` : undefined}>

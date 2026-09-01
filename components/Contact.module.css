@@ -13,9 +13,9 @@
   position: relative;
   background: var(--paper);
   /* Больше воздуха только сверху, на входе с Faq — снизу секцию уже
-     завершает перфорация Footer, второй такой же отступ до неё
-     оставлял бы пустую полосу. */
-  padding: calc(var(--section-y) + var(--s-8)) var(--pad-x) var(--section-y);
+     завершает перфорация Footer, полный --section-y до неё оставлял бы
+     слишком много пустоты, поэтому отступ снизу вдвое меньше. */
+  padding: calc(var(--section-y) + var(--s-8)) var(--pad-x) calc(var(--section-y) / 2);
 }
 
 .inner {

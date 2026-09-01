@@ -65,12 +65,29 @@
 .close:hover { background: var(--white); border-color: var(--ink); }
 
 .view {
+  position: relative;
   overflow: auto;
   display: grid;
   place-items: center;
   padding: var(--s-5) var(--pad-x);
   background: var(--paper-2);
   overscroll-behavior: contain;
+}
+
+.tip {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+  font: 400 13px/1.2 var(--mono);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .grab { cursor: grab; }
@@ -133,7 +150,13 @@
 
 .toggleWide { text-transform: none; letter-spacing: 0; font: var(--small); }
 
-.totals { margin: 0; text-transform: none; letter-spacing: 0; font: 400 13px/1.3 var(--mono); }
+.totals {
+  margin: 0;
+  min-height: 1.3em;                 /* место держится, даже когда пусто */
+  text-transform: none;
+  letter-spacing: 0;
+  font: 400 13px/1.3 var(--mono);
+}
 
 /* Данные для клавиатуры и скринридера: на листе фокусировать нечего. */
 .sr {
@@ -192,6 +215,8 @@
   vector-effect: non-scaling-stroke;
 }
 
+.opening line { stroke: var(--white); stroke-linecap: butt; }
+
 .glazing line {
   stroke: var(--alu);
   stroke-width: 3;
@@ -228,6 +253,9 @@
 
 .hit { fill: transparent; cursor: default; }
 
+/* Подписи лежат поверх зон, и без этого наведение на само название
+   зоны не подсвечивало бы её: курсор попадал бы в текст, а не в полигон. */
+.labels { pointer-events: none; }
 .labels text { fill: var(--ink); text-anchor: middle; dominant-baseline: middle; }
 .zoneName { font-family: var(--sans); font-weight: 400; }
 .zoneArea { font-family: var(--mono); fill: var(--ink-60); }

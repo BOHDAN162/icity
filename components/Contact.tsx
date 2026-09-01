@@ -312,7 +312,7 @@ export default function Contact() {
             </a>
           </div>
 
-          <p className={styles.quiet}>Прямая аренда от собственника. Без посредников.</p>
+          <p className={styles.quiet}>Аренда от собственника.</p>
         </div>
       </div>
     </section>

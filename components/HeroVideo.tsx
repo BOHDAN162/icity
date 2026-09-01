@@ -25,15 +25,30 @@
    ДВА ВИДЕО × ДВА КОДЕКА. Десктоп 2560×1440, мобильный портрет 1080×1920;
    выбор — по ориентации один раз при монтировании (смена ориентации во
    время жизни hero видео не пересоздаёт: object-fit: cover прикрывает).
-   Внутри каждого варианта два <source>: HEVC (hvc1, вдвое легче) и H.264
-   (играет везде). codecs-строки сняты ffprobe с реальных файлов —
-   браузер отсекает неподдерживаемый кодек до единого байта загрузки.
+   Внутри каждого варианта два кодека: HEVC (hvc1, вдвое легче) и H.264
+   (играет везде). codecs-строки сняты ffprobe с реальных файлов, и
+   неподдерживаемый кодек отсекается до единого байта загрузки — тем же
+   canPlayType, которым браузер отбирает <source type> (lib/heroPreload.ts).
 
-   IDLE-ЛУП. Слот под бесшовный луп облаков (страница живёт до клика).
-   Файлы public/video/icity_idle_*.mp4 могут отсутствовать — тогда error
-   на последнем source просто прячет элемент, остаётся постер. Рендер
-   лупа обязан начинаться с кадра f_0001 и кодироваться тем же конвейером,
-   что основной ролик, — тогда и появление лупа, и старт полёта бесшовны.
+   IDLE-ЛУП И КРОССФЕЙД. До клика бесконечно крутится луп облаков
+   (480 кадров, 20,0 с, бесшовный: последний кадр равен первому). По клику
+   ролик стартует, и ЗА CROSS_MS ролик проявляется ПОВЕРХ ещё играющего
+   лупа. Затемнения нет и быть не может: нижний слой всё это время
+   непрозрачен, композит в любой момент — смесь двух готовых кадров,
+   а не смесь кадра с фоном. Гасить луп одновременно с проявлением ролика
+   было бы ошибкой ровно в эту сторону — на середине проступил бы --paper.
+   Луп ставится на паузу и снимается из потока ПОСЛЕ кроссфейда.
+
+   Кадр лупа и кадр ролика сняты одной камерой, но луп к моменту клика
+   стоит на произвольной секунде своих двадцати — облака успели уплыть.
+   Поэтому переход именно растворение, а не стык: 250 мс закрывают дрейф.
+
+   ОТКУДА БЕРУТСЯ ФАЙЛЫ. Не сам <video>, а lib/heroPreload.ts: он качает
+   оба файла fetch-ем со счётчиком байт (лифт прелоадера едет по ним) и
+   отдаёт готовые blob-URL. К клику ролик в памяти целиком — встать на
+   буферизации посреди полёта он не может. Если fetch не задался,
+   heroPreload поднимает failed, и здесь рисуется прежняя разметка
+   с парой <source>: HEVC, потом H.264.
 
    REDUCED-MOTION. Ни одно видео не монтируется вовсе — ноль байт
    трафика. «Войти» делает мгновенный свап на ресепшн. */
@@ -45,6 +60,10 @@ import {
 import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
+import {
+  heroPreloadServerSnapshot, heroPreloadSnapshot, SOURCES, startHeroPreload,
+  subscribeHeroPreload, type HeroVariant,
+} from '@/lib/heroPreload';
 import styles from './HeroVideo.module.css';
 
 /* U+202F, узкий неразрывный: число с единицей и разряды (AGENTS.md).
@@ -132,31 +151,20 @@ const FALLBACK_DURATION = TOTAL_FRAMES / FPS;
 /** аварийный выход: клик был, `playing` не наступило */
 const PLAY_TIMEOUT_MS = 4000;
 
-const VIDEO_DIR = '/video';
 const POSTER_DIR = '/video/poster';
 /** ширины постеров — сверять с public/video/poster/manifest.json */
 const POSTER_DESKTOP = [1280, 1920, 2560] as const;
 const POSTER_MOBILE = [640, 1080] as const;
 
-/* codecs-строки — с реальных файлов (ffprobe): HEVC Main@L5.0 у десктопа,
-   Main@L4.0 у мобильного, H.264 High@L5.0 у обоих. Idle-луп обязан
-   собираться тем же конвейером и попадать в те же профили. */
-const SOURCES = {
-  desktop: {
-    hevc: { src: `${VIDEO_DIR}/icity_desktop_2560x1440_hevc.mp4`, type: 'video/mp4; codecs="hvc1.1.6.L150.B0"' },
-    h264: { src: `${VIDEO_DIR}/icity_desktop_2560x1440_h264.mp4`, type: 'video/mp4; codecs="avc1.640032"' },
-    idleHevc: { src: `${VIDEO_DIR}/icity_idle_desktop_hevc.mp4`, type: 'video/mp4; codecs="hvc1.1.6.L150.B0"' },
-    idleH264: { src: `${VIDEO_DIR}/icity_idle_desktop_h264.mp4`, type: 'video/mp4; codecs="avc1.640032"' },
-  },
-  mobile: {
-    hevc: { src: `${VIDEO_DIR}/icity_mobile_1080x1920_hevc.mp4`, type: 'video/mp4; codecs="hvc1.1.6.L120.B0"' },
-    h264: { src: `${VIDEO_DIR}/icity_mobile_1080x1920_h264.mp4`, type: 'video/mp4; codecs="avc1.640032"' },
-    idleHevc: { src: `${VIDEO_DIR}/icity_idle_mobile_hevc.mp4`, type: 'video/mp4; codecs="hvc1.1.6.L120.B0"' },
-    idleH264: { src: `${VIDEO_DIR}/icity_idle_mobile_h264.mp4`, type: 'video/mp4; codecs="avc1.640032"' },
-  },
-} as const;
+/* Таблица источников и codecs-строки — в lib/heroPreload.ts: там же
+   их читает загрузчик, а два списка одних и тех же файлов разъехались бы
+   при первой правке. */
+type VariantKey = HeroVariant;
 
-type VariantKey = keyof typeof SOURCES;
+/* Кроссфейд лупа в ролик. Пара к --t-hero-cross в tokens.css: здесь число
+   решает, когда снять луп из потока, там — за сколько проявить ролик.
+   Правишь одно — правь второе. */
+const CROSS_MS = 250;
 
 const posterSrcSet = (key: 'hero-desktop' | 'hero-mobile', widths: readonly number[], ext: 'avif' | 'webp') =>
   widths.map((w) => `${POSTER_DIR}/${key}-${w}.${ext} ${w}w`).join(', ');
@@ -204,6 +212,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   const soundOnRef = useRef(false);
   const rafRef = useRef(0);
   const failTimerRef = useRef(0);
+  const crossTimerRef = useRef(0);
   const doneRef = useRef(false);
   /** ошибка загрузки/декодирования основного ролика до клика */
   const brokenRef = useRef(false);
@@ -231,15 +240,36 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   const [lockedVariant, setLockedVariant] = useState<VariantKey | null>(null);
   const variant: VariantKey = lockedVariant ?? (portrait ? 'mobile' : 'desktop');
 
+  /* Готовые blob-URL обоих файлов (или failed — тогда старая разметка
+     с <source>). Переходов за жизнь первого экрана три-четыре, не больше;
+     байты сюда не приходят вовсе — их читает прелоадер императивно. */
+  const preload = useSyncExternalStore(
+    subscribeHeroPreload,
+    () => heroPreloadSnapshot(variant),
+    heroPreloadServerSnapshot,
+  );
+
   const [started, setStarted] = useState(false);
   const [playingVisible, setPlayingVisible] = useState(false);
   const [idleBroken, setIdleBroken] = useState(false);
+  /* Луп снят из потока — ставится через CROSS_MS после старта ролика. */
+  const [idleGone, setIdleGone] = useState(false);
+
+  /* Загрузка нужного варианта. Идемпотентно: прелоадер уже позвал это же
+     на монтировании layout. Второй вызов случается ровно в двух случаях —
+     прелоадера не было (вторая загрузка во вкладке) и поворот экрана
+     до клика попросил другой вариант. */
+  useEffect(() => {
+    if (reduced) return;
+    startHeroPreload(variant);
+  }, [reduced, variant]);
 
   const finish = useCallback(() => {
     if (doneRef.current) return;
     doneRef.current = true;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+    if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
     /* Снятие <audio> из DOM не глушит воспроизведение надёжно — гасим
        явно, и здесь, потому что сюда сходятся все пять отказов. */
     audioRef.current?.pause();
@@ -303,7 +333,10 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     const v = videoRef.current;
     if (reduced || !v || brokenRef.current) { finish(); return; }
 
-    idleRef.current?.pause();
+    /* Луп НЕ глушится здесь: он держит непрозрачную картинку под роликом,
+       пока тот проявляется. Гасить его в этот момент — и есть тот самый
+       провал в --paper, которого быть не должно. Снимет его onPlaying,
+       через CROSS_MS после того, как ролик реально пошёл. */
     failTimerRef.current = window.setTimeout(finish, PLAY_TIMEOUT_MS);
     v.play().catch(finish);
   }, [started, reduced, finish, variant]);
@@ -320,7 +353,14 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   const onPlaying = useCallback(() => {
     if (doneRef.current) return;
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+    /* Точка отсчёта кроссфейда — именно `playing`, а не клик: между ними
+       у декодера свои несколько кадров, и начни растворение раньше —
+       ролик проявлялся бы, ещё не начав двигаться. */
     setPlayingVisible(true);
+    crossTimerRef.current = window.setTimeout(() => {
+      idleRef.current?.pause();
+      setIdleGone(true);
+    }, CROSS_MS);
     startTicking();
   }, [startTicking]);
 
@@ -382,6 +422,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+    if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
     audioRef.current?.pause();
   }, []);
 

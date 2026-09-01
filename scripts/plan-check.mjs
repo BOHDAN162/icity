@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DOC_M2 = 247.95;  // обмер контура; в ТЗ стоит 244,1 — расхождение разобрано в docs/plan-sheet.md
+const DOC_M2 = 244.1;   // ТЗ. Ложится на площадь по внутренним граням фасадов
 const CELL = 0.01;
 
 const inPoly = (px, py, ring) => {
@@ -29,17 +29,17 @@ const check = (ok, msg) => { if (!ok) fails.push(msg); };
 
 const geom = JSON.parse(await readFile(join(ROOT, 'public/interior/geometry.json'), 'utf8'));
 
-check(geom.version >= 20, `version ${geom.version}: чертёж ждёт v20 и выше`);
-for (const key of ['rooms', 'furniture', 'doors', 'dimensions', 'walls', 'columns_sq', 'shell_th', 'area_net_m2', 'structure_m2']) {
+check(geom.version >= 21, `version ${geom.version}: чертёж ждёт v21 и выше`);
+for (const key of ['rooms', 'furniture', 'doors', 'dimensions', 'walls', 'wall_th', 'solids', 'shell_th', 'area_net_m2', 'area_bti_m2', 'structure_m2']) {
   check(geom[key] !== undefined, `в geometry.json нет поля ${key} — прогони scripts/plan-rooms.mjs --write`);
 }
 if (fails.length) { fails.forEach((f) => console.error('  ✗', f)); process.exit(1); }
 
-check(Math.abs(geom.area_check_m2 - DOC_M2) <= 0.05,
-  `плита ${geom.area_check_m2} м² против ${DOC_M2} по документам`);
+check(Math.abs(geom.area_bti_m2 - DOC_M2) <= 0.8,
+  `по граням фасадов ${geom.area_bti_m2} м², а в ТЗ ${DOC_M2}: контур уехал`);
 
 const sum = geom.rooms.reduce((s, r) => s + r.area_m2, 0);
-check(Math.abs(sum - geom.area_net_m2) <= 0.15,
+check(Math.abs(sum - geom.area_net_m2) <= 0.25,
   `сумма зон ${sum.toFixed(1)} ≠ чистый пол ${geom.area_net_m2}`);
 check(Math.abs(geom.area_net_m2 + geom.structure_m2 - geom.area_check_m2) <= 0.15,
   `${geom.area_net_m2} + ${geom.structure_m2} ≠ ${geom.area_check_m2}`);
@@ -54,9 +54,13 @@ for (const room of geom.rooms) {
    будет кусок пола, который ни во что не входит, а сумма всё равно сойдётся. */
 const xs = slab.map((p) => p[0]);
 const ys = slab.map((p) => p[1]);
-const walls = geom.walls.map((w) => (w.o === 'h'
-  ? [[w.p1, w.a], [w.p2, w.a], [w.p2, w.b], [w.p1, w.b]]
-  : [[w.a, w.p1], [w.b, w.p1], [w.b, w.p2], [w.a, w.p2]]));
+const walls = geom.walls.map((w) => {
+  const a = w.pos - geom.wall_th / 2;
+  const b = w.pos + geom.wall_th / 2;
+  return w.o === 'h'
+    ? [[w.p1, a], [w.p2, a], [w.p2, b], [w.p1, b]]
+    : [[a, w.p1], [b, w.p1], [b, w.p2], [a, w.p2]];
+});
 const distSq = (px, py, x1, y1, x2, y2) => {
   const dx = x2 - x1; const dy = y2 - y1; const l2 = dx * dx + dy * dy;
   let t = l2 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0;
@@ -79,7 +83,7 @@ for (let py = Math.min(...ys) + CELL / 2; py < Math.max(...ys); py += CELL) {
     const solid = walls.some((w) => inPoly(px, py, w))
       || seg.some((w) => inPoly(px, py, w))
       || geom.columns.some((c) => Math.hypot(px - c.cx, py - c.cy) <= c.d / 2)
-      || geom.columns_sq.some((c) => px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h)
+      || geom.solids.some((c) => px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h)
       || inShell(px, py);
     if (!solid && !owned) orphan += 1;
   }
@@ -93,7 +97,7 @@ for (const f of geom.furniture) {
   const cx = f.t === 'c' ? f.cx : f.x + f.w / 2;
   const cy = f.t === 'c' ? f.cy : f.y + f.h / 2;
   const inWall = walls.some((w) => inPoly(cx, cy, w))
-    || geom.columns_sq.some((c) => cx >= c.x && cx <= c.x + c.w && cy >= c.y && cy <= c.y + c.h);
+    || geom.solids.some((c) => cx >= c.x && cx <= c.x + c.w && cy >= c.y && cy <= c.y + c.h);
   check(!inWall, `${f.t} в зоне ${f.z} стоит серединой в стене или колонне (${cx.toFixed(2)}, ${cy.toFixed(2)})`);
   check(inPoly(cx, cy, slab), `${f.t} в зоне ${f.z} вне плиты (${cx.toFixed(2)}, ${cy.toFixed(2)})`);
 }

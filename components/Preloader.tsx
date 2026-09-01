@@ -9,11 +9,32 @@
    рельса. По завершении интерфейс гаснет, двери-створки расходятся
    в стороны, открывая {children} страницы — компонент размонтируется.
 
-   ПРОГРЕСС: СЕЙЧАС ТАЙМЕР, ПОЗЖЕ — РЕАЛЬНАЯ ЗАГРУЗКА. Единственное
-   место, читающее elapsed, — readProgress() ниже. Сейчас она считает
-   по DURATION_MS; когда появится реальный источник (загруженные
-   ассеты), заменится только её тело — draw()/open()/разметка сигнатуру
-   { p, done } не увидят и трогать их не придётся.
+   ПРОГРЕСС — РЕАЛЬНЫЕ БАЙТЫ ДВУХ ВИДЕО ПЕРВОГО ЭКРАНА. Луп облаков плюс
+   ролик полёта, вариант под текущую ориентацию; счётчик — lib/heroPreload.ts,
+   он же их и качает. Единственное место, читающее прогресс, — advance()
+   ниже; draw() / open() / разметка про источник не знают.
+
+   ТРИ ПРАВИЛА ПОЕЗДКИ, И КАЖДОЕ ЗАКРЫВАЕТ СВОЮ БЕДУ:
+
+   1. СГЛАЖИВАНИЕ. Байты приходят рывками — чанк на 64 КБ, потом пауза.
+      Показанный этаж догоняет реальный экспоненциально (CATCH_RATE)
+      и никогда не быстрее RUSH_RATE: скачок прогресса 0,3 → 0,8
+      превращается в проезд, а не в телепорт. CREEP_RATE — обратное:
+      минимальная скорость, иначе экспонента вечно доползала бы
+      последний процент.
+   2. МИНИМУМ ТРИ СЕКУНДЫ. Из кэша файлы приходят мгновенно, и лифт
+      мигнул бы 1→23 за кадр. Потолок скорости — линейный cap = t/MIN_MS:
+      23 этажа не быстрее трёх секунд. Замер на прогретом кэше: 3,04 с.
+   3. ПРЕДОХРАНИТЕЛЬ. На 7,4 с (MAX_MS минус добор) поездка досрочно
+      доводится до 23 за FUSE_SLEW_MS и створки идут — ровно на 8-й
+      секунде. Ждать нечего: луп в шесть раз легче ролика и к этому
+      моменту почти наверняка играет под створками. Кнопку «Войти»
+      придержит уже сам HeroVideo, пока ролик не догрузится.
+
+   ПОЕЗДКА КОНЧАЕТСЯ, КОГДА НА ТАБЛО 23, а не когда float дошёл до 1:
+   этаж — это метафора, а не проценты. 23 загорается на 21,5/22 = 0,9773,
+   и ждать оставшиеся два процента незачем — они не видны нигде, кроме
+   ширины рельсы, которую finish() всё равно доводит draw(1).
 
    Один rAF на компонент, ре-рендеров React на кадрах нет: floor
    и рельса пишутся в DOM напрямую (textContent, style.transform),
@@ -29,10 +50,33 @@ import {
   useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
 import { openCurtain } from '@/lib/curtain';
+import {
+  heroPreloadProgress, startHeroPreload, type HeroVariant,
+} from '@/lib/heroPreload';
 import styles from './Preloader.module.css';
 
-const DURATION_MS = 1900;
-const easeOut = (t: number) => 1 - (1 - t) ** 3;
+/* 23 этажа не быстрее трёх секунд — даже из кэша. */
+const MIN_MS = 3000;
+/* Предохранитель: во столько створки идут при любой загрузке. */
+const MAX_MS = 8000;
+/* Досрочный добор до 23 перед створками — чтобы предохранитель
+   не выглядел обрывом на одиннадцатом этаже. */
+const FUSE_SLEW_MS = 600;
+/* Догон рывка, 1/с. Держит постоянное отставание v/CATCH_RATE ≈ 0,037
+   (меньше этажа) и закрывает разрыв 0,3 за четверть секунды. */
+const CATCH_RATE = 9;
+/* Минимальная скорость добора, 1/с: экспонента сама последний процент
+   не доедет. */
+const CREEP_RATE = 0.3;
+/* Потолок скорости, 1/с ≈ 12,6 этажа в секунду. Это и есть запрет
+   на телепорт: сколько бы байт ни пришло одним куском, лифт едет. */
+const RUSH_RATE = 0.55;
+/* Порог, на котором на табло загорается 23: round(1 + p*22) === 23. */
+const FLOOR_23 = 21.5 / 22;
+/* Ветка reduced-motion: ни лестницы, ни створок, ни единого байта видео —
+   ждать нечего и держать зрителя три секунды не за чем. Прежняя пауза,
+   ровно столько, сколько нужно openCurtain() и .fade. */
+const REDUCED_MS = 1900;
 
 const MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const subscribeMotion = (onChange: () => void) => {
@@ -57,14 +101,48 @@ function hasHardReloadFlag(): boolean {
     .some((entry) => entry.startsWith(`${HARD_RELOAD_COOKIE}=`));
 }
 
-/* === PROGRESS SOURCE — заменить тело позже на реальную загрузку ===
-   Контракт неизменен: { p: 0..1, done }. При переходе на реальный сигнал —
-   realRatio из загруженных ассетов, p = Math.min(realRatio, тайм-кап
-   на MIN_MS для не-мгновенного лифта), done = realRatio>=1 && elapsed>=MIN_MS,
-   плюс жёсткий потолок MAX_MS на случай зависшей загрузки. */
-function readProgress(elapsed: number): { p: number; done: boolean } {
-  const t = Math.min(1, elapsed / DURATION_MS);
-  return { p: easeOut(t), done: t >= 1 };
+/* Ориентация — тем же вопросом, что задаёт себе HeroVideo, иначе
+   прелоадер качал бы один вариант, а плеер просил второй. */
+const currentVariant = (): HeroVariant =>
+  (window.matchMedia('(orientation: portrait)').matches ? 'mobile' : 'desktop');
+
+type Ride = { shown: number; fuseAt: number; fuseFrom: number };
+
+/* Один шаг поездки. Состояние снаружи (Ride), чтобы функция осталась
+   чистой и её можно было читать сверху вниз. */
+function advance(ride: Ride, variant: HeroVariant, elapsed: number, dt: number): {
+  p: number; done: boolean;
+} {
+  const { metered, ratio } = heroPreloadProgress(variant);
+  /* Без честного знаменателя (нет Content-Length, fetch отвалился,
+     reduced-motion — видео вообще не грузится) ждать нечего: едем
+     номинальные три секунды, их задаст cap. Выдуманный процент
+     рисовать нельзя — лифт врал бы уверенно. */
+  const real = metered ? ratio : 1;
+
+  if (!ride.fuseAt && real < 1 && elapsed >= MAX_MS - FUSE_SLEW_MS) {
+    ride.fuseAt = elapsed;
+    ride.fuseFrom = ride.shown;
+  }
+  if (ride.fuseAt) {
+    const k = Math.min(1, (elapsed - ride.fuseAt) / FUSE_SLEW_MS);
+    ride.shown = ride.fuseFrom + (1 - ride.fuseFrom) * k;
+    return { p: ride.shown, done: k >= 1 };
+  }
+
+  const target = Math.min(real, elapsed / MIN_MS);
+  const gap = target - ride.shown;
+  if (gap > 0) {
+    ride.shown += Math.min(
+      gap,
+      Math.max(gap * (1 - Math.exp(-CATCH_RATE * dt)), CREEP_RATE * dt),
+      RUSH_RATE * dt,
+    );
+  }
+  return {
+    p: ride.shown,
+    done: real >= 1 && elapsed >= MIN_MS && ride.shown >= FLOOR_23,
+  };
 }
 
 export default function Preloader() {
@@ -82,6 +160,16 @@ export default function Preloader() {
   const doorLRef = useRef<HTMLDivElement>(null);
   const doorRRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
+
+  /* Загрузка стартует раньше всего остального: прелоадер монтируется
+     первым в layout, а лифту нужны уже текущие байты. Вызов идемпотентен —
+     HeroVideo зовёт его же, на случай второй загрузки во вкладке, когда
+     прелоадера нет вовсе. Под reduced-motion не зовётся ни тем, ни другим:
+     видео там не монтируется, трафика ноль. */
+  useEffect(() => {
+    if (reduced) return;
+    startHeroPreload(currentVariant());
+  }, [reduced]);
 
   useEffect(() => {
     const forcedByHardReload = hasHardReloadFlag();
@@ -143,21 +231,32 @@ export default function Preloader() {
       }
     };
 
-    /* Reduced-motion: без анимации лестницы и створок, но временная
-       линия остаётся — она же будущий сигнал реальной загрузки. */
+    /* Reduced-motion: ни лестницы, ни створок, и ждать нечего —
+       видео не грузится вовсе. Простая пауза таймером. */
     if (reduced) {
       draw(1);
       const poll = () => {
-        const { done } = readProgress(performance.now() - start);
-        if (done) { open(); return; }
+        if (performance.now() - start >= REDUCED_MS) { open(); return; }
         raf = requestAnimationFrame(poll);
       };
       raf = requestAnimationFrame(poll);
       return () => cancelAnimationFrame(raf);
     }
 
+    const ride: Ride = { shown: 0, fuseAt: 0, fuseFrom: 0 };
+    /* Вариант замеряется один раз: поворот экрана в первые три секунды
+       не должен переписать знаменатель поездки на середине. */
+    const variant = currentVariant();
+    let last = start;
+
     const loop = () => {
-      const { p, done } = readProgress(performance.now() - start);
+      const now = performance.now();
+      /* dt подрезан: вкладка уходила в фон, rAF молчал, и один кадр
+         с dt в десять секунд провёз бы лифт мимо обоих ограничителей
+         скорости разом. */
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const { p, done } = advance(ride, variant, now - start, dt);
       draw(p);
       if (!finished && done) {
         finished = true;
