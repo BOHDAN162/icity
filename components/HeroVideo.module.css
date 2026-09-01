@@ -120,6 +120,38 @@
   margin: 0 0 var(--s-6);
 }
 
+/* Строки разбиты руками — это композиция, а не перенос по ширине.
+   Отсюда block, а не <br>: буквы внутри строки нужно анимировать
+   поштучно, и <br> между ними мешал бы. */
+.titleLine {
+  display: block;
+}
+
+/* Буква. inline-block обязателен: на inline-элементе трансформы
+   и анимации ведут себя непредсказуемо между движками. */
+.titleChar {
+  display: inline-block;
+}
+
+/* Пробел не анимируется — анимировать невидимое незачем. Неразрывный
+   потому, что строки заданы вручную и переносить их нельзя. */
+.titleSpace {
+  display: inline-block;
+}
+
+/* Текст для клавиатуры и скринридера — тот же приём, что в PlanOverlay:
+   заголовок обязан читаться фразой, а не россыпью букв. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .lead {
   font: var(--lead);
   letter-spacing: var(--tr-lead);
@@ -252,33 +284,41 @@ button.enterBtn {
    отыграла бы целиком за занавесом — зритель увидел бы готовый текст.
    Дальше кадры ведёт композитор, React не участвует.
 
-   Четыре шага при пяти узлах — потолок «максимум четыре элемента»
-   из design-system.md §5: кнопка и строка звука идут одним шагом,
-   они читаются как один блок действия.
+   ЗАГОЛОВОК ПРОЯВЛЯЕТСЯ ПОБУКВЕННО И ВРАЗНОБОЙ — это главное в приёме,
+   и на уменьшенных кадрах его легко проглядеть. Каждая буква ведёт
+   свою анимацию той же длительности, но со своей задержкой:
+   `--d` (0..1, детерминированный хеш от номера буквы, см. HeroVideo.tsx)
+   растягивается на `--hero-in-scatter`. В референсе разброс середин
+   ~370 мс при длительности буквы ~1,8 с; здесь 560 мс — чуть шире,
+   чтобы вразнобой читался и на беглом взгляде, а не только в замере.
+   Порядок получается непохожим ни на слева-направо, ни на построчный.
 
-   Тайминг от сигнала: старт 200 / 360 / 520 / 680 мс, полная
-   непрозрачность на 2100 / 2260 / 2420 / 2580 мс. Заголовок доходит
-   до единицы на 2,26 с — ровно измеренные 2,3 с референса. */
+   Остальные узлы идут ступенями. Заголовок занимает две: собственную
+   и весь разброс, иначе абзац начал бы проявляться раньше, чем
+   догорят последние буквы. */
 @keyframes heroIn { from { opacity: 0; } to { opacity: 1; } }
 
 .revealed .mark {
   animation: heroIn var(--t-hero-in) linear var(--hero-in-delay) both;
 }
 
-.revealed .title {
+.revealed .titleChar {
   animation: heroIn var(--t-hero-in) linear
-             calc(var(--hero-in-delay) + var(--hero-in-stagger)) both;
+             calc(var(--hero-in-delay) + var(--hero-in-stagger)
+                  + var(--d) * var(--hero-in-scatter)) both;
 }
 
 .revealed .lead {
   animation: heroIn var(--t-hero-in) linear
-             calc(var(--hero-in-delay) + var(--hero-in-stagger) * 2) both;
+             calc(var(--hero-in-delay) + var(--hero-in-stagger) * 2
+                  + var(--hero-in-scatter)) both;
 }
 
 .revealed .actions,
 .revealed .sound {
   animation: heroIn var(--t-hero-in) linear
-             calc(var(--hero-in-delay) + var(--hero-in-stagger) * 3) both;
+             calc(var(--hero-in-delay) + var(--hero-in-stagger) * 3
+                  + var(--hero-in-scatter)) both;
 }
 
 /* Проявление и гашение не спорят: проявление — animation на детях,
@@ -289,7 +329,7 @@ button.enterBtn {
    вверх перед тем, как погаснуть. Пауза замораживает детей там,
    где они есть, и гасит их родителем. */
 .overlayOff .mark,
-.overlayOff .title,
+.overlayOff .titleChar,
 .overlayOff .lead,
 .overlayOff .actions,
 .overlayOff .sound {
@@ -314,7 +354,7 @@ button.enterBtn {
    на естественной единице. */
 @media (prefers-reduced-motion: reduce) {
   .revealed .mark,
-  .revealed .title,
+  .revealed .titleChar,
   .revealed .lead,
   .revealed .actions,
   .revealed .sound {

@@ -40,6 +40,7 @@
 
 import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
+  type CSSProperties,
 } from 'react';
 import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
@@ -61,15 +62,59 @@ const CURTAIN_FALLBACK_MS = 6000;
 /* Гашение амбиента к финалу ролика, в секундах currentTime. */
 const AUDIO_FADE_S = 0.9;
 
-/* Амбиент первого экрана. В четырёх mp4 полёта звуковой дорожки нет
-   (ffprobe: только video-поток), а пережимать их нельзя — вес и качество
-   утверждены, и каждый заезд mp4 остаётся в истории git навсегда
-   (AGENTS.md, «Hero-видео»). Поэтому звук едет отдельным <audio>
-   и синхронизируется от того же video.currentTime, что и всё остальное.
-   Пока файла нет — null: строка выбора звука не рендерится вовсе,
-   предлагать «Войти без звука» там, где звука нет, — обман.
-   Появится файл — меняется одна эта константа. */
-const AMBIENCE: { src: string; type: string } | null = null;
+/* ЗАГОЛОВОК ПРОЯВЛЯЕТСЯ ПОБУКВЕННО И ВРАЗНОБОЙ.
+   Замерено покадрово по референсу в нативном разрешении (метрика —
+   контраст глифа против фона внутри его же коробки, она переживает
+   дрейф облаков). Середины проявления высококонтрастных букв:
+     B 1779 · A 1952 · T 1952 · E 2001 · O 2075 · V 2149 · H 2149
+   Порядок не слева направо и не построчно: первой идёт B, последними
+   V, E, H. Разброс середин ~370 мс при длительности буквы ~1,8 с —
+   поэтому на глаз он читается как «текст проявляется целиком», и
+   именно так его легко проглядеть на уменьшенных кадрах.
+   Строки разбиты руками, а не по ширине: это композиция, а не вёрстка. */
+const TITLE_LINES = ['В самом', 'центре', 'деловой Москвы'] as const;
+
+/* Псевдослучайная задержка буквы, 0..1.
+   ДЕТЕРМИНИРОВАННАЯ НАРОЧНО: сервер и клиент обязаны получить одно
+   и то же число, иначе гидрация разъедется на каждой букве. Отсюда
+   только 32-битная целочисленная арифметика — она специфицирована
+   точно и одинакова во всех движках. Math.random() здесь нельзя
+   вообще, а Math.sin() нельзя потому, что его последние биты
+   у движков расходятся. */
+const scatter = (i: number): number => {
+  let h = Math.imul(i + 1, 2654435761);
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822519);
+  h ^= h >>> 13;
+  return ((h >>> 0) % 997) / 997;
+};
+
+/* Амбиент первого экрана — ветер на высоте.
+   В четырёх mp4 полёта звуковой дорожки нет (ffprobe: только video-поток),
+   а пережимать их нельзя: вес и качество утверждены, и каждый заезд mp4
+   остаётся в истории git навсегда (AGENTS.md, «Hero-видео»). Поэтому звук
+   едет отдельным <audio> и синхронизируется от того же video.currentTime,
+   что и всё остальное.
+
+   Источник: freesound.org/s/570890 «wind_synth_high_altitude», CC0
+   (public domain, атрибуция не требуется). Синтезированный, а не полевая
+   запись, — поэтому чистый, без птиц и трафика. Собран
+   `ffmpeg -ss 4 -t 10.5` (самое ровное окно оригинала, LRA 2,0),
+   +3,7 дБ до −23 LUFS, вход 1,5 с, страховочный выход 0,4 с.
+   10,5 с против 9,79 с ролика — запас, чтобы звук не кончился раньше видео.
+
+   Opus первым, AAC вторым: браузер берёт первый поддержанный, и Chrome
+   с Firefox получают файл вдвое легче, а Safari честно откатывается
+   на m4a. */
+const AMBIENCE: readonly { src: string; type: string }[] = [
+  { src: '/audio/icity_hero_ambience.ogg', type: 'audio/ogg; codecs="opus"' },
+  { src: '/audio/icity_hero_ambience.m4a', type: 'audio/mp4; codecs="mp4a.40.2"' },
+];
+
+/* Базовая громкость амбиента. Файл собран на −23 LUFS, это уже фоновый
+   уровень; ручка здесь — чтобы правку громкости не приходилось гнать
+   через перекодирование. */
+const AMBIENCE_VOLUME = 1;
 
 /* Отметки ролика — в КАДРАХ, не в округлённых секундах. Рендер v3:
    24 fps, 235 кадров. На кадре 185 камера входит в «трамплин» и
@@ -224,7 +269,8 @@ export default function HeroVideo({ onLift, onDone }: Props) {
       const a = audioRef.current;
       if (a && soundOnRef.current) {
         const left = duration - v.currentTime;
-        a.volume = left < AUDIO_FADE_S ? clamp01(left / AUDIO_FADE_S) : 1;
+        a.volume = AMBIENCE_VOLUME
+          * (left < AUDIO_FADE_S ? clamp01(left / AUDIO_FADE_S) : 1);
       }
       if (v.ended) { finish(); return; }
       if (v.paused) v.play().catch(finish);
@@ -249,7 +295,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
        лучше сорванного полёта. В цепочку отказов видео звук не входит. */
     const a = audioRef.current;
     if (withSound && a) {
-      a.volume = 1;
+      a.volume = AMBIENCE_VOLUME;
       a.currentTime = 0;
       a.play().catch(() => {});
     }
@@ -405,9 +451,9 @@ export default function HeroVideo({ onLift, onDone }: Props) {
       {/* Амбиент отдельным элементом, не дорожкой в mp4: ролики
           пережимать нельзя. preload="none" — вне бюджета первого
           экрана, прогрев по наведению на «Войти». */}
-      {AMBIENCE && !reduced && (
+      {!reduced && (
         <audio ref={audioRef} preload="none" aria-hidden="true">
-          <source src={AMBIENCE.src} type={AMBIENCE.type} />
+          {AMBIENCE.map((s) => <source key={s.src} src={s.src} type={s.type} />)}
         </audio>
       )}
 
@@ -430,17 +476,35 @@ export default function HeroVideo({ onLift, onDone }: Props) {
             23{NBSP}ЭТАЖ
           </p>
 
-          {/* Три строки одним блоком: в референсе они проявляются
-              синхронно, не по буквам и не по строкам. Поэтому один
-              анимируемый элемент и <br>, а не span-ы.
-              В разметке текст СТРОЧНЫЙ, заглавные делает CSS: скринридер
-              читает нормальную фразу, а не побуквенную аббревиатуру. */}
+          {/* Заголовок разбит на буквы: каждая проявляется со своей
+              задержкой, вразнобой — так в референсе (замеры выше).
+              Разбивка ЧИСТО ВИЗУАЛЬНАЯ: для скринридера рядом лежит
+              обычная фраза, а россыпь span-ов скрыта aria-hidden —
+              иначе VoiceOver прочёл бы заголовок по буквам.
+              В разметке текст строчный, заглавные делает CSS по той же
+              причине: в DOM должна остаться нормальная фраза. */}
           <h1 className={styles.title}>
-            В самом
-            <br />
-            центре
-            <br />
-            деловой Москвы
+            <span className={styles.sr}>В самом центре деловой Москвы</span>
+            <span aria-hidden="true">
+              {(() => {
+                let n = 0;
+                return TITLE_LINES.map((line) => (
+                  <span className={styles.titleLine} key={line}>
+                    {[...line].map((ch, ci) => (ch === ' ' ? (
+                      <span className={styles.titleSpace} key={ci}>&nbsp;</span>
+                    ) : (
+                      <span
+                        className={styles.titleChar}
+                        key={ci}
+                        style={{ '--d': scatter(n++) } as CSSProperties}
+                      >
+                        {ch}
+                      </span>
+                    )))}
+                  </span>
+                ));
+              })()}
+            </span>
           </h1>
 
           <p className={styles.lead}>
@@ -470,7 +534,7 @@ export default function HeroVideo({ onLift, onDone }: Props) {
         {/* Выбор звука — второй вход, а не переключатель: клик по нему
             и есть тот жест, внутри которого браузер разрешает звук.
             Одно решение — один жест, лишнего состояния между ними нет. */}
-        {AMBIENCE && !reduced && (
+        {!reduced && (
           <div className={styles.sound}>
             <button
               type="button"
