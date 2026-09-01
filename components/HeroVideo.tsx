@@ -321,15 +321,13 @@ export default function HeroVideo({ onLift, onDone }: Props) {
         <div className={styles.copy}>
           <p className={styles.eyebrow}>iCITY · Space Tower · 23 этаж</p>
           <h1 className={styles.title}>
-            Офис, в который
+            В самом центре
             <br />
-            въезжают завтра
+            деловой Москвы
           </h1>
           <div className={styles.divider} aria-hidden="true" />
           <p className={styles.lead}>
-            244,1 м² с отделкой PRIDEX.
-            <br />
-            Ноль капитальных затрат до въезда.
+            244,1 м² с отделкой от PRIDEX.
           </p>
         </div>
 

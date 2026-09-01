@@ -69,7 +69,7 @@
 
 .copy {
   text-align: center;
-  padding: clamp(96px, 22svh, 240px) var(--pad-x) 0;
+  padding: clamp(96px, 27svh, 240px) var(--pad-x) 0;
 }
 
 .eyebrow {
@@ -87,13 +87,11 @@
   margin: 0 0 var(--s-4);
 }
 
-/* Линия-разделитель — --frit допустим только в растре и линиях 1–2 px
-   (design-system.md §1), здесь ровно такая линия. */
 .divider {
   width: min(420px, 100%);
   height: 0;
   margin: 0 auto var(--s-5);
-  border-top: 2px dotted var(--frit);
+  border-top: 2px dotted var(--white);
 }
 
 .lead {
@@ -105,7 +103,7 @@
 
 .enter {
   position: absolute;
-  top: 74%;
+  top: 69%;
   left: 50%;
   transform: translate(-50%, -50%);
   pointer-events: auto;
