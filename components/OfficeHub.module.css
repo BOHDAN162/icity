@@ -163,7 +163,12 @@
   animation: infoIn var(--t-reveal) var(--ease-out) both;
 }
 
-.infoRight { justify-self: end; }
+/* Коридор и Переговорная. Блок не просто прижат к правому краю — он
+   отражён целиком: ровная вертикаль строк собирается справа, заливка
+   ссылки идёт справа налево, бейдж «3D» стоит перед надписью. Зеркало
+   живёт одним куском ниже, в разделе «зеркало правых зон»; здесь только
+   выравнивание, от которого зависят и заголовок, и лид, и надзаголовок. */
+.infoRight { justify-self: end; text-align: right; }
 
 @keyframes infoIn {
   from { opacity: 0; transform: translateY(12px); }
@@ -386,6 +391,55 @@
 
 .planWrap:focus-within .planSubStep { opacity: 1; transform: translateY(0); }
 .planWrap:focus-within .planSubStep:nth-child(2) { transition-delay: var(--stagger); }
+
+/* --- зеркало правых зон ----------------------------------------------- */
+
+/* Всё, что ниже, работает только внутри .infoRight и меняет НАПРАВЛЕНИЕ,
+   а не величины: сдвиги те же --s-1 и --s-2, кривые и длительности те же.
+   Новых чисел здесь нет ни одного — иначе левый и правый блок разъехались
+   бы по темпу при первой же правке одной из сторон.
+
+   .planWrap отдельного правила не требует: он inline-flex, то есть
+   inline-level, и его прижимает к правому краю тот же text-align. */
+
+/* Бейдж «3D» — перед надписью. Реверс визуальный: в разметке бейдж
+   aria-hidden и стоит после текста, поэтому доступное имя кнопки
+   остаётся прежним «Открыть планировку». */
+.infoRight .planLink { flex-direction: row-reverse; }
+
+/* Волосяная линия в покое — огрызок у ПРАВОГО края, растёт влево.
+   Та же scaleX(0.22), другая точка опоры. */
+.infoRight .planText::after { transform-origin: right; }
+
+@media (hover: hover) and (pointer: fine) {
+  .infoRight .planLink:hover .planText { transform: translateX(calc(-1 * var(--s-1))); }
+  .infoRight .planWrap:hover .planBadge {
+    transform: translateX(calc(-1 * var(--s-2))) scale(1.08);
+  }
+}
+
+.infoRight .planWrap:focus-within .planText { transform: translateX(calc(-1 * var(--s-1))); }
+.infoRight .planWrap:focus-within .planBadge {
+  transform: translateX(calc(-1 * var(--s-2))) scale(1.08);
+}
+
+/* Подпись прижата к правому краю кнопки и раскрывается ОТ НЕГО внутрь
+   кадра: первым приходит правый кусок, «Пять зон» — с задержкой. Обе
+   задержки переставляются парой, иначе оба куска пришли бы разом. */
+.infoRight .planSub { left: auto; right: 0; text-align: right; }
+
+@media (hover: hover) and (pointer: fine) {
+  .infoRight .planWrap:hover .planSubStep:nth-child(2) { transition-delay: 0s; }
+  .infoRight .planWrap:hover .planSubStep:nth-child(1) { transition-delay: var(--stagger); }
+}
+
+.infoRight .planWrap:focus-within .planSubStep:nth-child(2) { transition-delay: 0s; }
+.infoRight .planWrap:focus-within .planSubStep:nth-child(1) { transition-delay: var(--stagger); }
+
+/* Ключевого числа сейчас нет ни в одной зоне, но колонка с ним шириной
+   в 22rem прижалась бы к левому краю блока и разошлась бы с текстом
+   в ту же секунду, как число появится. */
+.infoRight .zeroRow { margin-left: auto; }
 
 /* --- переходы: только круг со стрелкой -------------------------------- */
 
