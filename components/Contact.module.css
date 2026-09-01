@@ -37,7 +37,7 @@
 
 .managerName {
   margin: 0 0 var(--s-2);
-  font: 450 clamp(24px, 2.4vw, 34px) / 1.2 var(--sans);
+  font: 500 clamp(24px, 2.4vw, 34px) / 1.2 var(--sans);
   letter-spacing: var(--tr-head);
   color: var(--ink);
 }

@@ -204,8 +204,6 @@ body {
   background: var(--paper);
   color: var(--ink);
   font: var(--body);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
@@ -231,8 +229,25 @@ h1, h2 { font-optical-sizing: auto; }
   color: var(--ink-60);
 }
 
-.num-xl { font: var(--num-xl); letter-spacing: var(--tr-num); }
-.num-m  { font: var(--num-m);  letter-spacing: var(--tr-num); }
+/* Табличные цифры объявлены здесь, а не глобально на body.
+   Глобально они были поправкой под Geist и стоили дёшево, но у Golos
+   Text табличная цифра на 4 % шире пропорциональной (замер: «0123456789»
+   на 17px — 102,77 против 98,77px), и в связном абзаце «244,1 м²»
+   от них разрежается. Выравнивать в столбец нужно числам, а не тексту,
+   поэтому свойство лежит на числовых классах.
+   На --mono оно ничего не меняет: JetBrains Mono моноширинный, замер
+   даёт ровно 0 разницы. Оставлено намеренно — как объявление правила
+   и как страховка, если --mono когда-нибудь перестанет быть моно. */
+.num-xl {
+  font: var(--num-xl);
+  letter-spacing: var(--tr-num);
+  font-variant-numeric: tabular-nums;
+}
+.num-m {
+  font: var(--num-m);
+  letter-spacing: var(--tr-num);
+  font-variant-numeric: tabular-nums;
+}
 
 /* Красный точечный подчерк — тот же растр, что жил под «0» в ряду чисел:
    полоса 6 px, плотность --frit-dense (точка r=1.4px, шаг 8px; на ≤767 px

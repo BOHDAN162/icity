@@ -133,34 +133,38 @@
 
 /* Двойник в конечном весе задаёт коробку строки: сетка меряется по
    самому широкому/высокому элементу ряда, а это всегда он. Поэтому
-   переход 350 → 550 не может ни перенести слово на новую строку,
+   переход 400 → 600 не может ни перенести слово на новую строку,
    ни изменить высоту строки списка. Тот же приём, что у .numGhost
-   в Landing.module.css. */
+   в Landing.module.css.
+   Пара была 350 → 550 при Geist. У Golos Text ось начинается с 400,
+   и 350 схлопывался бы в 400 молча — замер: 300, 350 и 400 дают одну
+   и ту же ширину строки до сотых. Поэтому обе границы сдвинуты вверх
+   на 50: амплитуда перехода осталась прежней, 200 единиц веса. */
 .rowTitle,
 .rowTitleGhost {
   grid-row: 1;
   grid-column: 1;
-  font: 350 var(--row-fs) / 1.12 var(--sans);
+  font: 400 var(--row-fs) / 1.12 var(--sans);
   letter-spacing: var(--tr-head);
 }
 
 .rowTitleGhost {
   visibility: hidden;
-  font-weight: 550;
-  font-variation-settings: 'wght' 550;
+  font-weight: 600;
+  font-variation-settings: 'wght' 600;
 }
 
 .rowTitle {
-  font-weight: 350;
-  font-variation-settings: 'wght' 350;
+  font-weight: 400;
+  font-variation-settings: 'wght' 400;
   transition:
     font-weight 200ms var(--ease-standard),
     font-variation-settings 200ms var(--ease-standard);
 }
 
 .rowOn .rowTitle {
-  font-weight: 550;
-  font-variation-settings: 'wght' 550;
+  font-weight: 600;
+  font-variation-settings: 'wght' 600;
 }
 
 /* Микро-строка: обрезающая коробка и ничего больше. Своей высоты не
