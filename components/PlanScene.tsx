@@ -45,7 +45,7 @@ import { Canvas, invalidate, useFrame, useLoader, useThree } from '@react-three/
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
-  CROSSFADE_AT, FLIGHT_MS, GLB_URL,
+  FLIGHT_MS, GLB_URL, REVEAL_AT,
   type Plan, type PlanCamera, type PlanZone, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
 import {
@@ -72,8 +72,18 @@ const FIT_PAD = 1.02;
 const HIT_HEIGHT = 2.2;        // объём под курсор: ниже стен, выше мебели
 
 const clamp = (n: number, a: number, b: number) => (n < a ? a : n > b ? b : n);
-/* Уходит быстро, садится мягко. */
-const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4);
+/* ПОГРУЖЕНИЕ, А НЕ БРОСОК. Та же кривая, что ведёт выезд ресепшна
+   в HeroVideo, — на сайте одно движение говорит одним языком.
+
+   Здесь стоял easeOutQuart, и он ломал именно этот кадр: 97 % пути
+   он проходил за 58 % времени, то есть последние 42 % перелёта камера
+   технически ехала, а глазом стояла. Зритель успевал рассмотреть
+   застывшую белую модель — и дальше что угодно читалось как рывок.
+   У easeInOutCubic тот же порог наступает на 81 % времени: мёртвый
+   хвост 19 % вместо 42, и он целиком уходит под растворение.
+   Замер и таблица — lib/interior.ts, там же тайминги. */
+const easeInOutCubic = (t: number) =>
+  (t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2);
 
 /* Плоская фигура ShapeGeometry лежит в XY. Матрица меняет Y и Z местами:
    (x, y, z) → (x, z, y). План [x, y] превращается в (x, высота, y). */
@@ -489,7 +499,9 @@ type RigProps = {
   /** группа, которую наклоняем; камера при этом неподвижна */
   tilt: React.RefObject<THREE.Group | null>;
   flight: Flight | null;
-  onPhase: (phase: 'crossfade' | 'done') => void;
+  /** обратный нырок: камера стартует отсюда и отъезжает в изометрию */
+  backFrom: PlanCamera | null;
+  onPhase: (phase: 'reveal' | 'done') => void;
   /** праздношатание: выключено на телефоне и при просьбе убрать движение */
   wobble: boolean;
 };
@@ -498,7 +510,7 @@ type RigProps = {
    не трогает. Причина не в чистоте: эффект и кадр пишут в один объект
    в разном порядке, и на первом кадре перелёта камера успевает прыгнуть
    домой. Одна рука на штурвале — одна траектория. */
-function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
+function Rig({ plan, tilt, flight, backFrom, onPhase, wobble }: RigProps) {
   const size = useThree((s) => s.size);
   const aspect = size.width / size.height;
 
@@ -506,6 +518,11 @@ function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
   const startRef = useRef(0);
   const fromRef = useRef<Pose | null>(null);
   const firedRef = useRef(false);
+  /* Обратный нырок. 0 — ещё не начинался, отсчёт ставится первым кадром:
+     ровно как у прямого перелёта, и по той же причине — в эффекте камера
+     ещё не там, где её увидит зритель. */
+  const backAtRef = useRef(0);
+  const backDoneRef = useRef(false);
 
   /* Смена цели или размера — повод нарисовать кадр: на frameloop="demand"
      сам по себе он не случится, а без первого кадра перелёт не начнётся.
@@ -535,7 +552,7 @@ function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
 
       const elapsed = performance.now() - startRef.current;
       const t = clamp(elapsed / FLIGHT_MS, 0, 1);
-      const e = easeOutQuart(t);
+      const e = easeInOutCubic(t);
 
       camera.position.lerpVectors(from.pos, new THREE.Vector3(...flight.cam.pos3), e);
       const look = new THREE.Vector3().lerpVectors(from.target, new THREE.Vector3(...flight.cam.target3), e);
@@ -543,10 +560,15 @@ function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
       camera.lookAt(look);
       camera.updateProjectionMatrix();
 
-      if (!firedRef.current && elapsed >= CROSSFADE_AT) {
+      /* 'reveal' — оболочке пора растворять оверлей: камера ещё едет,
+         и растворение обязано попасть НА ход, а не после него. */
+      if (!firedRef.current && elapsed >= REVEAL_AT) {
         firedRef.current = true;
-        onPhase('crossfade');
+        onPhase('reveal');
       }
+      /* Долетели. Оболочка к этому моменту уже растворила оверлей
+         и вот-вот размонтирует сцену; 'done' ей больше ни для чего
+         не нужен, но остаётся как честный конец фазы. */
       if (t >= 1) { onPhase('done'); return; }
       invalidate();
       return;
@@ -572,9 +594,35 @@ function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
       : 0;
 
     const pose = fitPose(plan, aspect, HOME_AZ + swing, PLAN_HOME_EL);
-    camera.position.copy(pose.pos);
-    camera.fov = pose.fov;
-    camera.lookAt(pose.target);
+
+    /* ОБРАТНЫЙ НЫРОК — ЗЕРКАЛО ПРЯМОГО. Зритель стоит в зоне и жмёт Esc:
+       камера начинает с ракурса съёмки этой зоны, то есть ровно с того,
+       что он видит на фотографии, и отъезжает в изометрию. Та же кривая
+       и та же длительность, что у погружения, — просто в другую сторону.
+
+       Целью каждый кадр берётся ЖИВАЯ поза покоя `pose`, вместе с её
+       праздношатанием. Поэтому на t = 1 камера оказывается точно там,
+       где её и так держал бы холостой ход, и передача управления
+       происходит без стыка: ни одного кадра, где камера прыгает.
+       Возьмёшь позу один раз на старте — получишь рывок в конце,
+       ровно на величину набежавшего swing. */
+    let backMoving = false;
+    if (backFrom && !backDoneRef.current) {
+      if (!backAtRef.current) backAtRef.current = performance.now();
+      const t = clamp((performance.now() - backAtRef.current) / FLIGHT_MS, 0, 1);
+      const e = easeInOutCubic(t);
+      camera.position.lerpVectors(new THREE.Vector3(...backFrom.pos3), pose.pos, e);
+      const look = new THREE.Vector3()
+        .lerpVectors(new THREE.Vector3(...backFrom.target3), pose.target, e);
+      camera.fov = backFrom.fov + (pose.fov - backFrom.fov) * e;
+      camera.lookAt(look);
+      backMoving = t < 1;
+      if (!backMoving) backDoneRef.current = true;
+    } else {
+      camera.position.copy(pose.pos);
+      camera.fov = pose.fov;
+      camera.lookAt(pose.target);
+    }
     camera.updateProjectionMatrix();
 
     /* Наклон считаем после камеры: оси берутся из её матрицы, а она
@@ -587,9 +635,11 @@ function Rig({ plan, tilt, flight, onPhase, wobble }: RigProps) {
     }
 
     /* Пока качание живо, оно само просит следующий кадр. Пока слежение
-       догоняет — тоже. Догнало и качания нет — сцена замолкает и телефон
+       догоняет — тоже. Пока идёт обратный нырок — тем более: без него
+       отъезд встал бы на первом же кадре, потому что frameloop="demand".
+       Всё догнало и ничего не движется — сцена замолкает и телефон
        перестаёт греться на неподвижной картинке. */
-    if (settling || swing !== 0 || o.dragging) invalidate();
+    if (settling || swing !== 0 || o.dragging || backMoving) invalidate();
   });
 
   return null;
@@ -603,7 +653,10 @@ export type PlanSceneProps = {
   onHover: (k: ZoneKey | null) => void;
   onPick: (k: RenderKey) => void;
   flyTo: RenderKey | null;
-  onPhase: (phase: 'crossfade' | 'done') => void;
+  /** зона, из которой открыли план: камера стартует её ракурсом и
+      отъезжает в изометрию. null — обычное открытие, сразу изометрия */
+  backFrom: RenderKey | null;
+  onPhase: (phase: 'reveal' | 'done') => void;
   /** праздношатание: выключено на телефоне и при просьбе убрать движение */
   wobble: boolean;
   /** мелкость экрана: понижаем плотность пикселей холста */
@@ -614,7 +667,7 @@ export type PlanSceneProps = {
    секции, включая пустой фон вокруг плана, а холст занимает не всю её.
    Сцена читает общий planOrbit и отдаёт туда же ручку «нарисуй кадр». */
 export default function PlanScene({
-  plan, hovered, onHover, onPick, flyTo, onPhase, wobble, compact,
+  plan, hovered, onHover, onPick, flyTo, backFrom, onPhase, wobble, compact,
 }: PlanSceneProps) {
 
   const tiltRef = useRef<THREE.Group>(null);
@@ -649,6 +702,15 @@ export default function PlanScene({
     const cam = plan.cameras[flyTo];
     return cam ? { key: flyTo, cam } : null;
   }, [flyTo, plan]);
+
+  /* Откуда отъезжать. Камеры зон те же самые, что у прямого перелёта, —
+     второго набора точек съёмки нет и заводить его нельзя. Нет камеры
+     у зоны (её не сняли) — обратного нырка просто не будет, план
+     откроется сразу в изометрии. */
+  const backCam = useMemo<PlanCamera | null>(
+    () => (backFrom ? plan.cameras[backFrom] ?? null : null),
+    [backFrom, plan],
+  );
 
   const pick = useCallback((zone: PlanZone) => {
     // Палец проехал по экрану — это был доворот плана, а не выбор зоны.
@@ -717,7 +779,8 @@ export default function PlanScene({
           </group>
         </group>
 
-        <Rig plan={plan} tilt={tiltRef} flight={flight} onPhase={onPhase} wobble={wobble} />
+        <Rig plan={plan} tilt={tiltRef} flight={flight} backFrom={backCam}
+          onPhase={onPhase} wobble={wobble} />
       </Canvas>
     </div>
   );

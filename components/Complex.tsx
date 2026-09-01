@@ -3,6 +3,8 @@
 
    Пять строк слева, одна рамка справа. Наведение на строку меняет кадр
    спокойным кроссфейдом на 250 мс — и это всё движение, какое здесь есть.
+   Подпись в углу рамки идёт с кадром одним движением: тот же кроссфейд
+   и та же кривая, и появляется она не раньше, чем загрузился сам кадр.
 
    РАСТРОВОГО ПРОЯВЛЕНИЯ ЗДЕСЬ БОЛЬШЕ НЕТ И ВОЗВРАЩАТЬ ЕГО НЕ НАДО.
    Кадр открывался из полутоновой сетки точек поверх фотографии
@@ -100,6 +102,9 @@ const REVEAL_ROOT_MARGIN = '200px';
 export default function Complex() {
   const [near, setNear] = useState(false);
   const [active, setActive] = useState(0);
+  /* Какие кадры браузер уже вытянул. Подпись зоны показывается только
+     под загруженным кадром — см. комментарий у .caption ниже. */
+  const [loaded, setLoaded] = useState<ReadonlySet<string>>(() => new Set());
 
   const sectionRef = useRef<HTMLElement>(null);
 
@@ -130,6 +135,13 @@ export default function Complex() {
   /* Смена кадра — это только смена состояния. Кроссфейд ведёт CSS,
      JS в него не вмешивается ни одним кадром. */
   const activate = useCallback((index: number) => setActive(index), []);
+
+  /* Кадр доехал. Множество, а не флаг на активном: зритель бегает
+     по строкам туда-обратно, и уже загруженный кадр не должен
+     во второй раз прятать подпись. */
+  const markLoaded = useCallback((key: string) => {
+    setLoaded((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, []);
 
   return (
     <section
@@ -208,10 +220,37 @@ export default function Complex() {
                   decoding="async"
                   loading="lazy"
                   fetchPriority={i === 0 ? 'high' : 'low'}
+                  onLoad={() => markLoaded(a.key)}
+                  /* Кадр из кэша бывает готов раньше, чем React повесит
+                     onLoad, и события уже не будет. Проверяем complete
+                     в момент привязки — иначе подпись не появилась бы
+                     никогда именно на быстром повторном заходе. */
+                  ref={(el) => { if (el?.complete) markLoaded(a.key); }}
                 />
               ))}
 
-            <p className={styles.caption}>{AMENITIES[active].caption}</p>
+            {/* Подписи лежат стопкой и растворяются друг в друге ровно
+                тем же переходом, что и кадры под ними. Раньше здесь был
+                один <p>, менявший текст мгновенно: кадр ехал 250 мс,
+                надпись переключалась в первом же кадре — и читалось это
+                как «плашка не поспела за картинкой». Теперь у них одна
+                длительность и одна кривая.
+
+                Второе условие того же требования — плашка не выходит
+                раньше своего кадра: пока картинка не загрузилась, класса
+                .captionOn нет, и в рамке стоит чистая --paper без
+                подписи к тому, чего ещё не видно. */}
+            {AMENITIES.map((a, i) => (
+              <p
+                key={a.key}
+                className={`${styles.caption} ${
+                  i === active && loaded.has(a.key) ? styles.captionOn : ''
+                }`}
+                aria-hidden={i !== active}
+              >
+                {a.caption}
+              </p>
+            ))}
           </div>
         </div>
       </div>

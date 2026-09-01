@@ -11,8 +11,11 @@
 
    Внутри каждого dd — сетка 1×1: видимое число плюс скрытый дубликат
    на весе 700 (aria-hidden). Дубликат резервирует ширину ячейки под
-   жирное начертание, чтобы утолщение на ховере не сдвигало раскладку. */
+   жирное начертание, чтобы утолщение на ховере не сдвигало раскладку.
+   Он же держит ширину, пока идёт счёт: у «244,1» на середине пути
+   знаков меньше, и без дубликата ряд дёргался бы на каждом разряде. */
 
+import CountUpScope from './CountUpScope';
 import styles from './Landing.module.css';
 
 type Figure = { value: string; caption: string; accent?: boolean };
@@ -34,8 +37,14 @@ export default function Landing() {
 
         {/* dt перед dd — семантика пары «имя—значение».
             Визуальный порядок переворачивает column-reverse,
-            порядок чтения скринридером остаётся правильным. */}
-        <dl className={styles.figures}>
+            порядок чтения скринридером остаётся правильным.
+
+            CountUpScope прокручивает числа от нуля, когда ряд входит
+            в кадр: `data-count` — финальный текст, он же остаётся
+            в разметке для сервера, скринридера и ветки без JS.
+            Секунда, не дефолтные две: заказчик попросил счёт вдвое
+            быстрее именно в этом ряду. */}
+        <CountUpScope as="dl" className={styles.figures} duration={1000}>
           {FIGURES.map((f) => (
             <div
               key={f.caption}
@@ -43,14 +52,14 @@ export default function Landing() {
             >
               <dt className={`label ${styles.caption}`}>{f.caption}</dt>
               <dd className={styles.value}>
-                <span className={styles.num}>{f.value}</span>
+                <span className={styles.num} data-count={f.value}>{f.value}</span>
                 <span className={styles.numGhost} aria-hidden="true">
                   {f.value}
                 </span>
               </dd>
             </div>
           ))}
-        </dl>
+        </CountUpScope>
 
         <p className={styles.para}>
           Прямая аренда от собственника, дизайнерская отделка от PRIDEX.

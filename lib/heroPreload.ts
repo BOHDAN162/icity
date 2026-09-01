@@ -145,7 +145,6 @@ async function download(codec: Codec, file: FileState): Promise<void> {
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     for (;;) {
-      // eslint-disable-next-line no-await-in-loop
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
@@ -163,12 +162,30 @@ async function download(codec: Codec, file: FileState): Promise<void> {
   file.url = URL.createObjectURL(blob);
 }
 
+/* Ориентация ЖИВЫМ ЗАПРОСОМ, не снимком рендера, и это не мелочь.
+   useSyncExternalStore на гидрационном проходе обязан вернуть СЕРВЕРНЫЙ
+   снимок, иначе разметка разойдётся, — а на сервере ориентации нет,
+   и снимок всегда 'desktop'. Первый проход эффектов случается именно
+   с ним: спроси мы вариант у React, телефон успел бы начать качать
+   десктопную пару (2,6 МБ) до того, как снимок исправится на 'mobile'.
+   Замерено — качал. */
+export const currentHeroVariant = (): HeroVariant =>
+  (window.matchMedia('(orientation: portrait)').matches ? 'mobile' : 'desktop');
+
 /* Идемпотентный старт. Зовут двое: прелоадер (как можно раньше, он
    монтируется первым) и HeroVideo (на случай, если прелоадера нет вовсе —
    вторая загрузка во вкладке, sessionStorage). Второй вызов ничего
-   не делает. Под prefers-reduced-motion не зовётся ни тем, ни другим:
-   там не монтируется ни одно видео, ноль байт трафика. */
+   не делает. */
 export function startHeroPreload(variant: HeroVariant): void {
+  /* ЗАПРЕТ НА ТРАФИК ПРИ REDUCED-MOTION СТОИТ ЗДЕСЬ, а не только
+     у вызывающих, ровно по причине из комментария выше: у обоих
+     `reduced` приходит из useSyncExternalStore, чей серверный снимок —
+     false. На первом проходе эффектов их охранник `if (reduced) return`
+     не срабатывает, и 3 МБ уезжали в сеть при включённом reduced-motion
+     (замерено: стек Preloader.useEffect → startHeroPreload при
+     matches === true). Живой запрос к matchMedia этой щели не оставляет. */
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   const existing = cache.get(variant);
   if (existing?.started) return;
 
@@ -227,6 +244,23 @@ export function heroPreloadProgress(variant: HeroVariant): {
 
   const loaded = e.idle.loaded + e.flight.loaded;
   return { metered: true, ratio: Math.min(1, loaded / total) };
+}
+
+/* Отпустить blob-URL. Зовётся ОДИН раз и только с терминального
+   размонтирования hero: стадия HeroGate ходит только вперёд, к первому
+   экрану возвращает исключительно перезагрузка страницы — значит, файлы
+   больше не понадобятся никогда, а держать 3,1 МБ (и 10,4 МБ у браузера
+   без HEVC) до конца сессии незачем: дальше едут three.js и рендеры зон.
+   Вызов защищён doneRef на стороне HeroVideo — иначе двойное
+   монтирование StrictMode в разработке отобрало бы URL у живого плеера. */
+export function releaseHeroPreload(): void {
+  for (const [variant, e] of cache) {
+    for (const f of [e.idle, e.flight]) {
+      if (f.url) { URL.revokeObjectURL(f.url); f.url = null; }
+    }
+    cache.delete(variant);
+    snapshots.delete(variant);
+  }
 }
 
 export function subscribeHeroPreload(onChange: () => void): () => void {

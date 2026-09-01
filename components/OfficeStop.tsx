@@ -53,6 +53,15 @@
    Оно меняется только на пересечении порогов, с гистерезисом, а не
    на каждом кадре.
 
+   ЗДЕСЬ ДВАЖДЫ ПРОБОВАЛИ ПРИДЕРЖАТЬ ЗРИТЕЛЯ И ДВАЖДЫ ОТКАТИЛИ.
+   Сначала автодоводкой — программный scrollTo к точке выдержки; она
+   отбирала прокрутку у зрителя и складывалась с инерцией трекпада
+   и iOS вместо того, чтобы её сменить. Потом высотой секции: ход
+   растянули с 220svh до 360, чтобы панораму нельзя было проскочить
+   одним махом. Оба раза заказчик смотрел живьём и возвращал как было —
+   экран читался не как выдержка, а как застрявшая страница. Ни то,
+   ни другое не заводить заново, не спросив.
+
    ЧТО ДВИЖЕТСЯ. Только transform, opacity и высота полосы шва. Ни filter,
    ни blur, ни backdrop-filter, ни маски на самом кадре: маска поверх
    полноэкранной картинки перерисовывает весь кадр на каждом тике и
@@ -79,11 +88,17 @@ const VIEW_ALT = 'Вид из окна 23 этажа на Москва-Сити'
 const viewSrcSet = (ext: 'avif' | 'webp') =>
   VIEW_WIDTHS.map((w) => `${VIEW_DIR}/view-${w}.${ext} ${w}w`).join(', ');
 
-/* docs/facts.md, строки 18–19. Тот же паттерн ряда чисел, что в
-   Landing.tsx: dl > dt(подпись)/dd(значение), column-reverse. */
+/* docs/facts.md, строка 18. Тот же паттерн ряда чисел, что в
+   Landing.tsx: dl > dt(подпись)/dd(значение), column-reverse.
+
+   ЧИСЛО ЗДЕСЬ ОДНО. «3,8 / ПОТОЛКИ, М» снято 1 сентября 2026: высота
+   потолка — довод для сметы, а не для панорамы, и на кадре она спорила
+   с этажом, ради которого этот вид и показывают. Метрика никуда
+   не делась — стоит в ряду чисел на Landing и в подписях кукольного
+   дома. Вернёшь вторую ячейку — разделитель и отбивки .figure
+   поднимутся сами, менять CSS не нужно. */
 const VIEW_FIGURES = [
   { value: '23', caption: 'ЭТАЖ' },
-  { value: '3,8', caption: 'ПОТОЛКИ, М' },
 ] as const;
 
 /* Фазовая карта. Пороги дублируются в OfficeStop.module.css — там из них
@@ -246,21 +261,13 @@ export default function OfficeStop() {
           <div className={styles.veil} aria-hidden="true" />
 
           <div className={styles.caption}>
-            <div className={styles.copy}>
-              <p className={`label ${styles.eyebrow}`}>23 ЭТАЖ</p>
-              <h2 className={styles.title}>Вид</h2>
-            </div>
+            <h2 className={styles.title}>Панорама</h2>
 
             <dl className={styles.figures}>
               {VIEW_FIGURES.map((f) => (
                 <div key={f.caption} className={styles.figure}>
                   <dt className={`label ${styles.figCaption}`}>{f.caption}</dt>
-                  <dd className={styles.figValue}>
-                    <span className={styles.num}>{f.value}</span>
-                    <span className={styles.numGhost} aria-hidden="true">
-                      {f.value}
-                    </span>
-                  </dd>
+                  <dd className={styles.figValue}>{f.value}</dd>
                 </div>
               ))}
             </dl>

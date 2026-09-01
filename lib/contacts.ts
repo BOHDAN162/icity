@@ -2,8 +2,18 @@
    Путь в проекте: lib/contacts.ts
 
    Значения сверены с docs/facts.md §«Контакт» и docs/copy.md §8.
-   maxUrl нигде в репозитории не найден — мессенджер Max упомянут
-   только по имени, ссылки нет. Подставлено VERIFY_WITH_BOGDAN. */
+
+   MAX: ССЫЛКИ ПО НОМЕРУ ТЕЛЕФОНА У МЕССЕНДЖЕРА НЕТ. Это не пробел
+   в реализации, а устройство самого MAX: аналога wa.me/79… там не
+   существует, и найти человека по номеру можно только внутри
+   приложения, вручную. Работает ровно один формат — личная ссылка
+   профиля вида https://max.ru/u/<хеш>, и снять её может только сам
+   владелец аккаунта: профиль → «Поделиться».
+
+   Поэтому здесь `string | null`, а не заглушка-строка: пока ссылки
+   Оксаны нет, кнопка «Написать в Max» не рисуется вовсе. Мёртвая
+   кнопка на экране переговоров хуже её отсутствия. Приедет ссылка —
+   вписать сюда, и она появится сама. */
 
 export type ContactInfo = {
   managerName: string;
@@ -11,7 +21,8 @@ export type ContactInfo = {
   phoneDisplay: string;
   phoneHref: string;
   email: string;
-  maxUrl: string;
+  /** личная ссылка профиля max.ru/u/…; null — кнопки нет */
+  maxUrl: string | null;
 };
 
 export const contacts: ContactInfo = {
@@ -20,5 +31,5 @@ export const contacts: ContactInfo = {
   phoneDisplay: '+7 909 379-80-15',
   phoneHref: 'tel:+79093798015',
   email: 'kryakushina@arenda-34.ru',
-  maxUrl: 'VERIFY_WITH_BOGDAN',
+  maxUrl: null,
 };

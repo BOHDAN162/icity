@@ -1,34 +1,70 @@
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
-import { EB_Garamond } from "next/font/google";
+import { Literata, Golos_Text, JetBrains_Mono } from "next/font/google";
 import Preloader from "@/components/Preloader";
+import Cursor from "@/components/Cursor";
+import SmoothScroll from "@/components/SmoothScroll";
 import "./globals.css";
 
-/* ВТОРАЯ ГАРНИТУРА — осознанное исключение из «Чего на сайте не будет»
-   (AGENTS.md), снятое заказчиком под первый экран. Живёт ровно в двух
-   местах: заголовок и знак-столбик в HeroVideo.module.css. Условия,
-   на которых она здесь:
-   - один вес 400 и только normal. Курсив система запрещает, а static-
-     инстанс его физически не отдаёт — нарушить нечем;
-   - сабсеты ровно под то, чем она набрана: кириллица для заголовка,
-     латиница для знака «iCITY / SPACE TOWER»;
-   - третья точка применения = исключение обсуждается заново.
-   Next 16 — свежая мажорная версия, сигнатура сверена по
+/* ТИПОГРАФИКА ПРОЕКТА — три гарнитуры с жёстко разведёнными ролями.
+   Все вариативные, все OFL 1.1, у всех кириллица нарисована профильными
+   типографами, а не автоконвертирована из латиницы.
+
+   Literata — заголовки и первый экран. Кириллица Веры Евстафьевой
+     (консультант Кирилл Златков, ассистент Елена Новосёлова), золото
+     Modern Cyrillic 2021; латиница Вероники Буриан и Хосе Скальоне,
+     TypeTogether.
+   Golos Text — основной текст и интерфейс. Александра Королькова
+     и Виталий Кузьмин, Paratype. Диапазон веса 400–900: значения ниже
+     400 физически недоступны, 350 схлопнется в 400 молча.
+   JetBrains Mono — цифры, метрики, подписи. Табличные цифры по умолчанию.
+
+   Сабсеты ровно два: кириллица — весь контент сайта, латиница — знак
+   «iCITY / SPACE TOWER», единицы измерения и латинские вкрапления.
+   Греческий и вьетнамский не подключаем: лишний вес без применения.
+
+   Вес не указываем ни у одной — тогда Next отдаёт вариативный файл
+   с полной осью, и любой вес внутри диапазона доступен бесплатно.
+
+   Next 16 — свежая мажорная версия, сигнатуры сверены по
    node_modules/next/dist/compiled/@next/font/dist/google/index.d.ts,
    а не по памяти. */
-const ebGaramond = EB_Garamond({
+
+/* axes: ['opsz'] — не украшение, а условие работы font-optical-sizing
+   в tokens.css. Без явного перечисления Next скачивает вариативный файл
+   с одной осью wght, оптическая ось в него не попадает вовсе, и правило
+   font-optical-sizing: auto оказывается мёртвой строкой: браузеру нечем
+   его исполнить. Проверяется в браузере — см. tokens.css. */
+const literata = Literata({
   subsets: ["cyrillic", "latin"],
-  weight: "400",
-  style: "normal",
+  axes: ["opsz"],
   display: "swap",
-  variable: "--font-eb-garamond",
+  variable: "--font-literata",
+});
+
+const golosText = Golos_Text({
+  subsets: ["cyrillic", "latin"],
+  display: "swap",
+  variable: "--font-golos",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["cyrillic", "latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
 });
 
 export const metadata: Metadata = {
   title: "Офис 244,1 м² на 23 этаже в iCITY — Space Tower, Москва-Сити",
   description:
     "Помещение 113Н, 244,1 м², 23 этаж из 61. Потолки 3,8 м, открывающиеся окна, отделка и мебель. Прямая аренда от собственника, показ в день обращения.",
+  /* iOS Safari сам детектит цифровые диапазоны вида «80 000–100 000»
+     как номер телефона и красит их синим кликабельным tel:-линком —
+     ровно это и произошло в абзаце экономики сделки. Выключаем детектор
+     целиком, а не для одного абзаца: настоящие номера идут через
+     явный tel: в lib/contacts.ts и в детекторе не нуждаются. */
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export const viewport = {
@@ -44,11 +80,21 @@ export default function RootLayout({
   return (
     <html
       lang="ru"
-      className={`${GeistSans.variable} ${GeistMono.variable} ${ebGaramond.variable}`}
+      className={`${literata.variable} ${golosText.variable} ${jetBrainsMono.variable}`}
     >
       <body>
         <Preloader />
         {children}
+        {/* Свой курсор — последним узлом body и поверх всего (z-index
+            2000). Компонент сам решает, работать ли: на тач-устройстве
+            и при prefers-reduced-motion он не стартует и системную
+            стрелку не трогает. */}
+        <Cursor />
+        {/* Плавная прокрутка: та же постоянная времени, что у кольца
+            курсора, — страница и указатель едут одним характером.
+            Ничего не рисует и на тач-устройстве не делает ничего:
+            touch-события модуль не слушает вовсе. */}
+        <SmoothScroll />
       </body>
     </html>
   );

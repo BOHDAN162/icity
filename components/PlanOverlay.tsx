@@ -25,12 +25,20 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Drawing } from '@/lib/plan';
 import { bboxOf, fmtArea, loadDrawing } from '@/lib/plan';
+import { setCursorSheet } from '@/lib/cursorMode';
 import PlanSheet, { MARGIN_PX, viewBoxOf, type Layers } from './PlanSheet';
 import styles from './PlanOverlay.module.css';
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.5;
+
+/* Ближе этого к правому краю поля подсказка переставляется влево от
+   курсора. Число — запас под самую длинную строку («Переговорная ·
+   00,0 м²» на 13px моно плюс поля и рамка), а не измеренная ширина:
+   мерить сам узел значило бы читать его в том же кадре, в котором
+   мы решаем, куда его ставить. */
+const TIP_FLIP_PX = 220;
 
 const LAYER_LABEL: Record<keyof Layers, string> = {
   grid: 'Сетка',
@@ -49,13 +57,31 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
   const [hovered, setHovered] = useState<string | null>(null);
   /* Позиция курсора нужна только под подсказку, а подсказка живёт только
      при включённой мебели. В остальное время не пишем состояние вовсе:
-     это движение мыши, и лишний setState на каждом кадре здесь не нужен. */
-  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+     это движение мыши, и лишний setState на каждом кадре здесь не нужен.
+
+     `flip` — сторона подсказки, и считается он ЗДЕСЬ, при записи, а не
+     в разметке при чтении. Ширину поля для этого надо снять с живого
+     узла, а в разметке единственный способ до него добраться — viewRef,
+     то есть чтение ref во время рендера. Так и было, и это ошибка:
+     ref не реактивен (окно изменило размер — подсказка осталась
+     с прежней стороной, пока курсор не двинется) и не обязан
+     соответствовать закоммиченному DOM при повторном или отброшенном
+     рендере. В обработчике узел приезжает сам, в e.currentTarget. */
+  const [tip, setTip] = useState<{ x: number; y: number; flip: boolean } | null>(null);
   const [k0, setK0] = useState(0);            // пикселей на метр при зуме 100 %
 
   const closeRef = useRef<HTMLButtonElement>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+
+  /* Свой курсор на листе — одна точка без кольца: кольцо в 44 px
+     спорит с обмерными линиями и накрывает подписи зон целиком.
+     Канал — lib/cursorMode.ts, курсор живёт в layout и пропом сюда
+     не дотягивается. */
+  useEffect(() => {
+    setCursorSheet(open);
+    return () => setCursorSheet(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,8 +144,14 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
   const onMove = useCallback((e: React.PointerEvent) => {
     onPointerMove(e);
     if (!layers.furn) return;
-    const box = e.currentTarget.getBoundingClientRect();
-    setTip({ x: e.clientX - box.left, y: e.clientY - box.top });
+    const view = e.currentTarget;
+    const box = view.getBoundingClientRect();
+    const x = e.clientX - box.left;
+    /* clientWidth, а не box.width: поле прокручиваемое, и у него может
+       стоять полоса прокрутки — она в box.width входит, а в clientWidth
+       нет. Считать до края коробки значит не переставить подсказку там,
+       где место уже занято полосой. */
+    setTip({ x, y: e.clientY - box.top, flip: x > view.clientWidth - TIP_FLIP_PX });
   }, [onPointerMove, layers.furn]);
 
   /* Зум держит центр окна: иначе на 400 % уезжаешь в угол и теряешься. */
@@ -210,14 +242,18 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
         )}
         {/* Подсказка у курсора: то же имя и метраж, что были бы на листе.
             Смещаем вправо; у правой кромки окна переставляем влево, иначе
-            подсказка уезжает за край и её не прочитать. */}
+            подсказка уезжает за край и её не прочитать. Сторону выбрал
+            обработчик в момент замера — здесь только читаем решение.
+            По вертикали подсказка стоит ВЫШЕ курсора (высота коробки 28 px,
+            смещение −26): на одной высоте с точкой она накрывала бы то,
+            на что зритель показывает. */}
         {layers.label && layers.furn && room && tip && (
           <p
             className={`label ${styles.tip}`}
             style={{
               left: tip.x + 16,
-              top: tip.y - 10,
-              transform: tip.x > (viewRef.current?.clientWidth ?? 0) - 220 ? 'translateX(-100%) translateX(-32px)' : undefined,
+              top: tip.y - 26,
+              transform: tip.flip ? 'translateX(-100%) translateX(-32px)' : undefined,
             }}
             aria-hidden="true"
           >

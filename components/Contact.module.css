@@ -37,7 +37,7 @@
 
 .managerName {
   margin: 0 0 var(--s-2);
-  font: 450 clamp(24px, 2.4vw, 34px) / 1.2 var(--sans);
+  font: 500 clamp(24px, 2.4vw, 34px) / 1.2 var(--sans);
   letter-spacing: var(--tr-head);
   color: var(--ink);
 }
@@ -77,11 +77,18 @@
   margin: 0 0 var(--s-6);
 }
 
-.pdfTag {
-  margin-inline-start: var(--s-1);
-  font: 500 10px/1 var(--mono);
-  letter-spacing: var(--tr-label);
-  color: var(--ink-60);
+/* «Чертёж» и «3D-модель» открывают окна, а не ведут по адресу, поэтому
+   это <button>. Выглядят они ровно как соседние ссылки: класс .dottedLink
+   даёт пунктир и ховер, .linkButton снимает всё, что кнопка приносит
+   с собой от браузера. Кегль наследуется от .links — своего у кнопки
+   нет, иначе она встала бы в строке чужим ростом. */
+.linkButton {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
 }
 
 /* Точечное подчёркивание ссылок: то же родство с растром фритты, что

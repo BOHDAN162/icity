@@ -55,14 +55,16 @@
 
 import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
-  type CSSProperties,
+  type CSSProperties, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
+import { setCursorVideo } from '@/lib/cursorMode';
 import {
-  heroPreloadServerSnapshot, heroPreloadSnapshot, SOURCES, startHeroPreload,
-  subscribeHeroPreload, type HeroVariant,
+  currentHeroVariant, heroPreloadServerSnapshot, heroPreloadSnapshot,
+  releaseHeroPreload, SOURCES, startHeroPreload, subscribeHeroPreload,
+  type HeroVariant,
 } from '@/lib/heroPreload';
 import styles from './HeroVideo.module.css';
 
@@ -73,13 +75,83 @@ const NBSP = ' ';
 
 /* Страховка на сигнал занавеса: копия первого экрана обязана появиться,
    даже если прелоадер до openCurtain() не дошёл — его сняли из layout,
-   sessionStorage бросил исключение, эффект не отработал. 6 с с запасом
-   больше полного цикла прелоадера (1900 + 220 + 1550 = 3670 мс).
+   sessionStorage бросил исключение, эффект не отработал.
+   ЧИСЛО ОБЯЗАНО БЫТЬ БОЛЬШЕ САМОГО ДОЛГОГО ЗАКОННОГО ПУТИ ПРЕЛОАДЕРА,
+   иначе страховка выстрелит раньше настоящего сигнала и проявление
+   отыграет за ещё закрытыми створками — ровно та беда, ради которой
+   заведён lib/curtain.ts. Потолок прелоадера: предохранитель 8 с плюс
+   стоянка на 23-м 1 с = 9 с (Preloader.tsx, MAX_MS и HOLD_23_MS).
+   Отсюда 11 с. Правишь там — правь здесь.
    Та же дисциплина, что у PLAY_TIMEOUT_MS: у любого отказа есть выход. */
-const CURTAIN_FALLBACK_MS = 6000;
+const CURTAIN_FALLBACK_MS = 11000;
 
-/* Гашение амбиента к финалу ролика, в секундах currentTime. */
-const AUDIO_FADE_S = 0.9;
+/* ГАШЕНИЕ АМБИЕНТА К ФИНАЛУ РОЛИКА, в секундах currentTime.
+
+   Гасим НЕ в тишину и НЕ обрубаем на свапе: к концу полёта звук
+   приглушается до тихого уровня, а дальше, уже поверх открывшегося
+   офиса, доигрывает AUDIO_TAIL_MS и уходит в ноль. Раньше здесь был
+   линейный спад в ноль за 0,9 с — заказчик попросил и раньше, и глубже,
+   и без обрыва (правка 1 сентября 2026).
+
+   Кривая, а не прямая: у прямой первые полсекунды почти не слышно,
+   что звук пошёл вниз. easeOut роняет громкость сразу и потом доводит —
+   «приглушили» читается с первого мгновения. Замер на середине спада:
+   доля 0,28 против 0,50 у прежней прямой, и начинается это на 0,7 с
+   раньше. */
+const AUDIO_DUCK_S = 1.6;
+/** до какой доли базовой громкости приглушаем к концу ролика */
+const AUDIO_DUCK_TO = 0.25;
+/** сколько амбиент тихо доигрывает уже поверх экрана офиса
+
+    Было 1500, потом 3000, теперь 4000 — добавляли трижды. Спад
+    линейный по амплитуде, и это как раз то, что нужно: в децибелах
+    линейная амплитуда почти весь свой диапазон проходит в последней
+    десятой доле времени, то есть звук слышно почти весь хвост, а потом
+    он быстро исчезает. Кривая, «правильная» на глаз, здесь сделала бы
+    из трёх секунд полсекунды музыки и две с половиной тишины. */
+const AUDIO_TAIL_MS = 4000;
+
+/* Хвост амбиента после свапа.
+
+   УЗЕЛ ПЕРЕЕЗЖАЕТ В BODY, и это не хитрость, а единственный надёжный
+   путь: через миг React снимет весь первый экран вместе с <audio>,
+   а снятие из DOM воспроизведение глушит ненадёжно — где-то
+   останавливает, где-то нет. Полагаться нельзя ни на то, ни на другое,
+   поэтому элемент выводится из-под React и гасится явно, своим rAF.
+
+   Предохранитель на таймере обязателен: rAF в фоновой вкладке встаёт,
+   и без него звук завис бы на последней громкости до возвращения. */
+const startAmbienceTail = (a: HTMLAudioElement) => {
+  /* БЕЗ ЗАЦИКЛИВАНИЯ ХВОСТА НЕТ ВОВСЕ, И ЭТО НЕ ОЧЕВИДНО. Амбиент
+     10,51 с, ролик 9,79 с, звук идёт с нуля вместе с ним — значит
+     к свапу материала остаётся 0,7 с. Замер до правки: на свапе
+     currentTime 9,83, а уже через 900 мс ended = true и элемент стоит;
+     всё остальное время rAF честно приглушал ОСТАНОВЛЕННЫЙ звук.
+     Отсюда и ощущение, что удлинение хвоста ничего не меняет: оно и
+     не могло.
+
+     Шов слышен не будет: у трека тихий старт и спад к 8–10 с (см.
+     AGENTS.md, раздел про амбиент), то есть склейка идёт тихое
+     к тихому, да ещё и под затуханием. */
+  a.loop = true;
+  document.body.appendChild(a);
+  const from = a.volume;
+  const t0 = performance.now();
+  let raf = 0;
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    a.pause();
+    a.remove();
+  };
+  const guard = window.setTimeout(stop, AUDIO_TAIL_MS + 500);
+  const step = () => {
+    const q = (performance.now() - t0) / AUDIO_TAIL_MS;
+    if (q >= 1) { window.clearTimeout(guard); stop(); return; }
+    a.volume = from * (1 - q);
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+};
 
 /* ЗАГОЛОВОК ПРОЯВЛЯЕТСЯ ПОБУКВЕННО И ВРАЗНОБОЙ.
    Замерено покадрово по референсу в нативном разрешении (метрика —
@@ -117,10 +189,26 @@ const scatter = (i: number): number => {
 
    Источник: freesound.org/s/570890 «wind_synth_high_altitude», CC0
    (public domain, атрибуция не требуется). Синтезированный, а не полевая
-   запись, — поэтому чистый, без птиц и трафика. Собран
-   `ffmpeg -ss 4 -t 10.5` (самое ровное окно оригинала, LRA 2,0),
-   +3,7 дБ до −23 LUFS, вход 1,5 с, страховочный выход 0,4 с.
-   10,5 с против 9,79 с ролика — запас, чтобы звук не кончился раньше видео.
+   запись, — поэтому чистый, без птиц и трафика.
+
+   ВЗЯТО С САМОГО НАЧАЛА ТРЕКА, 0–10,5 с: заказчик просил, чтобы мелодия
+   шла с нуля видео, а не с середины дорожки. Начало и оказалось лучшим
+   участком — его собственная форма ровно та, что нужна: тихий старт,
+   мягкий подъём к 6-й секунде и спад к 8–10-й, то есть звук сам
+   успокаивается ровно там, где камера идёт вверх. Никакого всплеска
+   на финале, в отличие от прежнего окна.
+
+   dynaudnorm=f=500:g=31:p=0.85 — умеренный, только чтобы подтянуть
+   тихое начало (сырое −35 дБ на первой секунде было почти не слышно,
+   стало −27) и не задавить при этом спад к финалу. Вход 0,25 с —
+   лишь чтобы не щёлкнуло: длинный фейд отодвинул бы мелодию от нуля,
+   а её просили именно с нуля.
+
+   Профиль итога по секундам, уровень / выше 3 кГц:
+     0 −27,1/−72,8   3 −24,5/−64,5   6 −23,3/−57,8 (пик)
+     7 −24,8/−60,7   8 −25,8/−60,6   9 −26,1/−64,4  ← камера вверх
+   Перерендерят амбиент — снимать этот же посекундный профиль, а не
+   только интегральную громкость: всплеск она не показывает вовсе.
 
    Opus первым, AAC вторым: браузер берёт первый поддержанный, и Chrome
    с Firefox получают файл вдвое легче, а Safari честно откатывается
@@ -132,8 +220,11 @@ const AMBIENCE: readonly { src: string; type: string }[] = [
 
 /* Базовая громкость амбиента. Файл собран на −23 LUFS, это уже фоновый
    уровень; ручка здесь — чтобы правку громкости не приходилось гнать
-   через перекодирование. */
-const AMBIENCE_VOLUME = 1;
+   через перекодирование.
+   0.17 — втрое тише прежних 0.5 по просьбе заказчика, суммарно −15,4 дБ
+   от единицы. Множитель линейный по амплитуде, а не по ощущению:
+   на слух это примерно вдвое тише, чем было. */
+const AMBIENCE_VOLUME = 0.17;
 
 /* Отметки ролика — в КАДРАХ, не в округлённых секундах. Рендер v3:
    24 fps, 235 кадров. На кадре 185 камера входит в «трамплин» и
@@ -165,6 +256,11 @@ type VariantKey = HeroVariant;
    решает, когда снять луп из потока, там — за сколько проявить ролик.
    Правишь одно — правь второе. */
 const CROSS_MS = 250;
+/* Запас на кадр композитора: снимать луп ровно в миллисекунду конца
+   перехода нельзя — округление вниз оставило бы ролик на 0,99
+   непрозрачности над голым постером на один кадр. Та же дисциплина,
+   что у «1550 = 1400 + запас» в Preloader.tsx. */
+const CROSS_GUARD_MS = 80;
 
 const posterSrcSet = (key: 'hero-desktop' | 'hero-mobile', widths: readonly number[], ext: 'avif' | 'webp') =>
   widths.map((w) => `${POSTER_DIR}/${key}-${w}.${ext} ${w}w`).join(', ');
@@ -208,6 +304,9 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const idleRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  /* Хвост амбиента пошёл: узел уже не под React, и глушить его
+     на размонтировании нельзя — он для того и уведён. */
+  const tailRef = useRef(false);
   /** выбор звука, сделанный кнопкой входа; читается из rAF */
   const soundOnRef = useRef(false);
   const rafRef = useRef(0);
@@ -249,6 +348,16 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     heroPreloadServerSnapshot,
   );
 
+  /* fetch не задался — возвращаемся к прежней разметке с <source>.
+     Кнопку в этом случае не держим: готовность считает сам браузер,
+     а страхует её PLAY_TIMEOUT_MS, как и до этой правки. */
+  const legacy = preload.failed;
+
+  /* «Войти» заперт, пока ролик не лёг в память целиком. Клик раньше
+     времени привёл бы ровно к тому, ради чего всё затевалось, — к паузе
+     на буферизации посреди полёта. */
+  const waiting = !reduced && !legacy && preload.flightUrl === null;
+
   const [started, setStarted] = useState(false);
   const [playingVisible, setPlayingVisible] = useState(false);
   const [idleBroken, setIdleBroken] = useState(false);
@@ -261,18 +370,38 @@ export default function HeroVideo({ onLift, onDone }: Props) {
      до клика попросил другой вариант. */
   useEffect(() => {
     if (reduced) return;
-    startHeroPreload(variant);
+    /* Вариант спрашивается у matchMedia, а не берётся из `variant`:
+       на гидрационном проходе тот ещё равен серверному 'desktop', и
+       телефон начал бы качать десктопную пару. Подробности — там же,
+       где живёт currentHeroVariant. */
+    startHeroPreload(currentHeroVariant());
   }, [reduced, variant]);
+
+  /* Страховка: hero сняли, не пройдя через finish (быстрый уход
+     со страницы, горячая перезагрузка). Белая точка иначе осталась бы
+     на обычной странице. */
+  useEffect(() => () => setCursorVideo(false), []);
 
   const finish = useCallback(() => {
     if (doneRef.current) return;
     doneRef.current = true;
+    /* Курсор обратно в обычный вид. Здесь, а не в обработчике ended:
+       сюда сходятся все пять отказов, и белая точка не должна пережить
+       ни один из них. */
+    setCursorVideo(false);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
-    /* Снятие <audio> из DOM не глушит воспроизведение надёжно — гасим
-       явно, и здесь, потому что сюда сходятся все пять отказов. */
-    audioRef.current?.pause();
+    /* Амбиент не обрывается на свапе: если он звучал, доигрывает
+       AUDIO_TAIL_MS тихо, уже поверх открывшегося офиса. Если не звучал
+       (вошли без звука, отказ до старта) — просто гасим. */
+    const a = audioRef.current;
+    if (a && !a.paused) {
+      tailRef.current = true;
+      startAmbienceTail(a);
+    } else {
+      a?.pause();
+    }
     onDone();
   }, [onDone]);
 
@@ -297,10 +426,11 @@ export default function HeroVideo({ onLift, onDone }: Props) {
          с картинкой — та же причина, по которой весь полёт считается
          от currentTime. Одна запись свойства на кадр, ре-рендеров нет. */
       const a = audioRef.current;
-      if (a && soundOnRef.current) {
+      if (a && soundOnRef.current && !tailRef.current) {
         const left = duration - v.currentTime;
-        a.volume = AMBIENCE_VOLUME
-          * (left < AUDIO_FADE_S ? clamp01(left / AUDIO_FADE_S) : 1);
+        const q = clamp01((AUDIO_DUCK_S - left) / AUDIO_DUCK_S);
+        const ease = 1 - (1 - q) * (1 - q);
+        a.volume = AMBIENCE_VOLUME * (1 - (1 - AUDIO_DUCK_TO) * ease);
       }
       if (v.ended) { finish(); return; }
       if (v.paused) v.play().catch(finish);
@@ -350,6 +480,36 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (a && a.preload === 'none') { a.preload = 'auto'; a.load(); }
   }, []);
 
+  /* Круг заливки «Войти» растёт ИЗ ТОЧКИ КУРСОРА и схлопывается в точку,
+     где курсор ушёл, — значит эти две точки должен кто-то сообщить: CSS
+     позиции указателя не знает, а :hover знает только факт наведения.
+     Отсюда обработчик, и он ровно один на оба события: и на входе,
+     и на выходе задача одна — переставить центр круга под курсор.
+     Пишем в inline-стиль узла, а не в состояние React: это координата
+     кадра, ре-рендер ради неё был бы лишним (то же соображение, что
+     у --p в OfficeStop).
+     Диаметр меряется здесь же, а не задаётся константой: кегль кнопки
+     идёт от --sans, и ширина «Войти» уедет вместе с гарнитурой. Две
+     диагонали — условие невидимости переброса центра, разбор в
+     .module.css у .enterFill. */
+  const aimFill = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    /* ТОЧКА ПОДРЕЗАЕТСЯ КОРОБКОЙ КНОПКИ, и это обязательно.
+       Круг в две диагонали накрывает кнопку из любой ВНУТРЕННЕЙ точки —
+       снаружи гарантия не действует. А pointerleave приходит именно
+       снаружи: браузер отдаёт настоящее положение указателя в кадре,
+       когда тот уже ушёл, и на быстром движении это десятки пикселей
+       за краем (замер синтетикой: --fill-x 726 px при ширине кнопки
+       119). Центр уезжал бы туда вместе с раскрытым кругом, тот
+       переставал бы накрывать кнопку — и заливка не схлопывалась бы,
+       а пропадала одним кадром. */
+    const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max);
+    el.style.setProperty('--fill-x', `${clamp(e.clientX - r.left, r.width)}px`);
+    el.style.setProperty('--fill-y', `${clamp(e.clientY - r.top, r.height)}px`);
+    el.style.setProperty('--fill-d', `${2 * Math.hypot(r.width, r.height)}px`);
+  }, []);
+
   const onPlaying = useCallback(() => {
     if (doneRef.current) return;
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
@@ -357,10 +517,14 @@ export default function HeroVideo({ onLift, onDone }: Props) {
        у декодера свои несколько кадров, и начни растворение раньше —
        ролик проявлялся бы, ещё не начав двигаться. */
     setPlayingVisible(true);
+    /* Курсор на время полёта — одна белая точка без кольца. Отсчёт
+       от `playing`, а не от клика, по той же причине, что и кроссфейд:
+       до него ролик ещё не двигается. */
+    setCursorVideo(true);
     crossTimerRef.current = window.setTimeout(() => {
       idleRef.current?.pause();
       setIdleGone(true);
-    }, CROSS_MS);
+    }, CROSS_MS + CROSS_GUARD_MS);
     startTicking();
   }, [startTicking]);
 
@@ -409,7 +573,21 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     const unIdle = wire(idleRef.current, onIdleError);
     const unMain = wire(videoRef.current, onVideoError);
     return () => { unIdle(); unMain(); };
-  }, [variant, reduced, idleBroken, onIdleError, onVideoError]);
+  }, [
+    variant, reduced, idleBroken, legacy,
+    preload.idleUrl, preload.flightUrl, onIdleError, onVideoError,
+  ]);
+
+  /* Амбиент качается, как только открылся занавес, — не по наведению.
+     Мелодия должна звучать С НУЛЯ ролика, а грузиться ей 72 КБ: если
+     ждать клика, звук отстаёт от картинки (замер: видео 2,01 с, звук
+     1,80 с — старт на пятую секунды позже). Наведения мало, на тач-
+     экранах его нет вовсе. Занавес — правильный момент: к нему оба
+     видео уже скачаны прелоадером, критический путь свободен, а до
+     клика остаётся минимум секунда. */
+  useEffect(() => {
+    if (curtain) warmAmbience();
+  }, [curtain, warmAmbience]);
 
   /* Страховка занавеса: если сигнал не пришёл, копия обязана появиться
      сама — иначе первый экран остался бы пустым навсегда. */
@@ -423,7 +601,11 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
-    audioRef.current?.pause();
+    if (!tailRef.current) audioRef.current?.pause();
+    /* Только с настоящего размонтирования, после финала: doneRef отсекает
+       двойное монтирование StrictMode, иначе URL отобрались бы у живого
+       плеера ещё до первого клика. */
+    if (doneRef.current) releaseHeroPreload();
   }, []);
 
   const sources = SOURCES[variant];
@@ -446,13 +628,17 @@ export default function HeroVideo({ onLift, onDone }: Props) {
         />
       </picture>
 
-      {/* Idle-луп: облака живут до клика. Файлов может не быть —
-          error на последнем source прячет элемент, остаётся постер. */}
-      {!reduced && !idleBroken && (
+      {/* Idle-луп: облака живут до клика и ещё CROSS_MS после него —
+          пока ролик проявляется поверх. Потом idleGone снимает его
+          из потока: декодировать 20 с облаков за кадром полёта незачем.
+          Обычный путь — готовый blob из heroPreload; legacy — прежняя
+          пара <source>, если fetch не задался. */}
+      {!reduced && !idleBroken && !idleGone && (preload.idleUrl || legacy) && (
         <video
-          key={`idle-${variant}`}
+          key={`idle-${variant}-${preload.idleUrl ? 'blob' : 'src'}`}
           ref={idleRef}
           className={styles.idle}
+          src={preload.idleUrl ?? undefined}
           autoPlay
           muted
           loop
@@ -462,19 +648,25 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           aria-hidden="true"
           onError={onIdleError}
         >
-          <source src={sources.idle[0].src} type={sources.idle[0].type} />
-          <source src={sources.idle[1].src} type={sources.idle[1].type} onError={onIdleError} />
+          {legacy && (
+            <>
+              <source src={sources.idle[0].src} type={sources.idle[0].type} />
+              <source src={sources.idle[1].src} type={sources.idle[1].type} onError={onIdleError} />
+            </>
+          )}
         </video>
       )}
 
-      {/* Основной ролик. preload="auto" сознательно: к клику файл в кэше,
-          полёт начинается без паузы. HEVC-версии лёгкие: 2,5 МБ десктоп,
-          1,8 МБ мобильный. */}
-      {!reduced && (
+      {/* Основной ролик. Появляется в разметке уже готовым: blob-URL
+          выдаётся, когда файл скачан целиком, — полёт начинается без
+          паузы и не может встать посреди. HEVC-версии лёгкие: 2,5 МБ
+          десктоп, 1,8 МБ мобильный. */}
+      {!reduced && (preload.flightUrl || legacy) && (
         <video
-          key={`flight-${variant}`}
+          key={`flight-${variant}-${preload.flightUrl ? 'blob' : 'src'}`}
           ref={videoRef}
           className={`${styles.video} ${playingVisible ? styles.videoOn : ''}`}
+          src={preload.flightUrl ?? undefined}
           muted
           playsInline
           preload="auto"
@@ -484,8 +676,12 @@ export default function HeroVideo({ onLift, onDone }: Props) {
           onEnded={finish}
           onError={onVideoError}
         >
-          <source src={sources.flight[0].src} type={sources.flight[0].type} />
-          <source src={sources.flight[1].src} type={sources.flight[1].type} onError={onVideoError} />
+          {legacy && (
+            <>
+              <source src={sources.flight[0].src} type={sources.flight[0].type} />
+              <source src={sources.flight[1].src} type={sources.flight[1].type} onError={onVideoError} />
+            </>
+          )}
         </video>
       )}
 
@@ -548,27 +744,59 @@ export default function HeroVideo({ onLift, onDone }: Props) {
             </span>
           </h1>
 
+          {/* Абзац выезжает СНИЗУ ВВЕРХ ИЗ-ПОД МАСКИ, строка за строкой —
+              так в референсе. Каждая строка живёт в своём overflow: hidden,
+              внутренний span стартует ниже маски и поднимается на место:
+              на середине видны только верхушки букв, обрезанные снизу
+              краем маски. Отсюда двухслойная разметка — маску и сдвиг
+              нельзя повесить на один узел, overflow обрезал бы сам себя.
+              Строки разбиты руками, а не <br>: каждой нужна своя маска. */}
           <p className={styles.lead}>
-            244,1{NBSP}м² с отделкой PRIDEX.
-            <br />
-            Ноль капитальных затрат до въезда.
+            {[
+              `244,1${NBSP}м² с отделкой от PRIDEX.`,
+              'Место, где решения становятся масштабными.',
+            ].map((line, i) => (
+              <span className={styles.leadLine} key={line}>
+                <span
+                  className={styles.leadInner}
+                  style={{ '--i': i } as CSSProperties}
+                >
+                  {line}
+                </span>
+              </span>
+            ))}
           </p>
 
+          {/* Кнопка заперта, пока ролик не догрузился: предохранитель
+              прелоадера на 8 с уводит створки раньше, чем приезжает
+              ролик, и без замка первый же клик встал бы на буферизации.
+              Индикатор — мягкая полоса по нижней кромке, не спиннер:
+              спиннера в системе нет, а полоса — та же рельса, что
+              у лифта. Надпись НЕ гасится: --ink на этом постере
+              единственный проходящий по контрасту цвет. */}
           <div className={styles.actions}>
             <button
               type="button"
-              className={`btn ${styles.enterBtn}`}
+              className={[
+                'btn', styles.enterBtn, waiting ? styles.enterWaiting : '',
+              ].filter(Boolean).join(' ')}
               onClick={() => enter(true)}
-              onPointerEnter={warmAmbience}
+              onPointerEnter={(e) => { warmAmbience(); aimFill(e); }}
+              onPointerLeave={aimFill}
               onFocus={warmAmbience}
-              disabled={started}
+              disabled={started || waiting}
+              aria-busy={waiting}
             >
               <span className={styles.enterFill} aria-hidden="true" />
               <span className={styles.enterLabel}>
                 <span className={styles.enterLabelDefault}>Войти</span>
                 <span className={styles.enterLabelHover} aria-hidden="true">Войти</span>
               </span>
+              <span className={styles.enterWait} aria-hidden="true" />
             </button>
+            <p className={styles.sr} role="status">
+              {waiting ? 'Ролик загружается' : 'Вход готов'}
+            </p>
           </div>
         </div>
 
@@ -581,21 +809,16 @@ export default function HeroVideo({ onLift, onDone }: Props) {
               type="button"
               className={styles.mute}
               onClick={() => enter(false)}
-              disabled={started}
+              disabled={started || waiting}
+              aria-busy={waiting}
             >
-              <span className={styles.muteIcon} aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
-                  <path
-                    d="M4 9v6h4l5 4V5L8 9H4zm13 0 4 6m0-6-4 6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              Войти без звука
+              {/* Только текст с подчёркиванием, как в референсе. Иконки
+                  и круга нет нарочно: круг читался как вторая кнопка
+                  рядом с «Войти», хотя это вход того же веса, только
+                  тише. Подчёркивание живёт на внутреннем span, а не на
+                  кнопке: у кнопки 44 px цели нажатия, и линия по её
+                  нижней кромке висела бы заметно ниже текста. */}
+              <span className={styles.muteLabel}>Войти без звука</span>
             </button>
           </div>
         )}
