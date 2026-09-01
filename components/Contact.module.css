@@ -12,7 +12,10 @@
 .section {
   position: relative;
   background: var(--paper);
-  padding: calc(var(--section-y) + var(--s-8)) var(--pad-x);
+  /* Больше воздуха только сверху, на входе с Faq — снизу секцию уже
+     завершает перфорация Footer, второй такой же отступ до неё
+     оставлял бы пустую полосу. */
+  padding: calc(var(--section-y) + var(--s-8)) var(--pad-x) var(--section-y);
 }
 
 .inner {
@@ -25,11 +28,12 @@
   margin: 0 0 var(--s-5);
 }
 
-.title {
-  margin: 0 0 var(--s-8);
-}
+/* --- менеджер: идёт после формы (порядок блоков намеренно перевёрнут —
+   сперва действие, контакт для альтернативного пути ниже) --------------- */
 
-/* --- менеджер ----------------------------------------------------------- */
+.info {
+  margin-top: var(--s-8);
+}
 
 .managerName {
   margin: 0 0 var(--s-2);
@@ -175,12 +179,6 @@
   letter-spacing: var(--tr-label);
   text-transform: uppercase;
   color: var(--ink-60);
-}
-
-.optional {
-  position: absolute;
-  right: 0;
-  top: 0;
 }
 
 .error {

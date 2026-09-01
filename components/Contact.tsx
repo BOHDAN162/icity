@@ -177,29 +177,6 @@ export default function Contact() {
           ЗАПИСЬ НА ПРОСМОТР
         </p>
 
-        <h2 className={styles.title}>Покажем офис в день обращения</h2>
-
-        <p className={styles.managerName}>{contacts.managerName}</p>
-        <p className={`label ${styles.managerRole}`}>{contacts.managerRole}</p>
-
-        <a className={styles.phone} href={contacts.phoneHref}>
-          {contacts.phoneDisplay}
-        </a>
-
-        <div className={styles.links}>
-          <a className={styles.dottedLink} href={`mailto:${contacts.email}`}>
-            {contacts.email}
-          </a>
-          <a className={styles.dottedLink} href={MAX_HREF}>
-            Написать в Max
-          </a>
-          <a className={styles.dottedLink} href={PDF_HREF}>
-            Презентация <span className={styles.pdfTag}>PDF</span>
-          </a>
-        </div>
-
-        <p className={styles.quiet}>Прямая аренда от собственника. Без посредников.</p>
-
         {status === 'success' ? (
           <div className={styles.success} role="status">
             <canvas ref={canvasRef} className={styles.successCanvas} width={64} height={64} aria-hidden="true" />
@@ -274,7 +251,6 @@ export default function Contact() {
               <label className={styles.floatLabel} htmlFor="contact-comment">
                 Комментарий
               </label>
-              <span className={`label ${styles.optional}`}>НЕОБЯЗАТЕЛЬНО</span>
             </div>
 
             <button className={styles.submit} type="submit" disabled={status === 'loading'} aria-busy={status === 'loading'}>
@@ -301,6 +277,29 @@ export default function Contact() {
             </p>
           </form>
         )}
+
+        <div className={styles.info}>
+          <p className={styles.managerName}>{contacts.managerName}</p>
+          <p className={`label ${styles.managerRole}`}>{contacts.managerRole}</p>
+
+          <a className={styles.phone} href={contacts.phoneHref}>
+            {contacts.phoneDisplay}
+          </a>
+
+          <div className={styles.links}>
+            <a className={styles.dottedLink} href={`mailto:${contacts.email}`}>
+              {contacts.email}
+            </a>
+            <a className={styles.dottedLink} href={MAX_HREF}>
+              Написать в Max
+            </a>
+            <a className={styles.dottedLink} href={PDF_HREF}>
+              Презентация <span className={styles.pdfTag}>PDF</span>
+            </a>
+          </div>
+
+          <p className={styles.quiet}>Прямая аренда от собственника. Без посредников.</p>
+        </div>
       </div>
     </section>
   );
