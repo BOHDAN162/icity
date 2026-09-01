@@ -6,10 +6,11 @@
    ЧТО ЭТО. Полноэкранная накладка поверх всего на первой загрузке.
    Слева лестница этажей 01→23 (буквальная метафора «подняться на 23»,
    не проценты), справа крупный номер этажа моно. По завершении двери-
-   створки расходятся в стороны, открывая {children} страницы, и УНОСЯТ
-   ИНТЕРФЕЙС С СОБОЙ: лестница и число написаны на створках и стоят
-   неподвижно, пока уходящий край их срезает — не гаснут, а исчезают
-   по кромке. Устройство — в .module.css, .keep. Дальше компонент
+   створки расходятся в стороны, открывая {children} страницы, а лестница
+   и число РАЗЪЕЗЖАЮТСЯ ВСЛЕД ЗА НИМИ и уходят за борта экрана — влево
+   и вправо, с противоположной от шва стороны. Не гаснут: их срезает
+   кромка экрана. Едут медленнее створок, у каждой свой короткий ход;
+   устройство и арифметика — в .module.css, .sweep. Дальше компонент
    размонтируется.
 
    ПРОГРЕСС — РЕАЛЬНЫЕ БАЙТЫ ДВУХ ВИДЕО ПЕРВОГО ЭКРАНА. Луп облаков плюс
@@ -160,6 +161,7 @@ export default function Preloader() {
   const [visible, setVisible] = useState(true);
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const uiRef = useRef<HTMLDivElement>(null);
   const numRef = useRef<HTMLSpanElement>(null);
   const doorLRef = useRef<HTMLDivElement>(null);
   const doorRRef = useRef<HTMLDivElement>(null);
@@ -215,12 +217,10 @@ export default function Preloader() {
         return;
       }
       window.setTimeout(() => {
-        /* Один класс на створку — и всё. Интерфейс отдельной команды
-           на уход не получает: он лежит внутри створок и уходит вместе
-           с их кромкой (разбор — .module.css, .keep). Прежде здесь
-           стоял ещё .uiOut, гасивший лестницу и число прозрачностью;
-           заказчик посмотрел живьём 1 сентября 2026 и попросил срез
-           кромкой, как в референсе. */
+        /* Три класса В ОДИН КАДР: створки расходятся, надписи едут вслед
+           за ними наружу. Разводить во времени нельзя — весь приём в том,
+           что это одно движение (разбор — .module.css, .sweep). */
+        uiRef.current?.classList.add(styles.swept);
         doorLRef.current?.classList.add(styles.openL);
         doorRRef.current?.classList.add(styles.openR);
         /* 1550 = 1400 (длительность разъезда в .module.css) + запас,
@@ -293,25 +293,23 @@ export default function Preloader() {
     );
   }
 
-  /* ЛЕСТНИЦА ЛЕЖИТ ВНУТРИ ЛЕВОЙ СТВОРКИ, ЧИСЛО — ВНУТРИ ПРАВОЙ, и это
-     не вольность вёрстки, а весь приём: створка обрезает своё
-     содержимое (overflow: hidden), поэтому уходящий край СРЕЗАЕТ
-     интерфейс, а не гасит его. Стоять на месте, пока его срезают,
-     элементу даёт .keep — встречный сдвиг ровно на ход створки,
-     разбор в .module.css.
-     Координаты от этого не меняются: левая створка начинается на левой
-     кромке экрана, правая кончается на правой, поэтому `left: --pad-x`
-     у лестницы и `right: …` у числа значат ровно то же, что значили
-     на общем слое во весь экран. */
+  /* НАДПИСИ — СОСЕДИ СТВОРОК, А НЕ ИХ ДЕТИ. Внутри створки их обрезала
+     бы она, а нужно, чтобы резала только кромка ЭКРАНА: надписи уходят
+     наружу, за борта, с противоположной от шва стороны. Обрезка одна
+     на весь прелоадер — overflow: hidden у .root.
+     Обёртки .sweepL / .sweepR и держат ход наружу, и заодно позиционируют
+     содержимое: отступ от борта у них в padding, вертикальный центр —
+     флексом. Поэтому у самих .ladder и .big координат больше нет.
+     Разбор арифметики хода — в .module.css у .sweep. */
   return (
     <div ref={rootRef} className={styles.root} aria-hidden="true">
-      <div ref={doorLRef} className={`${styles.door} ${styles.doorL}`}>
-        <div className={styles.keep}>
+      <div ref={doorLRef} className={`${styles.door} ${styles.doorL}`} />
+      <div ref={doorRRef} className={`${styles.door} ${styles.doorR}`} />
+      <div ref={uiRef} className={styles.ui}>
+        <div className={`${styles.sweep} ${styles.sweepL}`}>
           <div ref={ladderRef} className={styles.ladder}>{rungs}</div>
         </div>
-      </div>
-      <div ref={doorRRef} className={`${styles.door} ${styles.doorR}`}>
-        <div className={styles.keep}>
+        <div className={`${styles.sweep} ${styles.sweepR}`}>
           <div className={styles.big}>
             <span ref={numRef} className={styles.num}>01</span>
             <span className={`label ${styles.numLabel}`}>Этаж</span>
