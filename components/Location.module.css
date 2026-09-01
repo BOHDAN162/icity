@@ -106,116 +106,144 @@
   color: var(--ink-60);
 }
 
-/* --- рамка схемы ------------------------------------------------------ */
+/* --- рамка карты ------------------------------------------------------ */
 
 .mapWrap {
   min-width: 0;
 }
 
+/* minmax(0, 1fr) на обеих осях — тот же приём, что у .frame в Complex:
+   строка по содержимому дала бы холсту карты право раздувать рамку.
+   aspect-ratio держит высоту до первого тайла, иначе секция прыгала бы
+   в момент монтирования карты. */
 .frame {
   position: relative;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  aspect-ratio: 4 / 3;
   border: 1px solid var(--alu);
   background: var(--white);
+  overflow: hidden;
 }
 
-.map {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
+/* Подпись ушла в ЛЕВЫЙ ВЕРХНИЙ угол: внизу стоит копирайт Яндекса,
+   трогать который нельзя по условиям использования. */
 .caption {
   position: absolute;
-  inset-block-end: var(--s-3);
+  z-index: 1;
+  inset-block-start: var(--s-3);
   inset-inline-start: var(--s-3);
   margin: 0;
+  padding: var(--s-1) var(--s-2);
+  background: rgba(242, 244, 245, 0.88);
   font: 500 9px / 1 var(--mono);
   letter-spacing: var(--tr-label);
   color: var(--ink-60);
 }
 
-/* --- слои схемы ------------------------------------------------------- */
+/* --- карта ------------------------------------------------------------
+   Хост карты и заглушка лежат одной ячейкой сетки: карта проявляется
+   поверх адреса, а не сдвигает его. Соотношение сторон держит рамку
+   до того, как приедет хоть один тайл, — иначе секция прыгала бы
+   на высоту рамки в момент монтирования. */
 
-.block > rect {
-  fill: var(--paper-2);
+.mapHost {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
 }
 
-.roadMajor > path {
-  fill: none;
-  stroke: var(--alu);
-  stroke-width: 5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+/* Копирайт Яндекса обязателен по условиям использования и не трогается.
+   Единственное, что здесь делается, — он не должен наезжать на нашу
+   подпись в левом нижнем углу; поэтому подпись ушла в левый ВЕРХНИЙ. */
+
+.stub {
+  grid-area: 1 / 1;
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  gap: var(--s-4);
+  justify-items: center;
+  padding: var(--s-6);
+  text-align: center;
 }
 
-.roadMinor > path {
-  fill: none;
-  stroke: var(--paper-3);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.stubAddr {
+  margin: 0;
+  font: var(--small);
+  color: var(--ink-60);
 }
 
-.rail {
-  fill: none;
-  stroke: var(--alu);
-  stroke-width: 2;
-  stroke-dasharray: 10 7;
-}
-
-/* Контур станции и маршруты — линии 1–2 px, единственное место,
-   где по дизайн-системе живёт чистый --frit. */
-.station {
-  fill: var(--white);
-  stroke: var(--frit);
-  stroke-width: 2;
-}
-
-.tower {
-  fill: var(--frit-deep);
-}
-
-/* Запасная длина 400 больше самого длинного маршрута на схеме (≈250):
-   до того как эффект снимет точные значения через getTotalLength,
-   маршруты гарантированно спрятаны, и на гидратации ничего не мигает. */
-.route {
-  --len: 400;
-  fill: none;
-  stroke: var(--frit);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-dasharray: var(--len);
-  stroke-dashoffset: var(--len);
-  transition: stroke-dashoffset 450ms var(--ease-soft) var(--route-delay, 0ms);
-}
-
-.routeDrawn {
-  stroke-dashoffset: 0;
-}
-
-/* --- подписи схемы ----------------------------------------------------
-   Кегль задан в пользовательских единицах viewBox и едет вместе с ней.
-   На узком экране схема сжимается примерно вдвое, поэтому там кегль
-   поднимается: 16 единиц × 0,55 ≈ 9 CSS-пикселей — столько же, сколько
-   у подписи в углу. */
-
-.mapLabel > text,
-.mapLabelRed {
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 500;
+.stubLink {
+  font: 500 10px / 1 var(--mono);
   letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+  border-block-end: 1px solid var(--alu);
+  padding-block-end: var(--s-1);
+  transition: border-color var(--motion-fast) var(--ease-standard);
 }
 
-.mapLabel > text {
-  fill: var(--ink-60);
+.stubLink:hover {
+  border-color: var(--frit-deep);
 }
 
-.mapLabelRed {
-  fill: var(--frit-deep);
+/* --- метки поверх карты -----------------------------------------------
+   YMapMarker ставит переданный узел так, что точка привязки приходится
+   на его центр. Поэтому у каждой метки собственная сетка: маркер по
+   центру, подпись рядом — и обе не ловят события, чтобы карта под ними
+   оставалась картой. */
+
+.pinTower,
+.pinStation {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+  pointer-events: none;
+  /* сдвиг на половину маркера: узел центрируется по точке целиком,
+     вместе с подписью, и без этого метка уезжает влево */
+  transform: translateX(50%);
 }
 
-/* --- планшет и телефон: текст сверху, схема под ним -------------------- */
+.pinDiamond {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  background: var(--frit-deep);
+  transform: rotate(45deg);
+}
+
+.pinCircle {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--white);
+  /* чистый --frit живёт в линиях 1–2 px — правило 1 дизайн-системы */
+  border: 2px solid var(--frit);
+}
+
+.pinLabel,
+.pinLabelRed {
+  font: 500 10px / 1 var(--mono);
+  letter-spacing: var(--tr-label);
+  /* подложка под подписью: на светлой схеме без неё буквы теряются
+     на белом полотне дороги */
+  background: rgba(242, 244, 245, 0.88);
+  padding: 3px 5px;
+}
+
+.pinLabel {
+  color: var(--ink-60);
+}
+
+.pinLabelRed {
+  color: var(--frit-deep);
+}
+
+/* --- планшет и телефон: текст сверху, карта под ним -------------------- */
 
 @media (max-width: 959px) {
   .inner {
@@ -225,11 +253,6 @@
 }
 
 @media (max-width: 639px) {
-  .mapLabel > text,
-  .mapLabelRed {
-    font-size: 16px;
-  }
-
   /* Способ уходит из вёрстки, но не из разметки: строка на 375 px
      без него дышит, а скринридер по-прежнему читает «ПЕШКОМ». */
   .mode {
@@ -240,19 +263,11 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-}
 
-/* --- покой ------------------------------------------------------------
-   Основная ветка — в Location.tsx: при reduce наблюдатель не заводится
-   вовсе. Здесь снимается сам переход. transition-duration прописан
-   отдельным свойством: глобальное правило в tokens.css ставит его
-   через !important, и шорткат его не перебьёт. */
-
-@media (prefers-reduced-motion: reduce) {
-  .route {
-    transition: none;
-    transition-duration: 0s !important;
-    stroke-dasharray: none;
-    stroke-dashoffset: 0;
+  /* На узком экране подписи станций встают в две строки и перекрывают
+     друг друга. Остаются маркеры, названия несёт таблица выше. */
+  .pinLabel,
+  .pinLabelRed {
+    display: none;
   }
 }

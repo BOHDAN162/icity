@@ -1,44 +1,42 @@
-/* iCITY 113Н — локация (вариант D1: схема-чертёж + таблица времени).
+/* iCITY 113Н — локация (схема Яндекса + таблица времени).
    Путь в проекте: components/Location.tsx
 
-   Слева — абзац и таблица времени в пути с точечным выносом (dot leader),
-   справа — рамка со схемой района. Схема нарисована руками во встроенном
-   SVG: никакого картографического API здесь нет и в этой итерации
-   не появится. Отсюда и подпись в углу — «СХЕМА · НЕ МАСШТАБ»: пропорции
-   выбраны под читаемость, а не под метры.
+   Слева абзац и таблица времени в пути с точечным выносом, справа
+   рамка с картой. Рисованный SVG-чертёж, живший здесь раньше, удалён:
+   в рамке теперь монохромная схема Яндекса, components/YandexMap.tsx.
 
-   ЧИСЛА — docs/facts.md, раздел «Время в пути»: МЦД «Тестовская» 1 мин
-   пешком, м. «Шелепиха» 5 мин пешком, «Москва-Сити» 15 мин пешком,
-   Кутузовский проспект 5 мин на машине. Про ТТК в фактах стоит «1 мин
-   на машине»; в строке написано «прямой», потому что речь про заезд —
-   у комплекса прямой съезд с ТТК в паркинг (та же формулировка, что
-   в списке удобств Complex.tsx). Строка «Шелепиха · метро + МЦК» несёт
-   5 мин по метро; до платформы МЦК в фактах 6 мин.
+   ЧИСЛА — docs/facts.md, раздел «Время в пути»: МЦД 1 мин пешком,
+   м. «Шелепиха» 5 мин пешком, «Москва-Сити» 15 мин пешком,
+   Кутузовский проспект 5 мин на машине. Про ТТК в фактах стоит
+   «1 мин на машине»; в строке написано «прямой», потому что речь
+   про заезд — у комплекса прямой съезд с ТТК в паркинг (та же
+   формулировка, что в списке удобств Complex.tsx). Строка
+   «Шелепиха · метро + МЦК» несёт 5 мин по метро; до платформы МЦК
+   в фактах 6 мин. Координаты точек — lib/geo.ts.
 
-   ГЕОГРАФИЯ СХЕМЫ. Space Tower в центре, МЦД «Тестовская» — восточнее
-   и вплотную (та самая минута пешком), «Шелепиха» — на северо-западе,
-   ТТК идёт с севера на юг вдоль восточного края, железнодорожный
-   коридор — параллельно ему, Шмитовский проезд пересекает кадр с
-   запада на восток севернее башни, башни Москва-Сити стоят на
-   юго-востоке за ТТК. Все координаты — в комментариях у групп ниже.
+   ИМЯ СТАНЦИИ. МЦД-1 «Тестовскую» переименовали в «Москва-Сити».
+   В заголовке и в таблице оставлено прежнее имя — по нему объект
+   ищут и его знают, — а метка на карте несёт оба.
 
-   ДВИЖЕНИЕ. Единственное на секцию: три красных маршрута прочерчивают
-   себя через stroke-dashoffset, когда схема входит в кадр. Длины путей
-   снимаются getTotalLength — только в браузере, в эффекте: на сервере
-   этого метода нет. Наблюдатель одноразовый: сработал — отписался
-   и отключился. При prefers-reduced-motion наблюдателя нет вовсе,
-   маршруты стоят прочерченными с первого кадра.
+   ЧТО ГРУЗИТСЯ И КОГДА. Ни одного байта карты до подхода к секции.
+   IntersectionObserver с запасом 300 px монтирует YandexMap через
+   dynamic(..., { ssr: false }), отписывается и больше не живёт. Сам
+   модуль карты тянет скрипт Яндекса (порядка 250 КБ) уже после этого:
+   в бюджет первого экрана он не входит и входить не должен.
 
-   ДОСТУПНОСТЬ. Схема декоративна по содержанию, но не пуста: role="img"
-   и <title> пересказывают её словами, а вся фактура продублирована
-   таблицей рядом. Колонка способа («ПЕШКОМ» / «АВТО») на узком экране
-   уходит из вёрстки, но не из разметки — она прячется визуально,
-   скринридер её читает. */
+   ЕСЛИ КАРТЫ НЕТ. Нет ключа, отказала сеть, отказал сам API — в рамке
+   остаётся честная заглушка с адресом и ссылкой на Яндекс Карты,
+   а не пустой прямоугольник. Вся фактура локации в любом случае
+   продублирована таблицей рядом, и она статична. */
 
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import styles from './Location.module.css';
+
+/* ssr: false обязателен — модуль трогает document и window.ymaps3. */
+const YandexMap = dynamic(() => import('./YandexMap'), { ssr: false });
 
 type Leg = {
   place: string;
@@ -50,58 +48,51 @@ type Leg = {
 };
 
 const LEGS: Leg[] = [
-  { place: 'Тестовская · МЦД',       time: '1 мин',  mode: 'ПЕШКОМ', hot: true },
-  { place: 'Шелепиха · метро + МЦК', time: '5 мин',  mode: 'ПЕШКОМ' },
-  { place: 'Москва-Сити',            time: '15 мин', mode: 'ПЕШКОМ' },
+  { place: 'Тестовская · МЦД',        time: '1 мин',  mode: 'ПЕШКОМ', hot: true },
+  { place: 'Шелепиха · метро + МЦК',  time: '5 мин',  mode: 'ПЕШКОМ' },
+  { place: 'Москва-Сити',             time: '15 мин', mode: 'ПЕШКОМ' },
   { place: 'ТТК — выезд из паркинга', time: 'прямой', mode: 'АВТО' },
-  { place: 'Кутузовский проспект',   time: '5 мин',  mode: 'АВТО' },
+  { place: 'Кутузовский проспект',    time: '5 мин',  mode: 'АВТО' },
 ];
 
-/* Шаг каскада между маршрутами. 180 мс — не --stagger (100 мс): маршрут
-   рисуется 450 мс, и при сотне шаг читается как один общий росчерк,
-   а не как три отдельных. */
-const ROUTE_STAGGER = 180;
+/* Ссылка на объект в Яндекс Картах — из неё же взята точка комплекса. */
+const YANDEX_URL = 'https://yandex.ru/maps/-/CTTVAU6r';
+
+const MOUNT_ROOT_MARGIN = '300px';
 
 export default function Location() {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const [near, setNear] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-
-    const routes = Array.from(svg.querySelectorAll<SVGPathElement>('[data-route]'));
-    if (routes.length === 0) return;
-
-    /* getTotalLength живёт только в браузере: на сервере DOM-узла нет,
-       поэтому длины снимаются здесь, а не в разметке. До этого момента
-       маршруты спрятаны запасной длиной --len из CSS-модуля. */
-    const lengths = routes.map((p) => p.getTotalLength());
-    routes.forEach((p, i) => p.style.setProperty('--len', String(lengths[i])));
-
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) {
-      /* покой: прочерчено сразу, наблюдателя не заводим */
-      routes.forEach((p) => p.classList.add(styles.routeDrawn));
-      return;
-    }
-
-    routes.forEach((p, i) => p.style.setProperty('--route-delay', `${i * ROUTE_STAGGER}ms`));
-
+    const el = sectionRef.current;
+    if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
         if (!entries.some((e) => e.isIntersecting)) return;
-        io.unobserve(svg);
-        io.disconnect(); /* одноразовый: второго прочерчивания нет */
-        routes.forEach((p) => p.classList.add(styles.routeDrawn));
+        io.unobserve(el);
+        io.disconnect(); /* одноразовый: второго монтирования нет */
+        setNear(true);
       },
-      { threshold: 0.5 }
+      { rootMargin: MOUNT_ROOT_MARGIN }
     );
-    io.observe(svg);
+    io.observe(el);
     return () => io.disconnect();
   }, []);
 
+  const onFail = useCallback((reason: string) => {
+    setFailed(true);
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[Location] карта не поехала: ${reason}`);
+    }
+  }, []);
+
+  const onReady = useCallback(() => setLive(true), []);
+
   return (
-    <section className={styles.section} id="location" aria-labelledby="location-eyebrow">
+    <section ref={sectionRef} className={styles.section} id="location" aria-labelledby="location-eyebrow">
       <div className={styles.inner}>
         <div className={styles.text}>
           <p className={`label ${styles.eyebrow}`} id="location-eyebrow">
@@ -130,105 +121,29 @@ export default function Location() {
 
         <div className={styles.mapWrap}>
           <div className={styles.frame}>
-            <svg
-              ref={svgRef}
-              className={styles.map}
-              viewBox="0 0 640 520"
-              role="img"
-              aria-labelledby="location-map-title"
-            >
-              <title id="location-map-title">
-                Схема района: Space Tower в центре, МЦД «Тестовская» восточнее,
-                метро и МЦК «Шелепиха» на северо-западе, ТТК вдоль восточного
-                края, башни Москва-Сити на юго-востоке
-              </title>
+            {near && !failed && <YandexMap onFail={onFail} onReady={onReady} />}
 
-              {/* --- кварталы: шесть светлых пятен ------------------------
-                  B1 северо-запад, B2 север за Шмитовским, B3 запад,
-                  B4 юг под башней, B5 юго-запад, B6 — кластер Москва-Сити
-                  за ТТК тремя пластинами. */}
-              <g className={styles.block}>
-                <rect x="30" y="40" width="92" height="62" />
-                <rect x="300" y="58" width="140" height="112" />
-                <rect x="35" y="240" width="110" height="110" />
-                <rect x="170" y="372" width="150" height="92" />
-                <rect x="40" y="404" width="118" height="86" />
-                <rect x="556" y="414" width="24" height="86" />
-                <rect x="582" y="390" width="24" height="110" />
-                <rect x="608" y="430" width="24" height="70" />
-              </g>
+            {/* Заглушка. Лежит под картой и уходит, когда та отрисовалась:
+                пока тайлы едут, в рамке стоит адрес, а не пустота. */}
+            {!live && (
+              <div className={styles.stub}>
+                <p className={styles.stubAddr}>
+                  Москва, улица Ермакова Роща, 1с1
+                  <br />
+                  Space Tower, 23 этаж
+                </p>
+                <a
+                  className={styles.stubLink}
+                  href={YANDEX_URL}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  Открыть в Яндекс Картах
+                </a>
+              </div>
+            )}
 
-              {/* --- дороги: две крупные и две второстепенные -------------
-                  ТТК x≈530 с севера на юг вдоль восточного края,
-                  Шмитовский проезд y≈200 с запада на восток севернее
-                  башни, Шелепихинское шоссе — диагональ с северо-запада
-                  через станцию, Ермакова Роща — короткая с севера на юг
-                  у самой башни. */}
-              <g className={styles.roadMinor}>
-                <path d="M 62 28 L 132 118 L 198 204" />
-                <path d="M 300 204 L 298 300 L 318 382" />
-              </g>
-              <g className={styles.roadMajor}>
-                <path d="M 530 12 L 528 190 L 534 340 L 530 508" />
-                <path d="M 12 208 L 300 201 L 546 197" />
-              </g>
-
-              {/* --- железная дорога: коридор параллельно ТТК, x≈445 ----- */}
-              <path className={styles.rail} d="M 445 12 L 445 508" />
-
-              {/* --- маршруты: станция → башня, станция → башня,
-                  башня → ТТК. Порядок в разметке = порядок каскада. --- */}
-              <path
-                className={styles.route}
-                data-route=""
-                d="M 437 266 C 416 262 396 258 373 257"
-              />
-              <path
-                className={styles.route}
-                data-route=""
-                d="M 142 122 C 210 152 272 200 340 245"
-              />
-              <path
-                className={styles.route}
-                data-route=""
-                d="M 360 274 C 390 330 440 354 531 348"
-              />
-
-              {/* --- станции: кружок r=7, заливка бумаги, красный контур - */}
-              <circle className={styles.station} cx="445" cy="268" r="7" />
-              <circle className={styles.station} cx="135" cy="118" r="7" />
-
-              {/* --- башня: красный квадрат на 45°, центр (355, 258) ----- */}
-              <rect
-                className={styles.tower}
-                x="-11"
-                y="-11"
-                width="22"
-                height="22"
-                transform="translate(355 258) rotate(45)"
-              />
-
-              {/* --- подписи ---------------------------------------------- */}
-              <g className={styles.mapLabel}>
-                <text x="24" y="188">ШМИТОВСКИЙ ПР.</text>
-                <text x="546" y="40">ТТК</text>
-                <text x="452" y="40">МЦД-1</text>
-                <text x="628" y="378" textAnchor="end">МОСКВА-СИТИ</text>
-                <text x="445" y="296" textAnchor="middle">ТЕСТОВСКАЯ · 1 МИН</text>
-                <text x="152" y="122">ШЕЛЕПИХА · 5 МИН</text>
-                <text x="286" y="320" transform="rotate(-90 286 320)" textAnchor="middle">
-                  ЕРМАКОВА РОЩА
-                </text>
-              </g>
-              <text className={styles.mapLabelRed} x="355" y="232" textAnchor="middle">
-                SPACE TOWER · 113Н
-              </text>
-            </svg>
-
-            {/* Подпись в углу — обычный HTML, а не <text>: SVG тянется
-                вместе с viewBox, и 9 px в пользовательских единицах
-                на телефоне превратились бы в пять. */}
-            <p className={styles.caption}>СХЕМА · НЕ МАСШТАБ</p>
+            <p className={styles.caption}>МОСКВА-СИТИ · ЕРМАКОВА РОЩА, 1С1</p>
           </div>
         </div>
       </div>
