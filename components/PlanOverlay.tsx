@@ -58,7 +58,7 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
   const viewRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
 
-  /* Свой курсор на листе — одна точка без кольца: кольцо в 56 px
+  /* Свой курсор на листе — одна точка без кольца: кольцо в 48 px
      спорит с обмерными линиями и накрывает подписи зон целиком.
      Канал — lib/cursorMode.ts, курсор живёт в layout и пропом сюда
      не дотягивается. */
