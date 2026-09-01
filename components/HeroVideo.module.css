@@ -34,9 +34,12 @@
   object-fit: cover;
 }
 
-/* Ролик прозрачен до события playing: первый кадр совпадает с постером,
-   поэтому проявление невидимо, opacity здесь — только страховка от
-   чёрного кадра до готовности декодера. */
+/* Ролик прозрачен до события playing и проявляется ПОВЕРХ ещё играющего
+   лупа за --t-hero-cross. Затемнения на переходе нет по устройству слоёв:
+   нижний слой (луп, а под ним постер — тот же кадр f_0001) непрозрачен всё
+   время, поэтому композит в любой момент — смесь двух готовых кадров.
+   Гасить луп одновременно было бы ошибкой: на середине проступил бы
+   --paper, то самое «затемнение», которого быть не должно. */
 .video {
   position: absolute;
   inset: 0;
@@ -45,6 +48,7 @@
   height: 100%;
   object-fit: cover;
   opacity: 0;
+  transition: opacity var(--t-hero-cross) linear;
 }
 
 .videoOn {
@@ -97,6 +101,7 @@
 /* Знак-столбик. line-height ПОСЛЕ font: шорткат font сбрасывает его. */
 .mark {
   font: var(--hero-mark);
+  font-optical-sizing: auto;
   line-height: 2.0;
   letter-spacing: var(--tr-mark);
   color: var(--ink);
@@ -113,6 +118,7 @@
    центрированный блок кажется сдвинутым влево на половину трекинга. */
 .title {
   font: var(--hero-title);
+  font-optical-sizing: auto;
   letter-spacing: var(--tr-hero);
   text-indent: var(--tr-hero);
   text-transform: uppercase;
@@ -158,6 +164,24 @@
   color: var(--ink);
   max-width: 34rem;
   margin: 0 0 var(--s-7);
+}
+
+/* Маска строки. overflow: hidden обрезает выезжающий текст снизу —
+   именно этот край и читается как «выезжает из-под низа».
+   Подрезки букв в покое нет: --lead идёт с интерлиньяжем 1.5,
+   выносные элементы (у, р, д) укладываются в строку с запасом. */
+.leadLine {
+  display: block;
+  overflow: hidden;
+}
+
+/* Сдвиг живёт ОТДЕЛЬНЫМ узлом внутри маски: повесить overflow и transform
+   на один элемент нельзя — он обрезал бы сам себя, и текст не появился бы
+   вовсе. Начальное положение задаёт кейфрейм, а не базовое правило:
+   иначе под prefers-reduced-motion, где анимация снимается целиком,
+   строка так и осталась бы уехавшей вниз и невидимой. */
+.leadInner {
+  display: block;
 }
 
 .actions {
@@ -216,6 +240,47 @@ button.enterBtn {
   transform: translateY(101%);
 }
 
+/* ОЖИДАНИЕ РОЛИКА. Предохранитель прелоадера уводит створки на 8-й
+   секунде, и на медленной сети зритель видит живой луп раньше, чем ролик
+   догрузился. Кнопка на это время заперта — клик встал бы на буферизации
+   посреди полёта.
+   Индикатор — полоса 2 px по нижней кромке, та же рельса, что у лифта
+   прелоадера: спиннеров в системе нет, а заводить их ради одного случая
+   незачем. Ходит внутри кнопки, её же overflow: hidden и подрезает.
+   НАДПИСЬ НЕ ГАСИТСЯ И РАМКА НЕ БЛЁКНЕТ: --ink — единственный цвет,
+   проходящий по контрасту на этом постере (замер выше по файлу),
+   и приглушать его нечем. Состояние показывает движение, не цвет. */
+.enterWaiting {
+  cursor: progress;
+}
+
+.enterWait {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  bottom: 0;
+  width: 40%;
+  height: 2px;
+  background: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.enterWaiting .enterWait {
+  opacity: 1;
+  animation: enterWait 1.6s var(--ease-standard) infinite;
+}
+
+/* Ширина полосы 40%, поэтому −100% — это ровно за левым краем кнопки,
+   а 250% (2,5 × 40%) — ровно за правым. Ход туда и обратно одной
+   анимацией, без alternate: так пауза на развороте одинаковая с обеих
+   сторон. */
+@keyframes enterWait {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(250%); }
+  100% { transform: translateX(-100%); }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .enterFill,
   .enterLabelDefault,
@@ -245,7 +310,7 @@ button.enterBtn {
 .mute {
   display: inline-flex;
   align-items: center;
-  gap: var(--s-3);
+  justify-content: center;
   min-height: 44px;
   padding: 0 var(--s-2);
   appearance: none;
@@ -258,19 +323,51 @@ button.enterBtn {
   cursor: pointer;
 }
 
-.muteIcon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--ink);
-  border-radius: 50%;
-  transition: background var(--t-micro) var(--ease-out),
-              color var(--t-micro) var(--ease-out);
+/* Подчёркивание на тексте, а не на кнопке: у кнопки 44 px цели нажатия,
+   и линия по её нижней кромке висела бы заметно ниже надписи. */
+.muteLabel {
+  position: relative;
+  display: inline-block;
+}
+
+.muteLabel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 1px;
+  background: currentColor;
+  transform-origin: right;
+}
+
+/* Ховер: подчёркивание ПРОГОНЯЕТСЯ — уходит вправо и тут же приходит
+   слева, одним движением. Поэтому кейфреймы, а не transition: переход
+   умеет ехать только в одну сторону, а здесь нужна смена точки опоры
+   ровно в тот кадр, когда линия схлопнулась в ноль. Два соседних
+   ключа (49/50 %) как раз и переставляют origin, пока ширина нулевая
+   и подмена не видна. Ширина — transform, а не width: transform
+   считает композитор, ширину пришлось бы пересчитывать раскладкой. */
+@keyframes muteSweep {
+  0%   { transform: scaleX(1); transform-origin: right; }
+  49%  { transform: scaleX(0); transform-origin: right; }
+  50%  { transform: scaleX(0); transform-origin: left; }
+  100% { transform: scaleX(1); transform-origin: left; }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mute:hover .muteIcon { background: var(--ink); color: var(--paper); }
+  .mute:hover .muteLabel::after,
+  .mute:focus-visible .muteLabel::after {
+    animation: muteSweep var(--t-mute-sweep) var(--ease-standard);
+  }
+}
+
+/* Прогон — украшение, и под reduce он не нужен: линия просто стоит. */
+@media (prefers-reduced-motion: reduce) {
+  .mute:hover .muteLabel::after,
+  .mute:focus-visible .muteLabel::after {
+    animation: none;
+  }
 }
 
 /* === ПРОЯВЛЕНИЕ ПЕРВОГО ЭКРАНА =======================================
@@ -308,10 +405,24 @@ button.enterBtn {
                   + var(--d) * var(--hero-in-scatter)) both;
 }
 
-.revealed .lead {
-  animation: heroIn var(--t-hero-in) linear
+/* АБЗАЦ ВЫЕЗЖАЕТ СНИЗУ ИЗ-ПОД МАСКИ, строка за строкой — единственное
+   место первого экрана, где движется не только непрозрачность.
+   Кривая --ease-soft, а не linear заголовка: строка должна подъехать
+   и мягко встать, а не доползти равномерно. Непрозрачности здесь нет
+   нарочно — маска и так открывает строку постепенно, а фейд поверх
+   сделал бы край мутным вместо чёткого.
+   105 %, а не 100 %: на дробном кегле от clamp() округление subpixel
+   иногда оставляло верхушки букв в кадре стартом. */
+@keyframes leadUp {
+  from { transform: translateY(105%); }
+  to   { transform: translateY(0); }
+}
+
+.revealed .leadInner {
+  animation: leadUp var(--t-hero-line) var(--ease-soft)
              calc(var(--hero-in-delay) + var(--hero-in-stagger) * 2
-                  + var(--hero-in-scatter)) both;
+                  + var(--hero-in-scatter)
+                  + var(--i) * var(--hero-line-stagger)) both;
 }
 
 .revealed .actions,
@@ -330,7 +441,7 @@ button.enterBtn {
    где они есть, и гасит их родителем. */
 .overlayOff .mark,
 .overlayOff .titleChar,
-.overlayOff .lead,
+.overlayOff .leadInner,
 .overlayOff .actions,
 .overlayOff .sound {
   animation-play-state: paused;
@@ -355,7 +466,7 @@ button.enterBtn {
 @media (prefers-reduced-motion: reduce) {
   .revealed .mark,
   .revealed .titleChar,
-  .revealed .lead,
+  .revealed .leadInner,
   .revealed .actions,
   .revealed .sound {
     animation: none;
@@ -371,7 +482,4 @@ button.enterBtn {
   .mark { margin-bottom: var(--s-6); line-height: 1.9; }
   .title { margin-bottom: var(--s-5); }
   .lead { margin-bottom: var(--s-6); }
-
-  /* Иконка 44 px плюс капитель в одну строку на 350 px встают впритык */
-  .mute { flex-direction: column; gap: var(--s-2); }
 }
