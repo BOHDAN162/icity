@@ -83,6 +83,11 @@
 .stack {
   display: grid;
   justify-items: center;
+  /* Блок приподнят над геометрическим центром. Нижний отступ, а не
+     transform: строка сетки центрирует МАРГИН-БОКС, поэтому отступ M
+     поднимает видимый текст на M/2 — и не создаёт содержащий блок
+     для position: fixed, в отличие от трансформа (AGENTS.md). */
+  margin-bottom: clamp(48px, 10svh, 120px);
 }
 
 /* ЦВЕТ ТЕКСТА ПЕРВОГО ЭКРАНА — ТОЛЬКО --ink, И ЭТО ЗАМЕР, А НЕ ВКУС.
@@ -424,7 +429,7 @@ button.enterBtn {
 }
 
 .revealed .leadInner {
-  animation: leadUp var(--t-hero-line) var(--ease-soft)
+  animation: leadUp var(--t-hero-line) var(--ease-standard)
              calc(var(--hero-in-delay) + var(--hero-in-stagger) * 2
                   + var(--hero-in-scatter)
                   + var(--i) * var(--hero-line-stagger)) both;
