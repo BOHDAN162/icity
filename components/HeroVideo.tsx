@@ -61,8 +61,9 @@ import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
 import {
-  heroPreloadServerSnapshot, heroPreloadSnapshot, releaseHeroPreload, SOURCES,
-  startHeroPreload, subscribeHeroPreload, type HeroVariant,
+  currentHeroVariant, heroPreloadServerSnapshot, heroPreloadSnapshot,
+  releaseHeroPreload, SOURCES, startHeroPreload, subscribeHeroPreload,
+  type HeroVariant,
 } from '@/lib/heroPreload';
 import styles from './HeroVideo.module.css';
 
@@ -117,10 +118,20 @@ const scatter = (i: number): number => {
 
    Источник: freesound.org/s/570890 «wind_synth_high_altitude», CC0
    (public domain, атрибуция не требуется). Синтезированный, а не полевая
-   запись, — поэтому чистый, без птиц и трафика. Собран
-   `ffmpeg -ss 4 -t 10.5` (самое ровное окно оригинала, LRA 2,0),
-   +3,7 дБ до −23 LUFS, вход 1,5 с, страховочный выход 0,4 с.
-   10,5 с против 9,79 с ролика — запас, чтобы звук не кончился раньше видео.
+   запись, — поэтому чистый, без птиц и трафика. Окно 4,0–14,5 с,
+   `dynaudnorm=f=400:g=21` для выравнивания, −23 LUFS, вход 1,5 с,
+   страховочный выход 0,4 с. 10,5 с против 9,79 с ролика — запас,
+   чтобы звук не кончился раньше видео.
+
+   ЗАЧЕМ ВЫРАВНИВАНИЕ. Сырое окно давало всплеск ровно на подъёме камеры
+   (с 7,7 с): уровень +2,5 дБ и высокие +7 дБ к последней секунде —
+   самая громкая и самая яркая точка всего ролика приходилась на финал,
+   и звук читался как «разгоняется и злится». Замер по секундам, было → стало:
+     8 с: −24,9 / −60,4 дБ  →  −27,1 / −62,8
+     9 с: −23,1 / −57,2 дБ  →  −26,7 / −60,8
+   Теперь финал, наоборот, самое тихое место дорожки. Перерендерят
+   амбиент — снимать этот же посекундный профиль, а не только
+   интегральную громкость: она всплеск не показывает вовсе.
 
    Opus первым, AAC вторым: браузер берёт первый поддержанный, и Chrome
    с Firefox получают файл вдвое легче, а Safari честно откатывается
@@ -132,8 +143,10 @@ const AMBIENCE: readonly { src: string; type: string }[] = [
 
 /* Базовая громкость амбиента. Файл собран на −23 LUFS, это уже фоновый
    уровень; ручка здесь — чтобы правку громкости не приходилось гнать
-   через перекодирование. */
-const AMBIENCE_VOLUME = 1;
+   через перекодирование.
+   0.5 — это −6 дБ, ровно вдвое по амплитуде. Если понадобится вдвое
+   по ОЩУЩЕНИЮ (а это −10 дБ, слух устроен не линейно) — 0.32. */
+const AMBIENCE_VOLUME = 0.5;
 
 /* Отметки ролика — в КАДРАХ, не в округлённых секундах. Рендер v3:
    24 fps, 235 кадров. На кадре 185 камера входит в «трамплин» и
@@ -276,7 +289,11 @@ export default function HeroVideo({ onLift, onDone }: Props) {
      до клика попросил другой вариант. */
   useEffect(() => {
     if (reduced) return;
-    startHeroPreload(variant);
+    /* Вариант спрашивается у matchMedia, а не берётся из `variant`:
+       на гидрационном проходе тот ещё равен серверному 'desktop', и
+       телефон начал бы качать десктопную пару. Подробности — там же,
+       где живёт currentHeroVariant. */
+    startHeroPreload(currentHeroVariant());
   }, [reduced, variant]);
 
   const finish = useCallback(() => {
