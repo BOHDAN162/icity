@@ -165,8 +165,10 @@ function targetPin(): { el: HTMLElement; text: HTMLElement } {
 type Props = {
   /** индекс выбранной строки таблицы; null — не выбрано ничего */
   active: number | null;
-  /** зовётся, когда карта не поедет: нет ключа, отказ скрипта, отказ API */
-  onFail: (reason: string) => void;
+  /** зовётся, когда карта не поедет: нет ключа, отказ скрипта, отказ API.
+      retryable: false — повтор бессмыслен (нет ключа), true — стоит
+      попробовать ещё раз (сеть, отказ Яндекса). */
+  onFail: (reason: string, retryable: boolean) => void;
   /** зовётся один раз, когда карта отрисовалась */
   onReady: () => void;
 };
@@ -236,7 +238,10 @@ export default function YandexMap({ active, onFail, onReady }: Props) {
     const apikey = process.env.NEXT_PUBLIC_YANDEX_MAPS_KEY;
     if (!host) return;
     if (!apikey) {
-      fail.current('нет NEXT_PUBLIC_YANDEX_MAPS_KEY');
+      /* Повтор здесь не поможет: переменной нет в сборке. На Vercel её
+         заводят в Environment Variables, и NEXT_PUBLIC_ подставляется
+         на СБОРКЕ — после добавления нужен передеплой. */
+      fail.current('нет NEXT_PUBLIC_YANDEX_MAPS_KEY', false);
       return;
     }
 
@@ -313,7 +318,7 @@ export default function YandexMap({ active, onFail, onReady }: Props) {
         ready.current();
       })
       .catch((e: unknown) => {
-        if (alive) fail.current(e instanceof Error ? e.message : 'ymaps3: отказ');
+        if (alive) fail.current(e instanceof Error ? e.message : 'ymaps3: отказ', true);
       });
 
     return () => {

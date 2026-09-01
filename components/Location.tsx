@@ -23,12 +23,15 @@
    не открылась бы ровно на переговорах. По клику до неё доходят
    единицы. Остальные внешние условия — в AGENTS.md.
 
-   ЕСЛИ КАРТЫ НЕТ. Нет ключа, отказала сеть, отказал сам API — в рамке
-   остаётся адрес со ссылкой на Яндекс Карты, а не пустой прямоугольник,
-   и кнопка превращается в «Повторить». Отказ здесь не приговор:
+   ЕСЛИ КАРТЫ НЕТ. В рамке остаётся адрес со ссылкой на Яндекс Карты,
+   а не пустой прямоугольник. Отказы двух родов, и ведут себя по-разному:
+   временный (сеть, отказ Яндекса) оставляет кнопку «Повторить» —
    api-maps.yandex.ru отвечает не всегда, живой ERR_CONNECTION_RESET
-   ловился на одной попытке из трёх. Таблица статична и несёт всю
-   фактуру в любом случае.
+   ловился на одной попытке из трёх; окончательный (в сборке нет
+   NEXT_PUBLIC_YANDEX_MAPS_KEY) убирает кнопку совсем, потому что
+   повтор не поможет — переменную заводят в Environment Variables
+   на Vercel, и она подставляется на СБОРКЕ, то есть нужен передеплой.
+   Таблица статична и несёт всю фактуру в любом случае.
 
    ВЫБОР СТРОКИ — ПО КЛИКУ, НЕ ПО НАВЕДЕНИЮ. В покое не выбрана
    ни одна: карта стоит общим планом, связок нет. Клик строит связку
@@ -58,6 +61,10 @@ const YANDEX_URL = 'https://yandex.ru/maps/-/CTTVAU6r';
 export default function Location() {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  /* Отказ бывает двух родов: временный (сеть) и окончательный (нет
+     ключа в сборке). Во втором случае кнопка «Повторить» обещала бы
+     то, чего повтор дать не может. */
+  const [retryable, setRetryable] = useState(true);
   const [live, setLive] = useState(false);
   /* null — не выбрана ни одна строка: связок на карте нет */
   const [active, setActive] = useState<number | null>(null);
@@ -70,8 +77,9 @@ export default function Location() {
 
   /* Отказ снимает модуль и возвращает кнопку: повтор должен быть
      возможен без перезагрузки страницы. */
-  const onFail = useCallback((reason: string) => {
+  const onFail = useCallback((reason: string, canRetry: boolean) => {
     setFailed(true);
+    setRetryable(canRetry);
     setOpen(false);
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Location] карта не поехала: ${reason}`);
@@ -137,15 +145,19 @@ export default function Location() {
                   Space Tower, 23 этаж
                 </p>
                 {/* Кнопка исчезает вместе с заглушкой, как только карта
-                    отрисовалась. При отказе она остаётся и зовёт повторить. */}
-                <button
-                  type="button"
-                  className={styles.stubBtn}
-                  onClick={load}
-                  disabled={open}
-                >
-                  {open ? 'Загружаем карту…' : failed ? 'Повторить' : 'Показать карту'}
-                </button>
+                    отрисовалась. При временном отказе остаётся и зовёт
+                    повторить; при окончательном уходит совсем — остаётся
+                    адрес со ссылкой на Яндекс Карты. */}
+                {(!failed || retryable) && (
+                  <button
+                    type="button"
+                    className={styles.stubBtn}
+                    onClick={load}
+                    disabled={open}
+                  >
+                    {open ? 'Загружаем карту…' : failed ? 'Повторить' : 'Показать карту'}
+                  </button>
+                )}
               </div>
             )}
 
