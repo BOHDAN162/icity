@@ -44,6 +44,7 @@ import {
   SCROLL_SMOOTH_TRACKPAD,
   SCROLL_GESTURE_GAP_MS,
   wheelLooksLikeMouse,
+  onScrollRequest,
 } from '@/lib/motion';
 
 export default function SmoothScroll() {
@@ -209,6 +210,16 @@ export default function SmoothScroll() {
       sleep();
     };
 
+    /* «Записаться на просмотр» и любая другая кнопка-якорь просят
+       доехать сюда тем же ходом, что и колесо, вместо мгновенного
+       браузерного прыжка по хэшу. Замок страницы действует и здесь —
+       та же причина, что у onWheel. */
+    const offScrollRequest = onScrollRequest((y) => {
+      if (document.body.style.overflow === 'hidden') return;
+      target = Math.min(maxScroll(), Math.max(0, y));
+      wake();
+    });
+
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
@@ -217,6 +228,7 @@ export default function SmoothScroll() {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
+      offScrollRequest();
       sleep();
     };
   }, []);

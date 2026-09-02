@@ -344,3 +344,30 @@ export const SCROLL_MIN_STEP_DPX = 1;
    scrollY округляется до устройственного пикселя и наше же дробное
    значение возвращается с расхождением до половины пикселя. */
 export const SCROLL_SYNC_PX = 2;
+
+/* --- запрос плавной прокрутки к цели ----------------------------------
+
+   ЗАЧЕМ. Кнопка «Записаться на просмотр» должна ехать к низу страницы
+   тем же ходом, что и колесо, а не мгновенным браузерным прыжком по
+   #contact (тот и читался зрителем как «сразу показало форму»). Канал —
+   та же дисциплина, что у lib/officeZone.ts: объявительное «прокрути
+   сюда», а не проп через шесть секций и не второй scroll-behavior.
+
+   Слушатель ровно один: цикл прокрутки на странице один, дублировать
+   его незачем. */
+type ScrollListener = (y: number) => void;
+
+let scrollListener: ScrollListener | null = null;
+
+/** SmoothScroll подписывается на монтировании. */
+export const onScrollRequest = (fn: ScrollListener): (() => void) => {
+  scrollListener = fn;
+  return () => {
+    if (scrollListener === fn) scrollListener = null;
+  };
+};
+
+/** «Прокрути плавно до этой высоты» — цель клампится самим слушателем. */
+export const requestSmoothScrollTo = (y: number): void => {
+  scrollListener?.(y);
+};

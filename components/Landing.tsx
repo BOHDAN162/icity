@@ -16,6 +16,7 @@
    знаков меньше, и без дубликата ряд дёргался бы на каждом разряде. */
 
 import CountUpScope from './CountUpScope';
+import ScrollToContactAction from './ScrollToContactAction';
 import styles from './Landing.module.css';
 
 type Figure = { value: string; caption: string; accent?: boolean };
@@ -66,9 +67,7 @@ export default function Landing() {
         </p>
 
         <div className={styles.actions}>
-          <a className={`btn ${styles.action}`} href="#contact">
-            Записаться на просмотр
-          </a>
+          <ScrollToContactAction className={`btn ${styles.action}`} />
         </div>
       </div>
     </section>
