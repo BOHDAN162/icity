@@ -23,6 +23,8 @@ export type ContactInfo = {
   email: string;
   /** личная ссылка профиля max.ru/u/…; null — кнопки нет */
   maxUrl: string | null;
+  /** личный чат в Telegram; null — кнопки нет */
+  telegramUrl: string | null;
 };
 
 export const contacts: ContactInfo = {
@@ -31,5 +33,6 @@ export const contacts: ContactInfo = {
   phoneDisplay: '+7 909 379-80-15',
   phoneHref: 'tel:+79093798015',
   email: 'kryakushina@arenda-34.ru',
-  maxUrl: null,
+  maxUrl: 'https://max.ru/u/f9LHodD0cOJotcTW8qhH3B549kRNTt5FGw6Rs1KC85ZM2K10Mqh_NL25Rvw',
+  telegramUrl: 'https://t.me/OksanaArenzon',
 };
