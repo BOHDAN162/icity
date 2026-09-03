@@ -70,9 +70,10 @@ import dynamic from 'next/dynamic';
 import {
   REVEAL_AT, REVEAL_CAP_MS, REVEAL_MS, RENDER_NATIVE,
   hasWebGL, isSlowNetwork, loadPlan,
-  prefetchRender, renderSrcSet, renderSmallest, TOUR_URL,
+  prefetchRender, renderSrcSet, renderSmallest,
   type Plan, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
+import { TOUR_URL } from '@/lib/tour';
 import {
   PLAN_DRAG_SLOP, orbitFollow, orbitRelease, planOrbit, resetPlanOrbit,
 } from '@/lib/motion';

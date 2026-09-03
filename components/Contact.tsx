@@ -32,6 +32,7 @@ import {
 import dynamic from 'next/dynamic';
 import styles from './Contact.module.css';
 import { contacts } from '@/lib/contacts';
+import { TOUR_URL } from '@/lib/tour';
 import { prefetchPlan, type RenderKey } from '@/lib/interior';
 import { requestZone, scrollToOffice, setOfficeReturn } from '@/lib/officeZone';
 import { submitLead } from '@/lib/submitLead';
@@ -367,12 +368,27 @@ export default function Contact() {
             <a className={styles.dottedLink} href={`mailto:${contacts.email}`}>
               {contacts.email}
             </a>
+            {contacts.telegramUrl && (
+              <a
+                className={styles.dottedLink}
+                href={contacts.telegramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Написать в Telegram
+              </a>
+            )}
             {/* Ссылки на профиль в Max может не быть — у мессенджера нет
                 формата «чат по номеру», нужен личный max.ru/u/… самой
                 Оксаны. Мёртвую кнопку на переговорах лучше не показывать
                 вовсе, чем показать ведущей в никуда. */}
             {contacts.maxUrl && (
-              <a className={styles.dottedLink} href={contacts.maxUrl}>
+              <a
+                className={styles.dottedLink}
+                href={contacts.maxUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Написать в Max
               </a>
             )}
@@ -396,6 +412,17 @@ export default function Contact() {
             >
               3D-модель
             </button>
+            {/* Тур — единственная ссылка в этом ряду, ведущая наружу:
+                панорама живёт на kuula.co. Отсюда новая вкладка и
+                noopener, как у Telegram и Max выше. */}
+            <a
+              className={styles.dottedLink}
+              href={TOUR_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              3D-тур
+            </a>
           </div>
 
           <p className={styles.quiet}>Аренда от собственника.</p>
