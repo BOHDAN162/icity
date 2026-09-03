@@ -5,7 +5,8 @@
 
    ЧТО ЭТО. Камера вошла в фасад — и страница останавливается на офисе.
    Пять зон, между ними ходят как по этажу: связи двусторонние, из любой
-   комнаты можно вернуться в любую соседнюю.
+   комнаты можно вернуться в любую соседнюю. Одно исключение — «кухня →
+   ресепшн», ход односторонний; почему, написано над таблицей EXITS.
 
    ГДЕ ОН ЖИВЁТ. Слой A липкой сцены в OfficeStop, а не оверлей поверх
    страницы: body больше не фиксируется, вниз из офиса уходят обычной
@@ -49,11 +50,17 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import {
-  RENDER_NATIVE, prefetchPlan, renderSmallest, renderSrcSet, type RenderKey,
+  RENDER_KEYS, RENDER_NATIVE, prefetchPlan, renderSmallest, renderSrcSet,
+  type RenderKey,
 } from '@/lib/interior';
 import {
-  onZoneRequest, scrollToId, scrollToOffice, takeOfficeReturn,
+  onZoneRequest, scrollToId, requestOfficeStep0, scrollToOffice, takeOfficeReturn,
 } from '@/lib/officeZone';
+import {
+  lockScroll, unlockScroll, scrollLockOwner, PLAN_LOCK, OFFICE_STEP_LOCK,
+} from '@/lib/scrollLock';
+import NextCue, { ArrowDown } from './NextCue';
+import { focusQuietly } from '@/lib/focus';
 import styles from './OfficeHub.module.css';
 
 /* Кукольный дом тянет за собой three.js. Импорт динамический и без SSR:
@@ -100,11 +107,21 @@ const CENTROID: Record<ZoneId, readonly [number, number]> = {
   openspace: [840, 1100],
 };
 
-/** Связи двусторонние: куда можно уйти, оттуда можно и вернуться. */
+/* Связи двусторонние: куда можно уйти, оттуда можно и вернуться.
+   ИСКЛЮЧЕНИЕ РОВНО ОДНО — «кухня → ресепшн», ход односторонний. Заказчик
+   попросил 4 сентября 2026: с кухни ресепшн виден прямо по курсу камеры
+   (она стоит в опенспейсе и смотрит на север), а на самом ресепшне
+   третий круг переходов не нужен — там их сознательно два. Обратно
+   с ресепшна на кухню ведут коридор и опенспейс, тупика не возникает.
+   Заводить обратную пару — только спросив.
+
+   ПОРЯДОК В СПИСКЕ — ЭТО ПОРЯДОК КРУГОВ НА ЭКРАНЕ, слева направо.
+   На кухне он выставлен руками (коридор, ресепшн, опенспейс) — так две
+   стрелки «вверх-влево» идут от положой к крутой, а не наоборот. */
 const EXITS: Record<ZoneId, readonly ZoneId[]> = {
   reception: ['corridor', 'openspace'],
   corridor: ['reception', 'kitchen', 'openspace', 'meeting_lg'],
-  kitchen: ['openspace', 'corridor'],
+  kitchen: ['corridor', 'reception', 'openspace'],
   openspace: ['reception', 'corridor', 'kitchen', 'meeting_lg'],
   meeting_lg: ['corridor', 'openspace'],
 };
@@ -113,7 +130,16 @@ const EXITS: Record<ZoneId, readonly ZoneId[]> = {
    На ресепшне и в коридоре несколько выходов физически расходятся на
    считаные градусы (см. комментарий выше про 1°/9°/10°) и на экране
    стрелки визуально сливаются в одну. Здесь — явно заданное направление
-   для конкретной пары «откуда→куда», остальные пары считаются как раньше. */
+   для конкретной пары «откуда→куда», остальные пары считаются как раньше.
+
+   КУХНЯ — ТРИ ПАРЫ ЦЕЛИКОМ, и это не про слипание, а про кадр. Камера
+   кухни стоит в опенспейсе и смотрит строго на север (`azim 272`,
+   `target3` на 4 м вверх по плану), поэтому верх экрана здесь совпадает
+   с севером плана и стрелка обязана показывать туда, куда зритель видит:
+   ресепшн — вверх-влево, коридор — левее и положе, опенспейс — за спину,
+   вниз-вправо. Расчёт по центроидам давал 338° / 124° / 160°: ресепшн
+   и коридор он уводил вправо-вниз мимо кадра, а опенспейс клал почти
+   отвесно. Углы утверждены живьём 4 сентября 2026. */
 const ANGLE_OVERRIDE: Partial<Record<string, number>> = {
   'reception>corridor': 315,
   'reception>openspace': 315,
@@ -125,6 +151,9 @@ const ANGLE_OVERRIDE: Partial<Record<string, number>> = {
   'openspace>kitchen': 67.5,
   'openspace>meeting_lg': 90,
   'meeting_lg>openspace': 180,
+  'kitchen>reception': 315,
+  'kitchen>corridor': 292.5,
+  'kitchen>openspace': 135,
 };
 
 /** Азимут от зоны к зоне: 0° — север, дальше по часовой. */
@@ -176,6 +205,12 @@ const ZONES: Record<ZoneId, Zone> = {
 
 const ORDER: ZoneId[] = ['reception', 'corridor', 'openspace', 'meeting_lg', 'kitchen'];
 
+/* Сколько всего зон показывает счётчик. Берётся из конфига рендеров,
+   а не из ORDER: ORDER — это порядок обхода в стопке кадров, а зон
+   ровно столько, сколько есть съёмок. Появится шестая — счётчик
+   узнает о ней сам. */
+const ZONE_TOTAL = RENDER_KEYS.length;
+
 /* Короткая версия по решению заказчика (2026-09-01) — только сам факт
    визуализации, без призыва сверяться на месте. */
 const DISCLAIMER = 'Визуализация по дизайн-проекту';
@@ -183,9 +218,11 @@ const DISCLAIMER = 'Визуализация по дизайн-проекту';
 type Props = {
   /** офис — живой экран: слушает клавиши и держит холст параллакса */
   active: boolean;
+  /** имя следующего экрана — приходит от OfficeStop, он им и владеет */
+  next: { title: string };
 };
 
-export default function OfficeHub({ active }: Props) {
+export default function OfficeHub({ active, next }: Props) {
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
   const [cameFrom, setCameFrom] = useState<ZoneId | null>(null);
   /* ОТКУДА ОТКРЫЛИ ПЛАН, а не просто «открыт ли он». Открытие по Esc
@@ -197,6 +234,38 @@ export default function OfficeHub({ active }: Props) {
   /* Какие кадры уже стоят в стопке. Зона попадает сюда в момент перехода
      и больше не уходит: второй визит не должен ничего грузить. */
   const [seen, setSeen] = useState<ReadonlySet<ZoneId>>(() => new Set<ZoneId>(['reception']));
+  /* Подсказка «все зоны просмотрены — дальше» тратится один раз: она
+     обязана уйти, как только зритель поехал вниз, и не возвращаться,
+     если он потом отлистал обратно наверх.
+
+     СВОЕГО СЛУШАТЕЛЯ ПРОКРУТКИ ДЛЯ ЭТОГО НЕ НУЖНО — OfficeStop снимает
+     active на p > 0,12, то есть ровно в момент, когда прокрутка началась.
+     Один rAF на странице так и остаётся один.
+
+     Правка состояния идёт В РЕНДЕРЕ, а не в эффекте: React отыгрывает
+     её сразу, до коммита, без второго прохода и без кадра со старым
+     значением. setState в эффекте здесь и запрещён линтером
+     (react-hooks/set-state-in-effect) — он даёт каскадный ре-рендер. */
+  const [prevActive, setPrevActive] = useState(active);
+  const [cueSpent, setCueSpent] = useState(false);
+  if (prevActive !== active) {
+    setPrevActive(active);
+    /* ТРАТИМ НА ВОЗВРАТЕ, А НЕ НА УХОДЕ. Раньше стояло `if (!active)`,
+       и подпись менялась с «Все зоны просмотрены — дальше» на
+       «Просмотрено» в тот самый кадр, где начинается выезд, — при
+       ещё непрозрачном интерфейсе. Строка короче на ~200 px, и в зонах
+       с текстом справа число скачком уезжало вправо на всю эту разницу;
+       на телефоне подпись схлопывалась с двух строк на одну и утаскивала
+       весь блок вниз. Теперь при уходе текст остаётся прежним и гаснет
+       вместе с интерфейсом, а тратится подсказка к моменту, когда
+       зритель вернулся, — видимого результата это не меняет. */
+    if (active) setCueSpent(true);
+  }
+
+  /* Подсказка живёт ровно между «обошёл все зоны» и «поехал вниз».
+     Второй раз она не приходит: обход уже случился, напоминать не о чем. */
+  const allSeen = seen.size === ZONE_TOTAL && !cueSpent;
+
   const rootRef = useRef<HTMLElement>(null);
   /* Куда вернуть фокус после закрытия плана. Планировку теперь
      открывают Esc-ом помногу раз за просмотр, и без возврата фокус
@@ -243,10 +312,10 @@ export default function OfficeHub({ active }: Props) {
        не показывает. Та же щель, которой пользуется путь в офис. */
     const home = reason === 'dismiss' ? takeOfficeReturn() : null;
     if (home) {
-      document.body.style.overflow = '';
+      unlockScroll(PLAN_LOCK);
       scrollToId(home.id);
       returnFocusRef.current = null;
-      home.focus?.focus({ preventScroll: true });
+      focusQuietly(home.focus);
       return;
     }
 
@@ -259,8 +328,8 @@ export default function OfficeHub({ active }: Props) {
        подтянет страницу к цели и увезёт зрителя. */
     const back = returnFocusRef.current;
     returnFocusRef.current = null;
-    if (back?.isConnected) back.focus({ preventScroll: true });
-    else if (active) planBtnRef.current?.focus({ preventScroll: true });
+    if (back?.isConnected) focusQuietly(back);
+    else if (active) focusQuietly(planBtnRef.current);
   }, [active]);
 
   /* Разрыв крошки при уходе прокруткой живёт не здесь, а в самой
@@ -302,13 +371,20 @@ export default function OfficeHub({ active }: Props) {
       /* Кто-то выше уже разобрал это нажатие. */
       if (e.defaultPrevented || e.isComposing) return;
       /* Замок страницы — признак того, что экраном распоряжается кто-то
-         другой: жив hero, открыт оверлей подвала. Читаем инлайновый
-         стиль, как это делает SmoothScroll: все три замка на сайте
-         ставятся именно так, и четвёртый обязан ставиться так же.
+         другой: жив hero, открыт оверлей подвала, открыт сам план.
          Этот охранник несущий, а не запасной: между setPlanOpen(true)
          и монтированием PlanDollhouse едет чанк three.js, и всё это
-         время capture-слушателя плана ещё не существует. */
-      if (document.body.style.overflow === 'hidden') return;
+         время capture-слушателя плана ещё не существует.
+
+         ЧУЖОЙ ЗАМОК, А НЕ ЛЮБОЙ. Раньше здесь стоял сырой признак
+         `body.style.overflow === 'hidden'`, и он был верен, пока
+         всякий замок означал «не твой экран». Секция офиса сломала
+         это допущение: она запирает страницу на время шаговых
+         переходов к кадрам вида и при этом остаётся ровно тем местом,
+         откуда Esc обязан открывать план. Владелец замка — в
+         lib/scrollLock.ts. */
+      const lock = scrollLockOwner();
+      if (lock !== null && lock !== OFFICE_STEP_LOCK) return;
       /* Esc в поле формы записи не должен открывать 3D поверх заявки.
          closest, а не сравнение тега: contenteditable бывает вложенным. */
       const el = document.activeElement as HTMLElement | null;
@@ -333,9 +409,8 @@ export default function OfficeHub({ active }: Props) {
      план явно. Тот же приём, что у оверлеев из подвала (Contact.tsx). */
   useEffect(() => {
     if (!planOpen) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    lockScroll(PLAN_LOCK);
+    return () => unlockScroll(PLAN_LOCK);
   }, [planOpen]);
 
   /* Тот же переход, но по зову со стороны. Кукольный дом открывают
@@ -361,8 +436,11 @@ export default function OfficeHub({ active }: Props) {
      непрозрачным планом. Той же щелью пользуется подвал. */
   const enterZoneFromPlan = useCallback((to: ZoneId) => {
     if (!active) {
-      document.body.style.overflow = '';
+      unlockScroll(PLAN_LOCK);
       scrollToOffice();
+      /* Тем же движением сбрасываем шаг секции: офис мог быть накрыт
+         кадрами вида, и зритель приехал бы к панораме вместо зоны. */
+      requestOfficeStep0();
     }
     go(to);
   }, [active, go]);
@@ -466,11 +544,20 @@ export default function OfficeHub({ active }: Props) {
           );
         })}
 
-        {/* Поверх стопки. Монтируется только когда офис открыт: за
-            офис не на экране, холст не нужен, а WebGL-контекст стоит слота.
-            Пока карта глубины не доехала, холст прозрачен и виден кадр
-            под ним, поэтому смены зоны выглядят ровно как раньше. */}
-        {active && <ZoneParallax zone={zoneId} />}
+        {/* Поверх стопки. МОНТИРУЕТСЯ ВСЕГДА, а видимостью управляет
+            проп: холст обязан ГАСНУТЬ переходом, а не сниматься одним
+            кадром. Прежде здесь стояло `active && …`, и при уходе к кадру
+            вида разница между холстом и картинкой под ним (2–3 % масштаба,
+            14 px на кромку) схлопывалась мгновенно — ровно в тот кадр,
+            где начинает сжиматься офис. Разбор — в шапке
+            ZoneParallax.module.css.
+
+            Внешнего условия здесь не нужно и по другой причине: холст
+            сам отказывается монтироваться при prefers-reduced-motion,
+            на медленной сети и без WebGL2. Взамен уходит и пересоздание
+            контекста при каждом возврате шагом назад — а это компиляция
+            шейдеров и заливка шести мегабайт текстур на главном потоке. */}
+        <ZoneParallax zone={zoneId} shown={active} />
       </div>
 
       {/* Вуали. Не декор: держат контраст текста поверх светлого рендера. */}
@@ -530,17 +617,51 @@ export default function OfficeHub({ active }: Props) {
                 {/* Волосяная линия — на обёртке текста, не на кнопке: под
                     бейджем «3D» своя рамка, второй линии под ним не нужно.
                     Красная линия рисуется поверх серой отдельным слоем. */}
-                <span className={styles.planText}>Открыть планировку</span>
-                <span className={styles.planBadge} aria-hidden="true">3D</span>
+                <span className={styles.planMain}>
+                  <span className={styles.planText}>Открыть планировку</span>
+                  <span className={styles.planBadge} aria-hidden="true">3D</span>
+                </span>
+                {/* Подпись переехала ВНУТРЬ капсулы и больше не ждёт ховера:
+                    это единственное место, где сказано, что зон пять, и
+                    видеть его должен не только тот, кто уже навёлся.
+                    aria-hidden оставлен — доступное имя кнопки чистое. */}
+                <span className={styles.planSub} aria-hidden="true">
+                  Пять зон{NBSP}·{NBSP}Объёмный план
+                </span>
               </button>
-              {/* Декоративная подпись, появляется вместе с красным ховером
-                  ссылки, по очереди — второй кусок с задержкой --stagger;
-                  доступное имя кнопки остаётся чистым. */}
-              <span className={styles.planSub} aria-hidden="true">
-                <span className={styles.planSubStep}>Пять зон</span>
-                <span className={styles.planSubStep}>{NBSP}·{NBSP}Объёмный план</span>
-              </span>
             </div>
+
+            {/* СЧЁТЧИК ЗОН. Стоит здесь, а не под кругами переходов, и это
+                замер, а не вкус: в центре под стрелками --ink на одной
+                .scrimBottom даёт 2,68:1 при пороге 4,5 (там же держится
+                известный дефект строки «Визуализация по дизайн-проекту»,
+                2,51:1). Под капсулой работает .scrimInfo — 5,84:1.
+                Заодно круги переходов не сдвигаются ни на пиксель:
+                они обязаны стоять на одном уровне во всех зонах.
+
+                СЧИТАЕТ ПРОСМОТРЕННЫЕ, А НЕ ПОЗИЦИЮ. Навигация здесь
+                графовая, а не линейная: у ресепшна два выхода, у коридора
+                три. «Третья из пяти» в такой навигации — вымысел, а вот
+                «просмотрено три из пяти» — факт, и он же сам собой
+                доводит зрителя до конца обхода. */}
+            <p className={styles.zoneCount} aria-live="polite">
+              {/* Имя зоны для скринридера: на экране оно стоит заголовком
+                  выше, но в объявлении смены зоны обязано быть здесь. */}
+              <span className={styles.sr}>{zone.label}. </span>
+              <span className={styles.zoneCountNum}>
+                {String(seen.size).padStart(2, '0')}
+                <span className={styles.zoneCountSlash}>{NBSP}/{NBSP}</span>
+                {String(ZONE_TOTAL).padStart(2, '0')}
+              </span>
+              <span className={`label ${styles.zoneCountLabel}`}>
+                {allSeen ? 'Все зоны просмотрены — дальше' : 'Просмотрено'}
+              </span>
+              {allSeen && (
+                <span className={styles.zoneCountArrow} aria-hidden="true">
+                  <ArrowDown size={13} />
+                </span>
+              )}
+            </p>
           </div>
 
           <nav className={styles.nav} aria-label="Переходы по помещению">
@@ -584,6 +705,11 @@ export default function OfficeHub({ active }: Props) {
           <p className={`${styles.fine} ${zoneId === 'reception' ? '' : styles.fineHidden}`}>
             {DISCLAIMER}
           </p>
+
+          {/* Индикатор «ниже что-то есть». Всегда в правом нижнем углу,
+              в какой бы стороне ни стоял текст зоны: место у него должно
+              быть одно, иначе его ищут заново в каждой зоне. */}
+          <NextCue next={next} progress={seen.size / ZONE_TOTAL} />
         </div>
       </div>
 
