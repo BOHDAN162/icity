@@ -78,6 +78,16 @@
   transition: border-color var(--t-micro) var(--ease-out);
 }
 
+/* Ссылка на тур делит стиль с кнопкой «Чертёж»: это два входа одного веса.
+   У <a> своя раскладка — inline и подчёркивание браузера, — поэтому
+   выравнивание и text-decoration задаются явно, иначе 44 px высоты
+   не наберётся и под волосяной линией встанет вторая, родная. */
+a.sheetLink {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .sheetLink:hover { border-bottom-color: var(--ink); }
 
 .close {

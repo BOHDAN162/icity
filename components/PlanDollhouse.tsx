@@ -70,7 +70,7 @@ import dynamic from 'next/dynamic';
 import {
   REVEAL_AT, REVEAL_CAP_MS, REVEAL_MS, RENDER_NATIVE,
   hasWebGL, isSlowNetwork, loadPlan,
-  prefetchRender, renderSrcSet, renderSmallest,
+  prefetchRender, renderSrcSet, renderSmallest, TOUR_URL,
   type Plan, type RenderKey, type ZoneKey,
 } from '@/lib/interior';
 import {
@@ -428,6 +428,17 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
           <button type="button" className={styles.sheetLink} onClick={() => setSheetOpen(true)}>
             Чертёж
           </button>
+          {/* Панорамный тур лежит на стороне Kuula — уводить туда текущую
+              вкладку нельзя, зритель не вернётся к плану. rel обязателен:
+              без noopener чужая страница получает доступ к window.opener. */}
+          <a
+            className={styles.sheetLink}
+            href={TOUR_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            3D{NBSP}тур
+          </a>
           <button
             ref={closeRef}
             type="button"
