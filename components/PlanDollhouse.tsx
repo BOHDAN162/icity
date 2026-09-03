@@ -437,7 +437,7 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
             target="_blank"
             rel="noopener noreferrer"
           >
-            3D{NBSP}тур
+            3D-тур
           </a>
           <button
             ref={closeRef}
