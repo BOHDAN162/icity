@@ -20,13 +20,21 @@
    «поставил пальцы, страница встала». Тип ввода решается один раз
    на жест, см. looksLikeMouse ниже.
 
+   ВТОРОЙ РЕЖИМ — ПОЕЗДКА ПО КНОПКЕ. «Записаться на просмотр» просит
+   довезти до низа страницы, и это не «поставить колесу другую цель»:
+   у поездки своя длительность, своя кривая и живая, пересчитываемая
+   каждый кадр цель. Почему именно так — в шапке requestSmoothScrollTo
+   в lib/motion.ts.
+
    ЧЕГО ЗДЕСЬ НЕТ НАМЕРЕННО:
    — тач не трогаем вовсе. Мы просто не слушаем touch-события, поэтому
      на телефоне не меняется ничего, включая pull-to-refresh и уборку
      адресной строки. Инерция там своя, системная, и любая наша поверх
      неё читается как подтормаживание;
    — клавиатуру не перехватываем. Стрелки, PageDown и пробел листают
-     нативно; свой обработчик клавиш отобрал бы их у полей формы;
+     нативно; свой обработчик клавиш отобрал бы их у полей формы.
+     Пассивный keydown ниже ничего не отбирает: он только отменяет
+     поездку, то есть отдаёт страницу зрителю;
    — scroll-behavior: smooth в CSS не появляется. Двухаргументный
      window.scrollTo(x, y) разрешается в auto, то есть в это самое
      свойство, и мгновенный переезд в шов из lib/officeZone.ts стал бы
@@ -43,9 +51,26 @@ import {
   SCROLL_SYNC_PX,
   SCROLL_SMOOTH_TRACKPAD,
   SCROLL_GESTURE_GAP_MS,
+  SCROLL_TRIP_MS_PER_1000PX,
+  SCROLL_TRIP_MIN_MS,
+  SCROLL_TRIP_MAX_MS,
+  EASE_VIEW,
+  bezier,
   wheelLooksLikeMouse,
   onScrollRequest,
 } from '@/lib/motion';
+
+/* Кривая поездки по кнопке. Та же --ease-view, что у выездов кадров
+   вида и у счёта чисел: симметричная, с мягким началом и мягким концом.
+   Считается один раз на модуль — таблица коэффициентов у неё
+   неизменная. */
+const easeTrip = bezier(EASE_VIEW);
+
+/* Клавиши, которыми листают страницу: любая из них посреди поездки
+   означает, что зритель забрал управление. */
+const SCROLL_KEYS = new Set([
+  'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar',
+]);
 
 export default function SmoothScroll() {
   useEffect(() => {
@@ -62,6 +87,13 @@ export default function SmoothScroll() {
     let cur = target;
     let raf = 0;
     let last = 0;
+
+    /* ПОЕЗДКА ПО КНОПКЕ — второй режим того же цикла, а не вторая цель
+       колеса. Своя длительность, своя кривая и цель, которая
+       пересчитывается каждый кадр (`to` может быть и бесконечностью —
+       это «низ страницы»). Почему не экспонента колеса — в шапке
+       requestSmoothScrollTo в lib/motion.ts. */
+    let trip: { from: number; to: number; t0: number; dur: number } | null = null;
 
     /* Кэш «кто владеет колесом под этой целью». Колесо приходит десятками
        в секунду по одному и тому же узлу, а обход предков с
@@ -96,6 +128,56 @@ export default function SmoothScroll() {
     };
 
     const draw = (t: number) => {
+      /* ЗАМОК ПОСРЕДИ ХОДА. Страницу могли запереть, пока цикл жив:
+         зритель листает вверх к секции офиса, та ставит свой замок
+         на шаговый переход, — и с этого кадра window.scrollTo ниже
+         не делает ничего. События scroll при этом тоже нет, значит
+         onScroll не ресинхронизирует цель, и цикл досчитал бы до
+         старого target вхолостую. Он бы даже уснул (пол шага), но
+         cur и target остались бы в будущем, куда страница не доехала,
+         и первое же колесо после снятия замка унесло бы её прыжком
+         на весь недойденный остаток.
+
+         Поэтому встаём там, где страницу застали. Это же чинит давний
+         случай без шаговых переходов: открыть оверлей подвала и
+         закрыть, ничего не выбрав, — единственный путь, где замок
+         не сопровождается программным scrollTo. */
+      if (document.body.style.overflow === 'hidden') {
+        trip = null;
+        target = window.scrollY;
+        cur = target;
+        raf = 0;
+        return;
+      }
+
+      /* Поездка по кнопке. Идёт по времени, а не по остатку, поэтому
+         не может ни выстрелить первым кадром, ни доползать хвостом.
+
+         ЦЕЛЬ СНИМАЕТСЯ ЗДЕСЬ, А НЕ В МОМЕНТ КЛИКА. По дороге вниз
+         страница растёт: кадр комплекса монтируется по
+         IntersectionObserver, ниже подъезжают картинки. Цель, снятая
+         на клике, оказалась бы выше настоящего низа — и поездка
+         заканчивалась бы посреди страницы. */
+      if (trip) {
+        const raw = (t - trip.t0) / trip.dur;
+        const done = raw >= 1;
+        const goal = Math.min(maxScroll(), Math.max(0, trip.to));
+        cur = trip.from + (goal - trip.from) * easeTrip(Math.min(1, raw));
+        window.scrollTo(0, cur);
+        /* Экспоненте колеса dt считается от предыдущего кадра, а кадры
+           поездки для неё — сон: без этой строки первый щелчок после
+           приезда взял бы dt за всю поездку. */
+        last = t;
+        if (done) {
+          trip = null;
+          target = cur;
+          raf = 0;
+          return;
+        }
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+
       /* Шаг от РЕАЛЬНОГО dt, а не «столько-то за кадр»: доля за кадр —
          скрытая привязка к 60 Гц. Потолок 100 мс — на возврат из фоновой
          вкладки, где dt в секунды: страница просто оказывается в цели,
@@ -139,9 +221,28 @@ export default function SmoothScroll() {
       raf = 0;
     };
 
+    /* ЗРИТЕЛЬ ВСЕГДА СИЛЬНЕЕ ПОЕЗДКИ. Колесо, палец, полоса прокрутки
+       или клавиша посреди пути — и мы отдаём страницу там, где она
+       сейчас, а не доводим её до низа из-под руки. Ровно та беда,
+       на которой обожглась автодоводка кадра вида (см. AGENTS.md,
+       «Порядок экранов»): отбирать прокрутку у того, кто ей уже
+       пользуется, нельзя. */
+    const cancelTrip = () => {
+      if (!trip) return;
+      trip = null;
+      target = window.scrollY;
+      cur = target;
+      sleep();
+    };
+
     const onWheel = (e: WheelEvent) => {
       /* Ctrl+колесо — щипковый зум браузера, не прокрутка. */
       if (e.ctrlKey || e.defaultPrevented || e.deltaY === 0) return;
+
+      /* Отменяется поездка ДО разбора типа ввода: трекпад уезжает
+         нативно, ниже по коду его ветка выходит раньше — а забрать
+         у него страницу надо всё равно. */
+      cancelTrip();
 
       /* Новый жест — заново решаем, чем скроллят. Внутри жеста решение
          не пересматривается ни разу: половина жеста нативно, половина
@@ -194,6 +295,13 @@ export default function SmoothScroll() {
        фактическому положению и гасим цикл — иначе он утащил бы
        страницу обратно, туда, куда ехал до чужого вмешательства. */
     const onScroll = () => {
+      /* Пока идёт поездка, за рулём мы, и расхождение здесь — это не
+         чужое вмешательство, а сдвиг раскладки под нами: секции ниже
+         подгружают картинки, и браузер подправляет scrollY якорем.
+         Прежде такое расхождение гасило цикл, и кнопка «Записаться»
+         высаживала зрителя посреди страницы. Чужие жесты ловятся
+         не здесь, а своими событиями — см. cancelTrip. */
+      if (trip) return;
       if (Math.abs(window.scrollY - cur) <= SCROLL_SYNC_PX) return;
       target = window.scrollY;
       cur = target;
@@ -203,6 +311,12 @@ export default function SmoothScroll() {
     /* Смена размеров меняет и максимум прокрутки, и высоту секций.
        Дешевле встать там, где стоим, чем пересчитывать цель. */
     const onResize = () => {
+      cacheNode = null;
+      cacheOwner = null;
+      /* Поездку смена размеров не рвёт: цель у неё живая и снимается
+         каждый кадр. Иначе на телефоне её убивала бы уборка адресной
+         строки — та самая, из-за которой высота hero считается в dvh. */
+      if (trip) return;
       target = window.scrollY;
       cur = target;
       cacheNode = null;
@@ -211,23 +325,55 @@ export default function SmoothScroll() {
     };
 
     /* «Записаться на просмотр» и любая другая кнопка-якорь просят
-       доехать сюда тем же ходом, что и колесо, вместо мгновенного
-       браузерного прыжка по хэшу. Замок страницы действует и здесь —
-       та же причина, что у onWheel. */
+       доехать сюда плавной поездкой вместо мгновенного браузерного
+       прыжка по хэшу. Замок страницы действует и здесь — та же
+       причина, что у onWheel; отказ уезжает вызывающему ответом,
+       и тот отдаёт клик браузеру.
+
+       Длительность — от длины пути, с полом и потолком: короткий
+       переезд не мигает, а весь лендинг сверху донизу не тянется
+       бесконечно. */
     const offScrollRequest = onScrollRequest((y) => {
-      if (document.body.style.overflow === 'hidden') return;
-      target = Math.min(maxScroll(), Math.max(0, y));
+      if (document.body.style.overflow === 'hidden') return false;
+      const from = window.scrollY;
+      const goal = Math.min(maxScroll(), Math.max(0, y));
+      const dist = Math.abs(goal - from);
+      if (dist < 1) return true;
+      trip = {
+        from,
+        to: y,
+        t0: performance.now(),
+        dur: Math.min(
+          SCROLL_TRIP_MAX_MS,
+          Math.max(SCROLL_TRIP_MIN_MS, (dist / 1000) * SCROLL_TRIP_MS_PER_1000PX),
+        ),
+      };
+      cur = from;
+      target = from;
       wake();
+      return true;
     });
+
+    /* Палец и полоса прокрутки — тот же «зритель забрал управление».
+       pointerdown приходит раньше click, так что клик по самой кнопке
+       свою же поездку не рубит. */
+    const onPointerDown = () => cancelTrip();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(e.key)) cancelTrip();
+    };
 
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('keydown', onKeyDown, { passive: true });
 
     return () => {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
       offScrollRequest();
       sleep();
     };
