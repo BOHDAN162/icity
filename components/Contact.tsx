@@ -32,6 +32,7 @@ import {
 import dynamic from 'next/dynamic';
 import styles from './Contact.module.css';
 import { contacts } from '@/lib/contacts';
+import { POLICY_HREF } from '@/lib/legal';
 import { TOUR_URL } from '@/lib/tour';
 import { prefetchPlan, type RenderKey } from '@/lib/interior';
 import { requestZone, scrollToOffice, setOfficeReturn } from '@/lib/officeZone';
@@ -57,10 +58,6 @@ const REQUIRED_MESSAGES: Record<FieldName, string> = {
   name: 'Как к вам обращаться?',
   contact: 'Нужен контакт для ответа',
 };
-
-/* Страницы политики обработки персональных данных в проекте нет —
-   легал-строка и подвал ссылаются сюда же, до появления реальной страницы. */
-export const POLICY_HREF = '#';
 
 /* Якорь секции. На него ведёт кнопка «Записаться на просмотр» с Landing
    (href="#contact") и он же уезжает крошкой возврата в officeZone —
@@ -346,9 +343,21 @@ export default function Contact() {
               </p>
             )}
 
+            {/* Новая вкладка, а не переход: уход на политику в той же
+                вкладке стёр бы уже введённые имя, телефон и комментарий —
+                форма не восстанавливается, состояние живёт в React.
+                rel — как у Kuula, Telegram и Max выше. Обычный <a>,
+                не next/link: маршрут /privacy динамический (читает host
+                из заголовков), префетч был бы холостым, да и при
+                target="_blank" Link всё равно вырождается в анкор. */}
             <p className={styles.legal}>
               Нажимая «Записаться», вы соглашаетесь с{' '}
-              <a className={styles.dottedLink} href={POLICY_HREF}>
+              <a
+                className={styles.dottedLink}
+                href={POLICY_HREF}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 политикой обработки персональных данных
               </a>
               .

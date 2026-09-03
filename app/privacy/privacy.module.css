@@ -1,0 +1,167 @@
+/* Путь в проекте: app/privacy/privacy.module.css
+   Юридический документ, а не секция лендинга: ни растра фритты,
+   ни анимаций, ни чисел крупным кеглем. Единственный акцент —
+   точечное подчёркивание ссылок, то же, что в форме записи.
+
+   Колонка узкая нарочно. Ширина строки держится в районе 70 знаков:
+   --container (1440px) здесь читался бы как таблица, а не как текст,
+   и это единственная страница сайта, которую действительно читают
+   подряд, а не рассматривают. */
+
+.page {
+  padding-top: var(--section-y);
+}
+
+.doc {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--pad-x) var(--s-11);
+}
+
+/* Возврат на главную набран так же, как подписи в подвале: моно,
+   прописные, вторичный цвет. Это техническая подпись, а не ссылка
+   в тексте, поэтому без точечного пунктира. */
+.back {
+  display: inline-block;
+  margin-bottom: var(--s-7);
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-60);
+  text-decoration: none;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+
+.back:hover {
+  color: var(--ink);
+}
+
+/* --display-l, а не заголовочный уровень h1 (--display-xl, до 86px):
+   86px над юридическим текстом — это обложка, а здесь первая строка
+   документа. Токен существующий, своего кегля не заводим. */
+.title {
+  margin: 0;
+  font: var(--display-l);
+  letter-spacing: var(--tr-l);
+  font-optical-sizing: auto;
+}
+
+.revision {
+  margin: var(--s-4) 0 0;
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-60);
+}
+
+.section {
+  margin-top: var(--s-9);
+}
+
+.heading {
+  margin: 0 0 var(--s-4);
+  font: var(--heading);
+  letter-spacing: var(--tr-head);
+}
+
+.section p {
+  margin: 0 0 var(--s-4);
+}
+
+.section p:last-child {
+  margin-bottom: 0;
+}
+
+.section b {
+  font-weight: 600;
+}
+
+.list {
+  margin: 0 0 var(--s-4);
+  padding-left: var(--s-5);
+}
+
+.list li {
+  margin-bottom: var(--s-2);
+}
+
+.list li::marker {
+  color: var(--alu);
+}
+
+/* Реквизиты: две колонки, подпись слева гротеском вторичным цветом,
+   значение справа. Числа (ИНН, КПП, ОГРН) уходят в моно — они и есть
+   тот случай, ради которого третья гарнитура в системе.
+   Линии между строками на --alu, 1px: рамок и теней тут нет. */
+.facts {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 0;
+  margin: 0 0 var(--s-5);
+  border-top: 1px solid var(--alu);
+}
+
+.facts dt {
+  padding: var(--s-3) var(--s-4) var(--s-3) 0;
+  border-bottom: 1px solid var(--alu);
+  font: var(--small);
+  color: var(--ink-60);
+}
+
+.facts dd {
+  margin: 0;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--alu);
+  font: var(--small);
+}
+
+.figure {
+  font: 500 15px / 1.52 var(--mono);
+  letter-spacing: var(--tr-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Домен и путь — техническая подпись, поэтому моно. */
+.domain {
+  font-family: var(--mono);
+  font-size: 0.94em;
+}
+
+.link {
+  color: var(--ink);
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--alu);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--motion-fast) var(--ease-standard);
+}
+
+.link:hover {
+  text-decoration-color: var(--frit-deep);
+}
+
+@media (max-width: 639px) {
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  /* В одну колонку линия между подписью и значением одной пары
+     разрывала бы пару надвое: снимаем её у подписи, оставляем
+     у значения — граница идёт между реквизитами, а не внутри. */
+  .facts dt {
+    padding: var(--s-3) 0 0;
+    border-bottom: 0;
+  }
+
+  .facts dd {
+    padding: var(--s-1) 0 var(--s-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back,
+  .link {
+    transition: none;
+  }
+}

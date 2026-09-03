@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Literata, Golos_Text, JetBrains_Mono } from "next/font/google";
-import Preloader from "@/components/Preloader";
 import Cursor from "@/components/Cursor";
 import SmoothScroll from "@/components/SmoothScroll";
 import "./globals.css";
@@ -83,7 +82,11 @@ export default function RootLayout({
       className={`${literata.variable} ${golosText.variable} ${jetBrainsMono.variable}`}
     >
       <body>
-        <Preloader />
+        {/* Preloader живёт не здесь, а в app/(landing)/layout.tsx: он
+            привязан к hero и не должен встречать зрителя на /privacy.
+            Порядок узлов от этого не изменился — он по-прежнему первым
+            в <body> на посадочной странице, просто приезжает внутри
+            {children}. */}
         {children}
         {/* Свой курсор — последним узлом body и поверх всего (z-index
             2000). Компонент сам решает, работать ли: на тач-устройстве
