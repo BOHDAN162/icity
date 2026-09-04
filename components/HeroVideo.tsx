@@ -112,6 +112,74 @@ const AUDIO_DUCK_TO = 0.25;
     из трёх секунд полсекунды музыки и две с половиной тишины. */
 const AUDIO_TAIL_MS = 4000;
 
+/* ГРОМКОСТЬ АМБИЕНТА ВЕДЁТ WEB AUDIO, А НЕ a.volume.
+
+   ПРИЧИНА. На iOS свойство volume у медиаэлемента фактически только для
+   чтения: присвоение молча игнорируется, чтение всегда возвращает 1
+   (документировано Apple). До 4 сентября 2026 на iPhone из-за этого
+   не работало НИЧЕГО из здешней звуковой арифметики: амбиент играл
+   на полной громкости вместо AMBIENCE_VOLUME, приглушение к финалу
+   не приглушало, а затухание хвоста не затухало — и на зацикливании
+   хвоста было слышно тихое начало трека и новый подъём. Заказчик поймал
+   это как «звук замолкает, а потом опять начинает играть». GainNode
+   меняет громкость на всех движках, включая iOS.
+
+   ПУТЬ ОДИН НА ВСЕХ, и это нарочно: то, что чинит iPhone, обязано
+   проверяться живьём на десктопе. Ветка «а на этом движке по-старому»
+   означала бы, что мобильный код никто никогда не видел.
+
+   ГРАФ СТРОИТСЯ СИНХРОННО В ЖЕСТЕ (см. enter). Вне жеста AudioContext
+   стартует suspended, и звука не будет вовсе. */
+type AmbienceGain = { ctx: AudioContext; gain: GainNode };
+
+/* Увод элемента в граф НЕОБРАТИМ: после createMediaElementSource его
+   собственный выход отключён навсегда, и если контекст не заиграет —
+   получим полную тишину вместо звука. Поэтому решение принимается ДО
+   того, как что-то подключено: контекст, созданный внутри жеста, обязан
+   быть 'running' сразу; не 'running' — закрываем и живём на a.volume. */
+const openAmbienceGain = (a: HTMLAudioElement): AmbienceGain | null => {
+  const Ctor = window.AudioContext;
+  if (!Ctor) return null;
+  let ctx: AudioContext;
+  try {
+    ctx = new Ctor();
+  } catch {
+    return null;
+  }
+  if (ctx.state !== 'running') {
+    ctx.close().catch(() => {});
+    return null;
+  }
+  try {
+    const gain = ctx.createGain();
+    ctx.createMediaElementSource(a).connect(gain).connect(ctx.destination);
+    return { ctx, gain };
+  } catch {
+    ctx.close().catch(() => {});
+    return null;
+  }
+};
+
+/** Одна точка записи громкости: есть граф — пишем в него, нет — в элемент. */
+const setAmbienceLevel = (a: HTMLAudioElement, g: AmbienceGain | null, v: number) => {
+  if (g) g.gain.gain.value = v;
+  else a.volume = v;
+};
+
+/* Управляется ли громкость элемента вообще. Проверяется ПОВЕДЕНИЕМ,
+   а не по названию браузера: на iOS присваивание не проходит, и вернётся
+   единица. Нужно ровно в одном месте — решить, можно ли зацикливать
+   хвост, когда граф построить не удалось (см. startAmbienceTail). */
+let volumeCtl: boolean | null = null;
+const volumeSettable = () => {
+  if (volumeCtl === null) {
+    const probe = new Audio();
+    probe.volume = 0.5;
+    volumeCtl = probe.volume === 0.5;
+  }
+  return volumeCtl;
+};
+
 /* Хвост амбиента после свапа.
 
    УЗЕЛ ПЕРЕЕЗЖАЕТ В BODY, и это не хитрость, а единственный надёжный
@@ -122,7 +190,7 @@ const AUDIO_TAIL_MS = 4000;
 
    Предохранитель на таймере обязателен: rAF в фоновой вкладке встаёт,
    и без него звук завис бы на последней громкости до возвращения. */
-const startAmbienceTail = (a: HTMLAudioElement) => {
+const startAmbienceTail = (a: HTMLAudioElement, g: AmbienceGain | null) => {
   /* БЕЗ ЗАЦИКЛИВАНИЯ ХВОСТА НЕТ ВОВСЕ, И ЭТО НЕ ОЧЕВИДНО. Амбиент
      10,51 с, ролик 9,79 с, звук идёт с нуля вместе с ним — значит
      к свапу материала остаётся 0,7 с. Замер до правки: на свапе
@@ -133,22 +201,40 @@ const startAmbienceTail = (a: HTMLAudioElement) => {
 
      Шов слышен не будет: у трека тихий старт и спад к 8–10 с (см.
      AGENTS.md, раздел про амбиент), то есть склейка идёт тихое
-     к тихому, да ещё и под затуханием. */
-  a.loop = true;
+     к тихому, да ещё и под затуханием.
+
+     И ВОТ ПОЭТОМУ ЗАЦИКЛИВАНИЕ УСЛОВНОЕ. «Под затуханием» — обязательная
+     часть: к моменту шва громкость 3,5 % от базовой, и склейки не слышно.
+     Там, где затухания нет (громкость не управляется вовсе), шов звучит
+     в полную силу — тихое начало трека и новый подъём, ровно тот баг
+     с iPhone, ради которого и заведён граф выше. Нет затухания — нет
+     и зацикливания: трек доигрывает своё тихое окончание и снимается. */
+  const fades = g !== null || volumeSettable();
+  a.loop = fades;
   document.body.appendChild(a);
-  const from = a.volume;
+  const from = g ? g.gain.gain.value : a.volume;
   const t0 = performance.now();
   let raf = 0;
+  let guard = 0;
+  /* Позвать stop могут трое: сам спад, предохранитель и конец трека
+     на незацикленном хвосте. Поэтому он идемпотентен и сам за собой
+     убирает — иначе контекст закрывался бы дважды. */
+  let stopped = false;
   const stop = () => {
+    if (stopped) return;
+    stopped = true;
     if (raf) cancelAnimationFrame(raf);
+    window.clearTimeout(guard);
     a.pause();
     a.remove();
+    g?.ctx.close().catch(() => {});
   };
-  const guard = window.setTimeout(stop, AUDIO_TAIL_MS + 500);
+  if (!fades) a.addEventListener('ended', stop, { once: true });
+  guard = window.setTimeout(stop, AUDIO_TAIL_MS + 500);
   const step = () => {
     const q = (performance.now() - t0) / AUDIO_TAIL_MS;
-    if (q >= 1) { window.clearTimeout(guard); stop(); return; }
-    a.volume = from * (1 - q);
+    if (q >= 1) { stop(); return; }
+    setAmbienceLevel(a, g, from * (1 - q));
     raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);
@@ -293,6 +379,9 @@ export default function HeroVideo({ onLift, onDone }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const idleRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  /* Граф громкости амбиента. Строится один раз, в жесте входа со звуком;
+     null значит «не удалось, живём на a.volume» (см. openAmbienceGain). */
+  const gainRef = useRef<AmbienceGain | null>(null);
   /* Хвост амбиента пошёл: узел уже не под React, и глушить его
      на размонтировании нельзя — он для того и уведён. */
   const tailRef = useRef(false);
@@ -387,9 +476,13 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     const a = audioRef.current;
     if (a && !a.paused) {
       tailRef.current = true;
-      startAmbienceTail(a);
+      startAmbienceTail(a, gainRef.current);
     } else {
       a?.pause();
+      /* Контекст закрывается вместе со звуком: хвоста не будет, а
+         открытый AudioContext держит аудиоустройство занятым. */
+      gainRef.current?.ctx.close().catch(() => {});
+      gainRef.current = null;
     }
     onDone();
   }, [onDone]);
@@ -413,13 +506,14 @@ export default function HeroVideo({ onLift, onDone }: Props) {
       /* Амбиент гаснет к финалу тем же currentTime, что ведёт выезд.
          Отдельного таймера нет нарочно: вкладка в фоне разъехалась бы
          с картинкой — та же причина, по которой весь полёт считается
-         от currentTime. Одна запись свойства на кадр, ре-рендеров нет. */
+         от currentTime. Одна запись громкости на кадр, ре-рендеров нет. */
       const a = audioRef.current;
       if (a && soundOnRef.current && !tailRef.current) {
         const left = duration - v.currentTime;
         const q = clamp01((AUDIO_DUCK_S - left) / AUDIO_DUCK_S);
         const ease = 1 - (1 - q) * (1 - q);
-        a.volume = AMBIENCE_VOLUME * (1 - (1 - AUDIO_DUCK_TO) * ease);
+        setAmbienceLevel(a, gainRef.current,
+          AMBIENCE_VOLUME * (1 - (1 - AUDIO_DUCK_TO) * ease));
       }
       if (v.ended) { finish(); return; }
       if (v.paused) v.play().catch(finish);
@@ -444,7 +538,13 @@ export default function HeroVideo({ onLift, onDone }: Props) {
        лучше сорванного полёта. В цепочку отказов видео звук не входит. */
     const a = audioRef.current;
     if (withSound && a) {
-      a.volume = AMBIENCE_VOLUME;
+      /* Граф громкости строится ЗДЕСЬ ЖЕ и по той же причине, что и
+         play(): AudioContext, созданный вне жеста, стартует suspended.
+         На iOS это единственный способ вообще управлять громкостью —
+         a.volume там не пишется (см. openAmbienceGain). Не удалось —
+         gainRef остаётся null, и всё идёт через a.volume, как прежде. */
+      gainRef.current = openAmbienceGain(a);
+      setAmbienceLevel(a, gainRef.current, AMBIENCE_VOLUME);
       a.currentTime = 0;
       a.play().catch(() => {});
     }
@@ -590,7 +690,13 @@ export default function HeroVideo({ onLift, onDone }: Props) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
     if (crossTimerRef.current) window.clearTimeout(crossTimerRef.current);
-    if (!tailRef.current) audioRef.current?.pause();
+    /* Контекст закрывается только вместе со звуком: если хвост пошёл,
+       и элемент, и граф уже не под React — гасит их сам хвост. */
+    if (!tailRef.current) {
+      audioRef.current?.pause();
+      gainRef.current?.ctx.close().catch(() => {});
+      gainRef.current = null;
+    }
     /* Только с настоящего размонтирования, после финала: doneRef отсекает
        двойное монтирование StrictMode, иначе URL отобрались бы у живого
        плеера ещё до первого клика. */
