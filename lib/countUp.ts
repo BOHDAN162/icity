@@ -32,6 +32,7 @@
    разметка остаётся ровно такой, какой приехала с сервера. */
 
 import { useEffect, type RefObject } from 'react';
+import { bezier, EASE_VIEW } from '@/lib/motion';
 
 /** Разделители разрядов, которые встречаются в проекте. */
 const GROUP = '\u202F\u00A0 ';
@@ -54,9 +55,19 @@ export function countFrame(final: string, t: number): string {
   });
 }
 
-/* Тот же easeOutCubic, что у чека в Contact.tsx: быстрый разгон,
-   спокойное приземление на настоящее число. */
-const easeOut = (t: number) => 1 - (1 - t) ** 3;
+/* СИММЕТРИЧНАЯ КРИВАЯ, ПАРА К --ease-view. Здесь стоял easeOutCubic
+   («быстрый разгон, мягкое торможение»), и на счётчике он читался
+   резко: за первые 200 мс из тысячи проходило ПОЛОВИНА пути — цифры
+   мелькали нечитаемо, а последние полсекунды еле ползли. Заказчик
+   попросил 4 сентября 2026 «медленнее и плавнее, но не дольше»:
+   длительность осталась прежней, сменился характер. Симметричная
+   отдаёт половину ровно на середине времени, и число успевает
+   прочитаться на всём ходу.
+
+   Кривая берётся из общего места, а не пишется формулой заново:
+   ей же едут выезды кадров вида и полоса в экономике, и разъехаться
+   они не должны. */
+const easeCount = bezier(EASE_VIEW);
 
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)';
 
@@ -96,7 +107,7 @@ export function useCountUpOnView(
 
     const frame = (now: number) => {
       const t = Math.min(1, (now - started) / duration);
-      write(easeOut(t));
+      write(easeCount(t));
       if (t < 1) raf = requestAnimationFrame(frame);
       else raf = 0;
     };
