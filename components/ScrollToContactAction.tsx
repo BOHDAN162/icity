@@ -3,7 +3,7 @@
 /* iCITY 113Н — кнопка «Записаться на просмотр» на экране 2.
    Путь в проекте: components/ScrollToContactAction.tsx
 
-   Прокручивает страницу к самому низу плавной поездкой SmoothScroll
+   Прокручивает страницу к самому низу поездкой ScrollTrip
    (lib/motion.ts, requestSmoothScrollToBottom), а не мгновенным
    браузерным прыжком по #contact — тот читался как «сайт сразу
    показал форму».

@@ -87,7 +87,7 @@ export default function NextCue({ next, progress }: Props) {
   const goDown = () => {
     /* Под prefers-reduced-motion шагов нет вовсе: офис и оба кадра —
        обычные экраны в потоке, и запирать нечего. Целимся прямо в кадр,
-       мгновенно: SmoothScroll под этой настройкой не монтируется. */
+       мгновенно: ScrollTrip под этой настройкой не монтируется. */
     if (matchMedia(REDUCED).matches) {
       document.getElementById('view')?.scrollIntoView();
       return;

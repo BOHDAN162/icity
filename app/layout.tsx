@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Literata, Golos_Text, JetBrains_Mono } from "next/font/google";
 import Cursor from "@/components/Cursor";
-import SmoothScroll from "@/components/SmoothScroll";
+import ScrollTrip from "@/components/ScrollTrip";
 import "./globals.css";
 
 /* ТИПОГРАФИКА ПРОЕКТА — три гарнитуры с жёстко разведёнными ролями.
@@ -97,7 +97,7 @@ export default function RootLayout({
             курсора, — страница и указатель едут одним характером.
             Ничего не рисует и на тач-устройстве не делает ничего:
             touch-события модуль не слушает вовсе. */}
-        <SmoothScroll />
+        <ScrollTrip />
       </body>
     </html>
   );

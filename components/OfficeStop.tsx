@@ -186,8 +186,8 @@ const STEP_MS = 1400;
    Порог, а не первое же событие: трекпад шлёт жест десятками мелких
    дельт по 2–8 px, и без накопителя шаг срабатывал бы от касания
    пальцами. У мыши один щелчок это сразу 100–120 px, ей порог
-   не мешает. Накопитель обнуляется по той же паузе между жестами,
-   которой SmoothScroll отличает мышь от трекпада. */
+   не мешает. Накопитель обнуляется по паузе SCROLL_GESTURE_GAP_MS —
+   она осталась в lib/motion.ts ровно ради этого места. */
 const STEP_ARM_PX = 40;
 
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
@@ -479,7 +479,7 @@ export default function OfficeStop() {
         if (cur < 2) runStep((cur + 1) as Step);
         /* Последний кадр пройден — отдаём прокрутку. Замок снимается
            в фазе CAPTURE, то есть до того, как это же событие дойдёт
-           до SmoothScroll: он увидит страницу уже отпертой и повезёт
+           до ScrollTrip: он увидит страницу уже отпертой и повезёт
            её сам, без потерянного жеста. */
         else {
           handedOff = true;
@@ -534,8 +534,10 @@ export default function OfficeStop() {
       listening = true;
       window.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', onResize, { passive: true });
-      /* CAPTURE: наш разбор жеста обязан случиться до SmoothScroll,
-         который слушает колесо в фазе всплытия. */
+      /* CAPTURE остался с тех пор, когда колесо слушал ещё и модуль
+         плавной прокрутки, и наш разбор жеста обязан был идти первым.
+         Модуля больше нет, но фаза безвредна и менять её незачем:
+         слушатель пассивный и ничего не отменяет. */
       window.addEventListener('wheel', onWheel, { passive: true, capture: true });
       window.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
       window.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
