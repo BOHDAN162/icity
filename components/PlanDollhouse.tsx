@@ -94,6 +94,8 @@ const PlanFlat = dynamic(() => import('./PlanFlat'), { ssr: false });
    переносе файла между редакторами, и «244,1 м²» ломается по строке. */
 const NBSP = '\u00A0';
 
+const FACADE_NOTE = '\u041F\u0430\u043D\u043E\u0440\u0430\u043C\u043D\u044B\u0439 \u0444\u0430\u0441\u0430\u0434 \u043F\u043E \u0442\u0440\u0451\u043C \u0441\u0442\u043E\u0440\u043E\u043D\u0430\u043C.';
+
 /* Числа — из docs/facts.md, других источников у сайта нет.
    Метраж скошенного угла сюда не попал сознательно: в facts.md его нет,
    а по геометрии выходит 8,82 м по плите и 9,56 м по линии остекления —
@@ -531,6 +533,7 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
               </div>
             ))}
           </dl>
+          <p className={styles.facade}>{FACADE_NOTE}</p>
         </div>
 
         {/* Клавиатура. Список видим, когда в нём есть фокус: мышью зоны

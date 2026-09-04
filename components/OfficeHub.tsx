@@ -571,7 +571,13 @@ export default function OfficeHub({ active, next }: Props) {
       <div className={styles.scrimBottom} aria-hidden="true" />
 
       <div className={styles.ui}>
-        <div className={styles.bottom}>
+        {/* Сторона зоны атрибутом, а не классом: её читает NextCue из своего
+            CSS-модуля, а имена классов модули хешируют каждый по-своему —
+            атрибут же общий (тот же приём, что у data-stepping со сцены).
+            Нужен он ровно на телефоне: там индикатор «Дальше» стоит
+            в строке счётчика, и в зеркальных зонах счётчик уезжает вправо,
+            прямо под него. Разводим их по разным краям. */}
+        <div className={styles.bottom} data-side={zone.side === 'right' ? 'right' : 'left'}>
           <div className={`${styles.info} ${zone.side === 'right' ? styles.infoRight : ''}`} key={zoneId}>
             {/* Надзаголовок с метражом — только на ресепшне: он там
                 представляет помещение целиком. В остальных зонах речь
