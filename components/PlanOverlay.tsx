@@ -23,6 +23,7 @@
    13 px. Пересчёт идёт на изменении зума и размера окна, не на кадрах. */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { focusQuietly } from '@/lib/focus';
 import type { Drawing } from '@/lib/plan';
 import { bboxOf, fmtArea, loadDrawing } from '@/lib/plan';
 import { setCursorSheet } from '@/lib/cursorMode';
@@ -85,7 +86,7 @@ export default function PlanOverlay({ open, onClose }: { open: boolean; onClose:
 
   useEffect(() => {
     if (!open) return;
-    closeRef.current?.focus();
+    focusQuietly(closeRef.current);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
     };

@@ -62,7 +62,9 @@ const LABEL: Record<ZoneKey, string> = {
   openspace: 'Опенспейс',
 };
 
-const RENDER_KEYS: readonly RenderKey[] = ['reception', 'corridor', 'openspace', 'kitchen', 'meeting_lg'];
+/* Экспортируется: счётчик зон в OfficeHub обязан считать по этому
+   списку, а не по своей копии порядка обхода. */
+export const RENDER_KEYS: readonly RenderKey[] = ['reception', 'corridor', 'openspace', 'kitchen', 'meeting_lg'];
 
 const isRenderKey = (k: string): k is RenderKey => (RENDER_KEYS as readonly string[]).includes(k);
 

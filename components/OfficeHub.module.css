@@ -32,6 +32,23 @@
   overflow: hidden;
   background: var(--paper-2);
   transform: scale(var(--office-scale, 1));
+  /* Переменная меняется скачком — плавность делает переход, и делает
+     её композитор. Прежде значение гнал rAF сцены покадрово, и каждый
+     кадр стоил полного пересчёта стиля; разбор — в шапке
+     OfficeStop.module.css. Длительность общая с выездом кадра. */
+  transition: transform var(--t-view-step) var(--ease-view);
+  /* will-change ставится КЛАССОМ НА ВРЕМЯ ШАГА (.stepping приходит
+     со сцены OfficeStop), а не висит постоянно. Заранее слой нужен —
+     иначе растеризация полноэкранного офиса попадает ровно на нулевой
+     кадр анимации, — но «заранее» это за кадр до движения, а не всю
+     жизнь страницы: постоянный слой размером с экран платит памятью
+     каждый кадр прокрутки. */
+}
+
+/* Признак приходит атрибутом со сцены OfficeStop: имена классов
+   CSS-модули хешируют по-своему в каждом файле, а атрибут — общий. */
+[data-stepping] .stage {
+  will-change: transform;
 }
 
 /* Кадр — <picture>, а не <img>: рендеры отдаются в AVIF с запасным WebP
@@ -65,6 +82,10 @@
 .scrimInfo,
 .scrimBottom {
   opacity: var(--office-ui, 1);
+  /* Интерфейс гаснет за первые 60 % выезда — та же доля, что была
+     в прежней огибающей --ui-out. Переменная меняется скачком,
+     плавность на переходе. */
+  transition: opacity calc(var(--t-view-step) * 0.6) var(--ease-view);
 }
 
 /* Верхняя вуаль держит только «К башне» слева: справа стоит залитая
@@ -256,141 +277,152 @@
   display: inline-flex;
 }
 
-/* Текстовый контрол, не кнопка в коробке — единственный явный call to
-   action на экране офиса. Кегль и трекинг — токен --heading (тот же,
-   что у h3 по сайту): ближайшее совпадение к целевым 26px/-0.025em
-   из всех готовых связок, плюс резиновый clamp вместо фиксированного px. */
+/* CALL TO ACTION ЭКРАНА — САМОСТОЯТЕЛЬНАЯ КАПСУЛА, А НЕ ССЫЛКА.
+   Прежде это был текст с волосяной линией поверх фотореалистичного
+   рендера, и он проигрывал кадру: замер области под ним на опенспейсе
+   даёт чистый белый (яркость 1,000), держала подпись одна вуаль.
+   Теперь у кнопки своя поверхность, и читается она как элемент
+   управления, а не как подпись к картинке.
+
+   ПОЧЕМУ ПОЛУПРОЗРАЧНАЯ, НО БЕЗ РАЗМЫТИЯ. Матовое стекло здесь
+   невозможно: backdrop-filter в проекте запрещён (AGENTS.md — Lightning
+   CSS уже убил его на липкой панели), и отдельно запрещены filter,
+   blur и маски поверх полноэкранного кадра — они перерисовывают его
+   каждый тик. Плотная полупрозрачная плашка — тот же приём, что
+   у подписи кадра в Complex.module.css.
+
+   ЗАМЕР, А НЕ НАДЕЖДА. --ink даёт 4,5:1 при подложке от 126/255.
+   --paper при α 0,62 поверх АБСОЛЮТНО ЧЁРНОГО пикселя — 151/255,
+   то есть 6,27:1; поверх белого — 16,9:1. Значит капсула проходит AA
+   на любом пикселе любого из пяти рендеров, а не только на светлом.
+   Сама альфа не новая: это пик .scrimInfo и .scrimBottom.
+
+   Материал — тот же, что у кругов перехода ниже: --paper внутри,
+   волосяная рамка --alu, текст --ink. CTA и навигация обязаны
+   читаться одной семьёй. */
 .planLink {
   appearance: none;
-  border: 0;
-  background: none;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-4);
+  background: rgba(242, 244, 245, 0.62);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  padding: var(--s-3) var(--s-5);
+  /* Цель нажатия не меньше 44 px. */
+  min-height: 44px;
+  display: inline-grid;
+  gap: var(--s-2);
+  justify-items: start;
   color: var(--ink);
   font: var(--heading);
   letter-spacing: var(--tr-head);
   cursor: pointer;
-  transition: color var(--motion-base) var(--ease-soft);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .planLink:hover { color: var(--frit-deep); }
-}
-
-.planWrap:focus-within .planLink { color: var(--frit-deep); }
-
-/* Волосяная линия под текстом — один слой, не два: в покое короткая
-   и серая (scaleX 0,22 — доля, не токенизируется, как и радиус дуги
-   на карте), на ховере вытягивается на всю ширину и красне́ет разом.
-   Сам текст на ховере сдвигается вправо на --s-1: ближайший шаг к
-   целевым 6px, специально меньше сдвига бейджа (--s-2) — иначе
-   пропадает ощущение «текст и бейдж едут с разной скоростью». */
-.planText {
-  position: relative;
-  display: inline-block;
-  padding-bottom: var(--s-2);
-  transition: transform var(--motion-slow) var(--ease-soft);
-}
-
-.planText::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--alu);
-  transform: scaleX(0.22);
-  transform-origin: left;
   transition:
-    transform var(--motion-slow) var(--ease-soft),
-    background-color var(--motion-base) var(--ease-soft);
+    background var(--motion-base) var(--ease-soft),
+    border-color var(--motion-base) var(--ease-soft),
+    color var(--motion-base) var(--ease-soft);
 }
 
+/* ЗАПАСНОЙ ПУТЬ БЕЗ ПОЛУПРОЗРАЧНОСТИ. Первое применение
+   prefers-reduced-transparency в проекте: раньше его не было нигде.
+   Плашка становится непрозрачной, и контраст от этого только растёт —
+   --ink на чистом --paper даёт 15,6:1 против 6,27:1 в худшей точке
+   полупрозрачной. Вуали при этом не трогаем: они и есть тот приём,
+   которым в системе держат текст поверх кадра, и погасив их наглухо
+   мы закрыли бы сам рендер. */
+@media (prefers-reduced-transparency: reduce) {
+  .planLink { background: var(--paper); }
+}
+
+/* Надпись и бейдж — одной строкой внутри капсулы. Отбивка --s-3, а не
+   --s-4: заказчик 2026-09-03 попросил придвинуть бейдж к надписи. Ниже
+   не опускать — на наведении бейдж отъезжает ровно на --s-2, и при
+   зазоре в те же 8 px разница между покоем и ховером сравнялась бы
+   с самим зазором. */
+.planMain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+/* Ховер ведёт плашку к непрозрачному белому и рамку к --ink — ровно
+   так же, как .btn-secondary:hover в tokens.css. Своего поведения
+   у капсулы нет: она обязана вести себя как вторичная кнопка сайта. */
 @media (hover: hover) and (pointer: fine) {
-  .planLink:hover .planText { transform: translateX(var(--s-1)); }
-  .planLink:hover .planText::after {
-    transform: scaleX(1);
-    background-color: var(--frit-deep);
+  .planLink:hover {
+    background: var(--white);
+    border-color: var(--ink);
   }
 }
 
-.planWrap:focus-within .planText { transform: translateX(var(--s-1)); }
-.planWrap:focus-within .planText::after {
-  transform: scaleX(1);
-  background-color: var(--frit-deep);
+/* ФОКУС У КАПСУЛЫ ТОЛЬКО КЛАВИАТУРНЫЙ, И ЭТО ГЛАВНОЕ ПРАВИЛО ЗДЕСЬ.
+
+   ЧТО БЫЛО. После закрытия плана кнопка оставалась в «нажатом» виде:
+   белая плашка, тёмная рамка, сдвинутый бейдж. Держалось это на
+   .planWrap:focus-within, а :focus-within не различает способ
+   фокусировки вовсе — срабатывает и на программный фокус. А фокус сюда
+   возвращает closePlan(), и возвращает всегда. Значит и «нажатый» вид
+   оставался всегда, а не иногда. Заказчик поймал это 2026-09-03.
+
+   ПОЧЕМУ ИМЕННО :focus-visible. Он и означает «зритель пришёл сюда
+   с клавиатуры». Программный перенос под него не подпадает — при
+   условии, что вызывающий сказал focusVisible: false, чем и занимается
+   lib/focus.ts. Мышь сюда тоже не попадает: на клик :focus-visible
+   не срабатывает, и клик остаётся тише наведения.
+
+   ЗАМЕНА КОЛЬЦУ, А НЕ ПРОСТО СНЯТИЕ. «outline: none без замены»
+   на сайте запрещён (AGENTS.md, «Доступность»), и это не формальность:
+   без замены человек с клавиатуры перестаёт понимать, где он. Здесь
+   замена идёт тремя каналами разом — фон в --white, рамка в --ink,
+   надпись в --frit-deep. Снимаешь любой из трёх — верни кольцо. */
+.planLink:focus-visible {
+  outline: none;
+  background: var(--white);
+  border-color: var(--ink);
+  color: var(--frit-deep);
 }
 
-/* Бейдж «3D» — декоративный, aria-hidden в разметке. На ховере заливается
-   красным целиком, а не просто краснеет рамкой — белый на --frit-deep
-   держит 6,1:1, см. design-system.md §1. Сдвиг вправо на --s-2 (точное
-   совпадение с целевыми 8px) и лёгкое увеличение — та же природа числа,
-   что и scale(1.25) у кругов перехода ниже: коэффициент масштаба токенами
-   не описан нигде в проекте, это не отступ и не кегль. */
+/* Надпись. Волосяной линии под ней больше нет: у капсулы своя граница,
+   и вторая линия внутри коробки — шум. Сдвиг текста на ховере снят
+   вместе с ней — двигать надпись внутри неподвижной коробки некуда. */
+.planText {
+  display: inline-block;
+}
+
+/* Бейдж «3D» — ЕДИНСТВЕННОЕ КРАСНОЕ В КАДРЕ И ЯКОРЬ ВЗГЛЯДА, поэтому
+   залит --frit-deep постоянно, а не только на ховере, как было раньше.
+   Белый на --frit-deep держит 6,1:1 (design-system.md §1); на чистом
+   --frit было бы 4,4:1, и заливки поэтому идут только на deep.
+   Сдвиг и лёгкое увеличение по наведению остались прежними. */
 .planBadge {
-  border: 1px solid var(--alu);
+  border: 1px solid var(--frit-deep);
   border-radius: var(--radius);
   padding: var(--s-2) var(--s-3);
   font: var(--label);
   letter-spacing: var(--tr-label);
-  color: var(--ink-60);
-  background: transparent;
-  transition:
-    border-color var(--motion-base) var(--ease-soft),
-    color var(--motion-base) var(--ease-soft),
-    background var(--motion-base) var(--ease-soft),
-    transform var(--motion-slow) var(--ease-soft);
+  color: var(--white);
+  background: var(--frit-deep);
+  transition: transform var(--motion-slow) var(--ease-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .planWrap:hover .planBadge {
-    border-color: var(--frit-deep);
-    background: var(--frit-deep);
-    color: var(--white);
-    transform: translateX(var(--s-2)) scale(1.08);
-  }
+  .planWrap:hover .planBadge { transform: translateX(var(--s-2)) scale(1.08); }
 }
 
-.planWrap:focus-within .planBadge {
-  border-color: var(--frit-deep);
-  background: var(--frit-deep);
-  color: var(--white);
-  transform: translateX(var(--s-2)) scale(1.08);
-}
+.planLink:focus-visible .planBadge { transform: translateX(var(--s-2)) scale(1.08); }
 
-/* Подпись под ссылкой — тот же приём, что .moveLabel у кругов перехода
-   ниже, но двумя кусками: второй появляется с задержкой --stagger, чтобы
-   подпись читалась «по очереди», а не одним блоком. */
+/* Подпись переехала ВНУТРЬ капсулы второй строкой и больше не
+   проявляется по наведению. Прежде это был reveal, и «Пять зон ·
+   Объёмный план» видел только тот, кто и так уже навёлся на кнопку;
+   между тем это единственное место, где сказано, что зон пять.
+   Подчинена она кеглем, трекингом и капителью, а НЕ ЦВЕТОМ — тот же
+   вывод, что у .eyebrow выше: --ink-60 внутри капсулы над тёмным
+   рендером даёт 2,21:1 при пороге 4,5, --ink на той же подложке —
+   6,27:1. Замер по худшему пикселю всех пяти кадров. */
 .planSub {
-  position: absolute;
-  top: calc(100% + var(--s-2));
-  left: 0;
-  white-space: nowrap;
   font: var(--label);
   letter-spacing: var(--tr-label);
   text-transform: uppercase;
-  color: var(--frit-deep);
-  pointer-events: none;
+  color: var(--ink);
 }
-
-.planSubStep {
-  display: inline-block;
-  opacity: 0;
-  transform: translateY(-4px);
-  transition:
-    opacity var(--motion-base) var(--ease-soft),
-    transform var(--motion-base) var(--ease-soft);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .planWrap:hover .planSubStep { opacity: 1; transform: translateY(0); }
-  .planWrap:hover .planSubStep:nth-child(2) { transition-delay: var(--stagger); }
-}
-
-.planWrap:focus-within .planSubStep { opacity: 1; transform: translateY(0); }
-.planWrap:focus-within .planSubStep:nth-child(2) { transition-delay: var(--stagger); }
 
 /* --- зеркало правых зон ----------------------------------------------- */
 
@@ -405,36 +437,24 @@
 /* Бейдж «3D» — перед надписью. Реверс визуальный: в разметке бейдж
    aria-hidden и стоит после текста, поэтому доступное имя кнопки
    остаётся прежним «Открыть планировку». */
-.infoRight .planLink { flex-direction: row-reverse; }
+.infoRight .planMain { flex-direction: row-reverse; }
 
-/* Волосяная линия в покое — огрызок у ПРАВОГО края, растёт влево.
-   Та же scaleX(0.22), другая точка опоры. */
-.infoRight .planText::after { transform-origin: right; }
+/* Содержимое капсулы прижимается к правому краю, как и весь блок. */
+.infoRight .planLink { justify-items: end; }
+.infoRight .planSub { text-align: right; }
 
+/* Волосяной линии и пошагового проявления подписи здесь больше нет —
+   они ушли вместе с текстовой формой кнопки, и зеркалить стало нечего.
+   Остался один сдвиг бейджа, в другую сторону. */
 @media (hover: hover) and (pointer: fine) {
-  .infoRight .planLink:hover .planText { transform: translateX(calc(-1 * var(--s-1))); }
   .infoRight .planWrap:hover .planBadge {
     transform: translateX(calc(-1 * var(--s-2))) scale(1.08);
   }
 }
 
-.infoRight .planWrap:focus-within .planText { transform: translateX(calc(-1 * var(--s-1))); }
-.infoRight .planWrap:focus-within .planBadge {
+.infoRight .planLink:focus-visible .planBadge {
   transform: translateX(calc(-1 * var(--s-2))) scale(1.08);
 }
-
-/* Подпись прижата к правому краю кнопки и раскрывается ОТ НЕГО внутрь
-   кадра: первым приходит правый кусок, «Пять зон» — с задержкой. Обе
-   задержки переставляются парой, иначе оба куска пришли бы разом. */
-.infoRight .planSub { left: auto; right: 0; text-align: right; }
-
-@media (hover: hover) and (pointer: fine) {
-  .infoRight .planWrap:hover .planSubStep:nth-child(2) { transition-delay: 0s; }
-  .infoRight .planWrap:hover .planSubStep:nth-child(1) { transition-delay: var(--stagger); }
-}
-
-.infoRight .planWrap:focus-within .planSubStep:nth-child(2) { transition-delay: 0s; }
-.infoRight .planWrap:focus-within .planSubStep:nth-child(1) { transition-delay: var(--stagger); }
 
 /* Ключевого числа сейчас нет ни в одной зоне, но колонка с ним шириной
    в 22rem прижалась бы к левому краю блока и разошлась бы с текстом
@@ -564,6 +584,54 @@
 
 /* --- мелкий шрифт ----------------------------------------------------- */
 
+/* --- счётчик просмотренных зон ---------------------------------------- */
+
+/* Стоит внутри блока зоны, сразу под капсулой. Почему не под кругами
+   переходов — в комментарии у разметки: там контраст 2,68:1, здесь 5,84:1,
+   и круги при этом не съезжают с общего уровня.
+
+   Цифры моно и табличные — точечно, как .num-xl и .num-m в tokens.css,
+   а не глобально на body: у Golos табличная цифра на 4 % шире
+   пропорциональной, и в связном тексте от неё разреживается строка.
+   Ведущий ноль держит ширину, когда зон станет больше девяти. */
+.zoneCount {
+  margin: var(--s-4) 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  color: var(--ink);
+}
+
+.zoneCountNum {
+  font: var(--label);
+  letter-spacing: var(--tr-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.zoneCountSlash { color: var(--alu); }
+
+/* Тише — кеглем и капителью, но не цветом: --ink-60 здесь не проходит
+   (2,21:1 на тёмном рендере), тот же случай, что у .eyebrow. */
+.zoneCountLabel { color: var(--ink); }
+
+/* Блок правых зон: счётчик прижимается к правому краю вместе со всем
+   остальным. Направление, и ни одного нового числа. */
+.infoRight .zoneCount { justify-content: flex-end; }
+
+/* Третье повторение в проекте (HeroVideo, PlanOverlay) — своего общего
+   класса под это в tokens.css нет. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* Юридически обязательная строка. Должна выглядеть как мелкий шрифт:
    одна строка, тихий цвет, никакой собственной поверхности. */
 .fine {
@@ -600,6 +668,25 @@
     bottom: calc(100% + var(--s-3));
     transform: translateX(-50%) translateY(4px);
   }
+  /* СЧЁТЧИК НА ТЕЛЕФОНЕ РАЗВОДИТСЯ НА ДВЕ СТРОКИ, И ЭТО ЗАМЕР.
+     На 375 px вуаль .scrimInfo идёт во всю ширину, но её горизонтальная
+     маска плотна лишь на 54 % — то есть примерно на 182 px со стороны
+     блока зоны. Строка «Все зоны просмотрены» шире: одной строкой она
+     уезжала левым концом в погасшую часть маски, и замер давал 2,54:1
+     у подписи и 4,29:1 у числа при пороге 4,5. Замер снят, когда строка
+     кончалась ещё и на «— дальше» со стрелкой (снято 4 сентября 2026);
+     стала короче — правило оставлено, оно тут страховка, а не подгонка.
+     Числу отдана вся строка (оно прижимается к своей стороне вместе
+     со всем блоком), подпись ограничена половиной ширины и переносится.
+     После правки обе величины — 5,8:1. */
+  /* Отбивка снизу — не украшение: на телефоне подпись круга перехода
+     выезжает НАД кругом (см. .moveLabel ниже), и ей нужно 24 px над ним.
+     Счётчик занял как раз это место — замер дал наложение в 15 px при
+     фокусе на стрелке. */
+  .zoneCount { flex-wrap: wrap; row-gap: var(--s-2); margin-bottom: var(--s-5); }
+  .zoneCountNum { flex: 0 0 100%; }
+  .zoneCountLabel { max-width: 50%; }
+
   .fine { text-align: left; justify-self: stretch; }
   .scrimBottom { height: 28%; }
   .scrimInfo { width: 100%; height: 58%; }

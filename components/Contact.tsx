@@ -35,7 +35,10 @@ import { contacts } from '@/lib/contacts';
 import { POLICY_HREF } from '@/lib/legal';
 import { TOUR_URL } from '@/lib/tour';
 import { prefetchPlan, type RenderKey } from '@/lib/interior';
-import { requestZone, scrollToOffice, setOfficeReturn } from '@/lib/officeZone';
+import {
+  requestZone, requestOfficeStep0, scrollToOffice, setOfficeReturn,
+} from '@/lib/officeZone';
+import { lockScroll, unlockScroll, CONTACT_LOCK } from '@/lib/scrollLock';
 import { submitLead } from '@/lib/submitLead';
 
 /* Оба окна — те же самые, что открываются из офиса, а не их копии.
@@ -123,9 +126,8 @@ export default function Contact() {
      физически не видно, и компенсировать её нечем. */
   useEffect(() => {
     if (!overlay) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    lockScroll(CONTACT_LOCK);
+    return () => unlockScroll(CONTACT_LOCK);
   }, [overlay]);
 
   const closeOverlay = useCallback(() => setOverlay(null), []);
@@ -143,8 +145,11 @@ export default function Contact() {
        и обратной дороги после такого оставаться не должно. Тратит
        крошку OfficeHub, при закрытии плана по Esc или «Закрыть». */
     setOfficeReturn({ id: CONTACT_ID, focus: modelBtnRef.current });
-    document.body.style.overflow = '';
+    unlockScroll(CONTACT_LOCK);
     scrollToOffice();
+    /* Кадры вида уходят вниз: зритель выбрал зону, ему нужен офис,
+       а не панорама поверх него. */
+    requestOfficeStep0();
     requestZone(key);
   }, []);
 

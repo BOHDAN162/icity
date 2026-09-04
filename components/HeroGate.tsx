@@ -30,6 +30,8 @@ import {
   useCallback, useLayoutEffect, useRef, useState, type ReactNode,
 } from 'react';
 import HeroVideo from './HeroVideo';
+import { focusQuietly } from '@/lib/focus';
+import { lockScroll, unlockScroll, HERO_LOCK } from '@/lib/scrollLock';
 import styles from './HeroGate.module.css';
 
 export default function HeroGate({ children }: { children: ReactNode }) {
@@ -52,18 +54,17 @@ export default function HeroGate({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     if (stage !== 'hero') return undefined;
     const content = contentRef.current;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockScroll(HERO_LOCK);
     window.history.scrollRestoration = 'manual';
     window.scrollTo(0, 0);
     return () => {
-      document.body.style.overflow = prevOverflow;
+      unlockScroll(HERO_LOCK);
       /* именно 'auto', а не запомненное значение: браузер хранит
          scrollRestoration на записи истории между перезагрузками,
          и «запомнить и вернуть» навсегда закрепил бы manual */
       window.history.scrollRestoration = 'auto';
       content?.style.removeProperty('--hero-lift');
-      content?.focus({ preventScroll: true });
+      focusQuietly(content);
     };
   }, [stage]);
 

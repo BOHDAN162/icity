@@ -61,6 +61,7 @@ import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
 import { setCursorVideo } from '@/lib/cursorMode';
+import { scatter } from '@/lib/scatter';
 import {
   currentHeroVariant, heroPreloadServerSnapshot, heroPreloadSnapshot,
   releaseHeroPreload, SOURCES, startHeroPreload, subscribeHeroPreload,
@@ -165,20 +166,8 @@ const startAmbienceTail = (a: HTMLAudioElement) => {
    Строки разбиты руками, а не по ширине: это композиция, а не вёрстка. */
 const TITLE_LINES = ['В самом', 'центре', 'деловой Москвы'] as const;
 
-/* Псевдослучайная задержка буквы, 0..1.
-   ДЕТЕРМИНИРОВАННАЯ НАРОЧНО: сервер и клиент обязаны получить одно
-   и то же число, иначе гидрация разъедется на каждой букве. Отсюда
-   только 32-битная целочисленная арифметика — она специфицирована
-   точно и одинакова во всех движках. Math.random() здесь нельзя
-   вообще, а Math.sin() нельзя потому, что его последние биты
-   у движков расходятся. */
-const scatter = (i: number): number => {
-  let h = Math.imul(i + 1, 2654435761);
-  h ^= h >>> 15;
-  h = Math.imul(h, 2246822519);
-  h ^= h >>> 13;
-  return ((h >>> 0) % 997) / 997;
-};
+/* Разброс задержек живёт в lib/scatter.ts: то же проявление есть
+   у подписи кадра вида, и хеш обязан быть у обоих один. */
 
 /* Амбиент первого экрана — ветер на высоте.
    В четырёх mp4 полёта звуковой дорожки нет (ffprobe: только video-поток),

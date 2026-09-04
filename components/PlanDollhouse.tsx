@@ -65,6 +65,7 @@
    и из подвала, — и оба должны получить его без своих правок. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { focusQuietly } from '@/lib/focus';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import {
@@ -194,7 +195,7 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
   // таймеры шва живут не дольше оверлея
   useEffect(() => () => { timersRef.current.forEach(clearTimeout); timersRef.current = []; }, []);
 
-  useEffect(() => { closeRef.current?.focus(); }, []);
+  useEffect(() => { focusQuietly(closeRef.current); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -46,6 +46,56 @@ export function requestZone(zone: RenderKey): void {
   for (const notify of listeners) notify(zone);
 }
 
+/* --- второй канал: «открой сам офис, а не кадр поверх него» ----------
+   Секция офиса ходит шагами: 0 — офис, 1 — первый кадр вида, 2 — второй.
+   Оба пути возврата к офису со стороны — из подвала и выбором зоны
+   в плане, открытом по Esc откуда угодно, — знают про зону и про
+   прокрутку, но ничего не знают про шаг. Без сброса зритель приехал бы
+   к секции, накрытой обоими кадрами, и увидел бы панораму вместо зоны,
+   которую только что выбрал.
+
+   Отдельным каналом, а не полем в requestZone: это разные команды.
+   Зону просят и изнутри офиса, где шаг сбрасывать не надо и нечего. */
+
+type StepListener = () => void;
+
+const stepListeners = new Set<StepListener>();
+
+/** OfficeStop подписывается на монтировании. */
+export function onOfficeStep0(fn: StepListener): () => void {
+  stepListeners.add(fn);
+  return () => {
+    stepListeners.delete(fn);
+  };
+}
+
+/** «Верни секцию офиса на нулевой шаг»: кадры вида уходят вниз. */
+export function requestOfficeStep0(): void {
+  for (const notify of stepListeners) notify();
+}
+
+/* --- третий канал: «сделай шаг вперёд» -------------------------------
+   Кнопка «Дальше» стоит в интерфейсе офиса, то есть внутри OfficeHub,
+   а шагами распоряжается OfficeStop — он же владеет и замком, и
+   кадрами. Прокидывать колбэк сверху вниз через OfficeHub можно было
+   бы, но канал здесь честнее: кнопка просит ровно то же, что жест
+   колеса, и просить обязана в одно и то же место. */
+
+const cueListeners = new Set<StepListener>();
+
+/** OfficeStop подписывается на монтировании. */
+export function onNextStep(fn: StepListener): () => void {
+  cueListeners.add(fn);
+  return () => {
+    cueListeners.delete(fn);
+  };
+}
+
+/** «Шаг вперёд»: из офиса к первому кадру, с первого ко второму. */
+export function requestNextStep(): void {
+  for (const notify of cueListeners) notify();
+}
+
 /** id секции офиса; она же якорь прокрутки. Дублируется в OfficeStop.tsx. */
 export const OFFICE_ID = 'office';
 
