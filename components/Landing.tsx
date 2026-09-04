@@ -25,7 +25,7 @@ const FIGURES: Figure[] = [
   { value: '244,1', caption: 'М²' },
   { value: '23 / 61', caption: 'ЭТАЖ' },
   { value: '3,8', caption: 'ПОТОЛКИ, М' },
-  { value: '0', caption: 'КАПЗАТРАТ', accent: true },
+  { value: '0', caption: 'КАПЗАТРАТ ДЛЯ ВАС', accent: true },
 ];
 
 export default function Landing() {
