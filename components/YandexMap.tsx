@@ -38,6 +38,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { YMap, YMapFeature, YMapMarker } from '@yandex/ymaps3-types';
 import type { BehaviorType, Customization, LngLat, LngLatBounds } from '@yandex/ymaps3-types';
 import { ICITY, LEGS, MAP_CENTER, MAP_ZOOM, ZOOM_RANGE } from '@/lib/geo';
+import { bezier, EASE_SOFT } from '@/lib/motion';
 import styles from './Location.module.css';
 
 declare global {
@@ -90,33 +91,9 @@ const CUSTOMIZATION: Customization = [
 const DRAW_MS = 450;
 const FLY_MS = 620;
 
-/* Копия кривой --ease-soft из app/tokens.css: cubic-bezier(0.16,1,0.3,1).
-   В JS она нужна потому, что геометрию линии наращивает rAF, а не CSS.
-   Правится парой с токеном — как --hold-* в TowerSequence.tsx. */
-const EASE_SOFT: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
-/* Ньютон по x, затем значение по y. Пятнадцать строк вместо зависимости. */
-function bezier([x1, y1, x2, y2]: [number, number, number, number]) {
-  const cx = 3 * x1;
-  const bx = 3 * (x2 - x1) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * y1;
-  const by = 3 * (y2 - y1) - cy;
-  const ay = 1 - cy - by;
-  const sampleX = (t: number) => ((ax * t + bx) * t + cx) * t;
-  const slopeX = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
-  return (x: number) => {
-    let t = x;
-    for (let i = 0; i < 6; i += 1) {
-      const d = slopeX(t);
-      if (Math.abs(d) < 1e-6) break;
-      t -= (sampleX(t) - x) / d;
-    }
-    t = Math.min(1, Math.max(0, t));
-    return ((ay * t + by) * t + cy) * t;
-  };
-}
-
+/* Кривая та же, что в токене --ease-soft: связку наращивает rAF,
+   а не CSS, и характер движения обязан совпадать. Сама функция —
+   в lib/motion.ts, рядом с остальными постоянными движения. */
 const easeSoft = bezier(EASE_SOFT);
 
 /* Рамка под связку. LngLatBounds — это ЛЕВЫЙ ВЕРХНИЙ и ПРАВЫЙ НИЖНИЙ

@@ -3,9 +3,11 @@
 /* iCITY 113Н — плавная прокрутка страницы.
    Путь в проекте: components/SmoothScroll.tsx
 
-   Колесо и трекпад ведут страницу через ту же огибающую, что и кольцо
-   курсора: одна постоянная времени на двоих, SCROLL_TAU в lib/motion.ts.
-   Страница под указателем обязана читаться одним с ним характером.
+   ПРИВОДА ДВА, И ДЕЛЯТСЯ ОНИ ПО ПРИРОДЕ ВХОДА. Колесо мыши дискретно —
+   оно шлёт рывками по щелчку, и из них ровный ход нужно СОБИРАТЬ:
+   экспонента k = 1 − exp(−dt/SCROLL_TAU). Трекпад и палец непрерывны —
+   они ведут страницу напрямую, один в один, и получают экспоненту
+   только на броске пальца после отпускания.
 
    ПРОКРУТКА ОСТАЁТСЯ НАСТОЯЩЕЙ. Модуль двигает window.scrollTo, а не
    везёт контент трансформом, как это делают Locomotive и его родня.
@@ -13,7 +15,12 @@
    держится на нативном position: sticky, а кукольный дом — на
    position: fixed, и трансформированный предок убил бы обоих.
 
-   ТРЕКПАД СЮДА НЕ ЗАХОДИТ. Сглаживается только дискретное колесо мыши —
+   ТРЕКПАД И ТАЧ ТЕПЕРЬ ЗАХОДЯТ — по просьбе заказчика 4 сентября 2026,
+   за флагами SCROLL_SMOOTH_TRACKPAD и SCROLL_SMOOTH_TOUCH. Абзацы ниже
+   оставлены целиком: в них записано, чем мы за это платим, и выключать
+   надо будет по ним же.
+
+   БЫЛО ТАК. Сглаживалось только дискретное колесо мыши —
    вход, который правда идёт рывками. У трекпада macOS инерция своя,
    системная и композиторная; поверх неё сглаживать нечего, а отнять оно
    может задержку, устойчивость к занятому главному потоку и главное —
@@ -27,10 +34,7 @@
    в lib/motion.ts.
 
    ЧЕГО ЗДЕСЬ НЕТ НАМЕРЕННО:
-   — тач не трогаем вовсе. Мы просто не слушаем touch-события, поэтому
-     на телефоне не меняется ничего, включая pull-to-refresh и уборку
-     адресной строки. Инерция там своя, системная, и любая наша поверх
-     неё читается как подтормаживание;
+   — клавиатуру не перехватываем (см. ниже);
    — клавиатуру не перехватываем. Стрелки, PageDown и пробел листают
      нативно; свой обработчик клавиш отобрал бы их у полей формы.
      Пассивный keydown ниже ничего не отбирает: он только отменяет
@@ -46,6 +50,13 @@
 import { useEffect } from 'react';
 import {
   SCROLL_TAU,
+  SCROLL_WHEEL_GAIN,
+  SCROLL_SMOOTH_TOUCH,
+  TOUCH_GAIN,
+  TOUCH_DECAY_TAU,
+  TOUCH_MAX_SPEED,
+  TOUCH_MIN_FLICK,
+  TOUCH_FLICK_GAP_MS,
   SCROLL_LINE_PX,
   SCROLL_MIN_STEP_DPX,
   SCROLL_SYNC_PX,
@@ -194,6 +205,8 @@ export default function SmoothScroll() {
       if (done) {
         cur = target;
       } else {
+        /* Экспонента достаётся только колесу мыши: трекпад и палец
+           ведут страницу напрямую и сюда не приходят. */
         const step = gap * (1 - Math.exp(-dt / SCROLL_TAU));
         cur += Math.abs(step) < floor ? Math.sign(gap) * floor : step;
       }
@@ -284,7 +297,15 @@ export default function SmoothScroll() {
           ? e.deltaY * window.innerHeight
           : e.deltaY;
 
-      target = Math.min(max, Math.max(0, target + px));
+      /* КОЭФФИЦИЕНТ — ЗДЕСЬ, А НЕ В TAU. «Медленнее» означает короче шаг,
+         а не дольше доезжать: второе уже откатывали, см. SCROLL_TAU. */
+      const want = px * SCROLL_WHEEL_GAIN;
+
+      /* Сюда доходит только колесо мыши: трекпад отсеян выше и едет
+         компоситором. Ветка прямого ведения трекпада здесь была
+         и удалена вместе с флагом — она всё равно снимала прокрутку
+         с компоситора, а это и оказалось причиной дёрганья. */
+      target = Math.min(max, Math.max(0, target + want));
       wake();
     };
 
@@ -357,6 +378,108 @@ export default function SmoothScroll() {
     /* Палец и полоса прокрутки — тот же «зритель забрал управление».
        pointerdown приходит раньше click, так что клик по самой кнопке
        свою же поездку не рубит. */
+    /* --- тач: страницу везём сами ------------------------------------
+       На телефоне нативной прокрутки больше нет — touchmove отменяется,
+       и страницу двигает тот же window.scrollTo, что у колеса. Разбор
+       и цена — у SCROLL_SMOOTH_TOUCH в lib/motion.ts.
+
+       ПАЛЕЦ ВЕДЁТ НАПРЯМУЮ, БЕЗ ЭКСПОНЕНТЫ. Сглаживать здесь нечего:
+       палец и есть непрерывный вход, а любое отставание читается как
+       «экран отлипает от пальца». Экспонента включается только после
+       отпускания — это бросок. */
+    let touchY = 0;
+    let touchAt = 0;
+    /* Скорость последнего движения, px/мс, для броска. Со сглаживанием:
+       сырое значение последнего кадра шумит, и флик выходил бы разным
+       при одном и том же жесте. */
+    let touchV = 0;
+    let touching = false;
+    /* Тач ушёл во вложенную прокрутку или в элемент со своим
+       touch-action — до конца жеста мы в него не вмешиваемся. */
+    let touchYielded = false;
+
+    /* Уважаем чужой touch-action: у кукольного дома объявлен pan-y,
+       горизонтальным жестом там доворачивают план. Читаем вычисленный
+       стиль по цепочке предков — то же, что делает ownerOf для
+       вложенной прокрутки. */
+    const touchOwned = (from: EventTarget | null): boolean => {
+      let el = from instanceof Element ? from : null;
+      while (el && el !== document.body && el !== document.documentElement) {
+        const ta = getComputedStyle(el).touchAction;
+        if (ta && ta !== 'auto') return true;
+        el = el.parentElement;
+      }
+      return false;
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!SCROLL_SMOOTH_TOUCH) return;
+      cancelTrip();
+      /* Двумя пальцами — щипковый зум, не наше дело. */
+      if (e.touches.length !== 1) { touchYielded = true; return; }
+      const t = e.touches[0];
+      touchY = t.clientY;
+      touchAt = e.timeStamp;
+      touchV = 0;
+      touching = true;
+
+      /* Замок страницы, вложенная прокрутка и чужой touch-action —
+         три причины отдать жест целиком. Решаем один раз на касание:
+         разбирать это на каждом move значит менять привод посреди
+         жеста, а два привода на одной странице рвут картинку. */
+      touchYielded = document.body.style.overflow === 'hidden'
+        || ownerOf(t.target) !== null
+        || touchOwned(t.target);
+
+      if (!touchYielded) {
+        /* Палец лёг — страница обязана встать под ним, как в системе. */
+        sleep();
+        target = window.scrollY;
+        cur = target;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!SCROLL_SMOOTH_TOUCH || !touching || touchYielded) return;
+      const t = e.touches[0];
+      if (!t) return;
+      const max = maxScroll();
+      if (max <= 0) return;
+
+      const dy = touchY - t.clientY;
+      const dt = Math.max(1, e.timeStamp - touchAt);
+      touchY = t.clientY;
+      touchAt = e.timeStamp;
+      /* Сглаживание скорости: 0,3 на новое значение — хватает, чтобы
+         снять шум одного кадра, и не хватает, чтобы флик запаздывал. */
+      touchV += ((dy / dt) - touchV) * 0.3;
+
+      e.preventDefault();
+      cur = Math.min(max, Math.max(0, cur + dy * TOUCH_GAIN));
+      target = cur;
+      window.scrollTo(0, cur);
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!SCROLL_SMOOTH_TOUCH) return;
+      touching = false;
+      if (touchYielded) { touchYielded = false; return; }
+      /* Палец замер и только потом оторвался — страница остаётся
+         на месте. Событий move он в это время не шлёт, поэтому
+         скорость проверяется по возрасту, а не по величине. */
+      if (e.timeStamp - touchAt > TOUCH_FLICK_GAP_MS) { touchV = 0; return; }
+      if (Math.abs(touchV) < TOUCH_MIN_FLICK) return;
+
+      /* Бросок. Путь под экспонентой с постоянной tau равен v · tau —
+         отсюда цель считается сразу, а везёт её обычный цикл. Так
+         бросок и колесо идут одним приводом, и им нечем подраться. */
+      const v = Math.max(-TOUCH_MAX_SPEED, Math.min(TOUCH_MAX_SPEED, touchV));
+      const max = maxScroll();
+      target = Math.min(max, Math.max(0, cur + v * TOUCH_DECAY_TAU));
+      touchV = 0;
+      wake();
+    };
+
     const onPointerDown = () => cancelTrip();
     const onKeyDown = (e: KeyboardEvent) => {
       if (SCROLL_KEYS.has(e.key)) cancelTrip();
@@ -366,6 +489,24 @@ export default function SmoothScroll() {
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
     window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    /* ТАЧ ВЕШАЕТСЯ ТОЛЬКО ПОД ФЛАГОМ, И ЭТО НЕ ЭКОНОМИЯ ПАМЯТИ.
+       Непассивный `touchmove` на window снимает прокрутку с композитора
+       САМИМ ФАКТОМ РЕГИСТРАЦИИ: браузер не знает заранее, позовём ли мы
+       preventDefault, и обязан дождаться главного потока, прежде чем
+       двинуть страницу. Ранний `return` внутри обработчика от этого
+       не спасает — решение принимается до его вызова. Проверять флаг
+       здесь, а не только внутри: иначе выключенный привод продолжает
+       брать всю его цену, не отдавая ничего взамен.
+
+       Слушатели в BUBBLE — шаговые переходы офиса разбирают тач
+       в capture и обязаны отработать раньше; под их замком мы и так
+       отступаем на touchstart. */
+    if (SCROLL_SMOOTH_TOUCH) {
+      window.addEventListener('touchstart', onTouchStart, { passive: true });
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    }
     window.addEventListener('keydown', onKeyDown, { passive: true });
 
     return () => {
@@ -373,6 +514,10 @@ export default function SmoothScroll() {
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
       window.removeEventListener('keydown', onKeyDown);
       offScrollRequest();
       sleep();
