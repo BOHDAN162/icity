@@ -188,6 +188,15 @@ export function setOfficeReturn(to: OfficeReturn): void {
   watch();
 }
 
+/* ЧИТАЕТ, НЕ ТРАТЯ. Нужен ровно одному месту — закрытию плана из офиса:
+   с крошкой закрытие обязано остаться мгновенным, иначе зритель смотрит
+   полторы секунды погружения в зону и тут же улетает к форме записи,
+   то есть движение кончается не там, куда вело. Само гашение крошки
+   по-прежнему только в takeOfficeReturn, и делает его тот же closePlan. */
+export function officeReturnPending(): boolean {
+  return pending !== null;
+}
+
 /** Читает и сразу гасит: крошка одноразовая по устройству. */
 export function takeOfficeReturn(): OfficeReturn | null {
   const held = pending;

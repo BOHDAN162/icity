@@ -55,6 +55,7 @@ import {
 } from '@/lib/interior';
 import {
   onZoneRequest, scrollToId, requestOfficeStep0, scrollToOffice, takeOfficeReturn,
+  officeReturnPending,
 } from '@/lib/officeZone';
 import {
   lockScroll, unlockScroll, scrollLockOwner, PLAN_LOCK, OFFICE_STEP_LOCK,
@@ -225,12 +226,32 @@ type Props = {
 export default function OfficeHub({ active, next }: Props) {
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
   const [cameFrom, setCameFrom] = useState<ZoneId | null>(null);
-  /* ОТКУДА ОТКРЫЛИ ПЛАН, а не просто «открыт ли он». Открытие по Esc
-     из зоны запускает обратный нырок: камера стартует ракурсом этой
-     зоны и отъезжает в изометрию. Кнопка «Открыть планировку» открывает
-     план сразу изометрией, как и раньше, — так просил заказчик.
-     null — план закрыт. */
-  const [planOpen, setPlanOpen] = useState<null | { backFrom: ZoneId | null }>(null);
+  /* ОТКУДА ОТКРЫЛИ ПЛАН И КУДА ВОЗВРАЩАТЬ, а не просто «открыт ли он».
+     null — план закрыт.
+
+     `backFrom` — обратный нырок на входе: камера стартует ракурсом этой
+     зоны и отъезжает в изометрию. Так открывают ОБА способа — и Esc,
+     и кнопка «Открыть планировку» (5 сентября 2026, просьба заказчика:
+     до этого кнопка открывала план сразу изометрией).
+
+     `returnTo` — нырок на выходе: «Закрыть» и Esc внутри плана ныряют
+     обратно в эту зону. Отличается от backFrom ровно в одном случае —
+     когда ждёт крошка возврата в подвал: там закрытие увозит зрителя
+     к форме записи, и полторы секунды погружения в зону кончились бы
+     прыжком совсем в другое место. Считается один раз, при открытии:
+     пока план открыт, страница заперта PLAN_LOCK, прокрутки нет,
+     а рвёт крошку как раз прокрутка. */
+  const [planOpen, setPlanOpen] =
+    useState<null | { backFrom: ZoneId | null; returnTo: ZoneId | null }>(null);
+
+  /* Куда открывать и куда возвращать — один расчёт на оба входа, чтобы
+     Esc и кнопка не разъехались. `active` здесь несущий: Esc, нажатый
+     в экономике или FAQ, застаёт под оверлеем не зону, а другую секцию —
+     отъезжать не от чего и нырять обратно некуда. */
+  const planTargets = useCallback(() => {
+    const from = active ? zoneId : null;
+    return { backFrom: from, returnTo: from && !officeReturnPending() ? from : null };
+  }, [active, zoneId]);
   /* Какие кадры уже стоят в стопке. Зона попадает сюда в момент перехода
      и больше не уходит: второй визит не должен ничего грузить. */
   const [seen, setSeen] = useState<ReadonlySet<ZoneId>>(() => new Set<ZoneId>(['reception']));
@@ -392,16 +413,13 @@ export default function OfficeHub({ active, next }: Props) {
       /* Куда вернуть фокус при закрытии — запоминаем здесь, пока цель
          ещё жива: план вот-вот заберёт фокус себе. */
       returnFocusRef.current = el;
-      /* ОБРАТНЫЙ НЫРОК — только отсюда и только когда офис на экране.
-         Камера начнёт с ракурса зоны, которую зритель сейчас видит,
-         и отъедет в изометрию. Если Esc нажали из экономики или FAQ,
-         под оверлеем никакой зоны нет, отъезжать не от чего —
-         открываем сразу изометрией. */
-      setPlanOpen({ backFrom: active ? zoneId : null });
+      /* Куда лететь на входе и куда возвращаться на выходе — считает
+         planTargets, один расчёт на Esc и на кнопку. */
+      setPlanOpen(planTargets());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [planOpen, active, zoneId]);
+  }, [planOpen, planTargets]);
 
   /* Пока план открыт, страница под ним не листается: он лежит
      в position: fixed поверх всего, но сам скролл не блокирует, и без
@@ -615,9 +633,12 @@ export default function OfficeHub({ active, next }: Props) {
                 className={styles.planLink}
                 onClick={(e) => {
                   returnFocusRef.current = e.currentTarget;
-                  /* Кнопка открывает план сразу изометрией: обратный
-                     нырок заказан только под Esc. */
-                  setPlanOpen({ backFrom: null });
+                  /* Кнопка открывает план ТЕМ ЖЕ обратным нырком, что
+                     и Esc: камера стартует ракурсом зоны, которую
+                     зритель сейчас видит, и отъезжает в изометрию.
+                     Прежде она открывала план сразу изометрией —
+                     заменено 5 сентября 2026 по просьбе заказчика. */
+                  setPlanOpen(planTargets());
                 }}
                 onPointerEnter={prefetchPlan}
                 onFocus={prefetchPlan}
@@ -732,6 +753,7 @@ export default function OfficeHub({ active, next }: Props) {
           onClose={closePlan}
           onEnterZone={enterZoneFromPlan}
           backFrom={planOpen.backFrom}
+          returnTo={planOpen.returnTo}
         />
       )}
     </section>

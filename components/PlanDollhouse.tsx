@@ -122,19 +122,31 @@ type Props = {
   onClose: (reason: 'dismiss' | 'entered') => void;
   /** офис переключается на эту зону, пока оверлей ещё закрывает экран */
   onEnterZone: (key: RenderKey) => void;
-  /* ОБРАТНЫЙ НЫРОК. Зона, из которой открыли план: камера начнёт с её
-     ракурса съёмки — то есть ровно с того, что зритель видит на
-     фотографии, — и отъедет в изометрию. Зеркало погружения.
-     null — обычное открытие, план сразу в изометрии; так открывают
-     кнопкой и так же приходит открытие из подвала, где под оверлеем
-     не зона, а форма записи, и отъезжать было бы не от чего. */
+  /* ОБРАТНЫЙ НЫРОК НА ВХОДЕ. Зона, из которой открыли план: камера
+     начнёт с её ракурса съёмки — то есть ровно с того, что зритель
+     видит на фотографии, — и отъедет в изометрию. Зеркало погружения.
+     null — обычное открытие, план сразу в изометрии; так приходит
+     открытие из подвала, где под оверлеем не зона, а форма записи,
+     и отъезжать было бы не от чего. */
   backFrom?: RenderKey | null;
+  /* НЫРОК НА ВЫХОДЕ. Зона, в которую возвращает «Закрыть» и Esc:
+     камера ныряет в её ракурс, и оверлей растворяется в готовый экран —
+     тем же приёмом, что и выбор зоны. null — закрывать мгновенно,
+     как было. Значение считает вызывающий, потому что «под оверлеем
+     стоит эта зона» знает только он: из подвала там форма записи,
+     а не офис, и нырять некуда. */
+  returnTo?: RenderKey | null;
 };
 
 /* Пропа `open` нет: смонтирован — значит открыт. Так чанк с three.js
    уезжает из первого экрана сам собой, а закрытие гарантированно
    отпускает WebGL-контекст, а не оставляет его висеть невидимым. */
-export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }: Props) {
+export default function PlanDollhouse({
+  onClose,
+  onEnterZone,
+  backFrom = null,
+  returnTo = null,
+}: Props) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [failed, setFailed] = useState(false);
   const [hovered, setHovered] = useState<ZoneKey | null>(null);
@@ -198,35 +210,29 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
 
   useEffect(() => { focusQuietly(closeRef.current); }, []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || sheetOpen) return;
-      e.preventDefault();
-      /* stopPropagation здесь несёт вторую службу, кроме «не пускать Esc
-         в офис»: на window в bubble-фазе висит тумблер, открывающий этот
-         же план (OfficeHub). Событие, остановленное в capture, до bubble
-         на том же window не доходит — значит Esc закроет план и не
-         откроет его тут же обратно. Уберёшь — получишь мигающий оверлей. */
-      e.stopPropagation();
-      onClose('dismiss');
-    };
-    // capture: пока план открыт, Esc принадлежит ему и до офиса не доходит
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose, sheetOpen]);
+  /* КУДА ВЕДЁТ НЫРОК — в выбранную зону или обратно в ту, откуда пришли.
+     Ref, а не состояние: читается он в конце перелёта, из таймера, и
+     ре-рендер ради него был бы холостым. */
+  const returningRef = useRef(false);
 
-  /* finish() зовётся только в конце растворения — зона выбрана, офис уже
-     на неё переключён (onEnterZone отработал ещё в pick).
+  /* finish() зовётся только в конце растворения. При выборе зоны офис
+     уже на неё переключён (onEnterZone отработал ещё в pick), при
+     возврате переключать было нечего — он и так стоит на этой зоне.
      К этому моменту оверлей стоит на нулевой непрозрачности, поэтому
      снятие flyTo (сцена возвращает камеру домой одним кадром) уже
-     не видно — раньше этот кадр успевал мелькнуть. */
+     не видно — раньше этот кадр успевал мелькнуть.
+
+     ПРИЧИНА ЗАКРЫТИЯ БЕРЁТСЯ ИЗ returningRef, и это несущая строка:
+     возврат обязан прийти вызывающему как `dismiss`, иначе крошка
+     возврата в подвал никогда не потратится — она тратится только
+     на dismiss. */
   const finish = useCallback(() => {
     flyRef.current = null;
     setFlyTo(null);
     setArriving(null);
     setLeaving(false);
     setHovered(null);
-    onClose('entered');
+    onClose(returningRef.current ? 'dismiss' : 'entered');
   }, [onClose]);
 
   /* Растворение стартует по совпадению ДВУХ условий, и ни одно нельзя
@@ -280,6 +286,73 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
       tryReveal();
     }, REVEAL_CAP_MS));
   }, [mode, onEnterZone, tryReveal]);
+
+  /* ЗАКРЫТИЕ ПО ПРОСЬБЕ ЗРИТЕЛЯ — «Закрыть» и Esc, один путь на оба.
+     Это зеркало pick(): камера ныряет в ракурс зоны, оверлей
+     растворяется в готовый экран, и зритель видит одно движение,
+     а не мгновенно снятый экран.
+
+     Отличий от pick ровно три, и каждое обязательно:
+
+     1. onEnterZone НЕ зовём. Офис уже стоит на этой зоне — команда
+        переключения заставила бы его отыграть свои 620 мс (--t-scene)
+        под оверлеем впустую.
+     2. Зонда загрузки не заводим, readyRef поднимаем сразу. Зонд нужен,
+        чтобы не растворить оверлей в НЕзагруженную фотографию; здесь под
+        оверлеем стоит ровно тот кадр, который зритель видел перед тем,
+        как открыть план, — он загружен по определению.
+     3. Кончается это `dismiss`, а не `entered` (см. finish выше).
+
+     Охранник flyRef — тот же, что у pick: он гасит и второй клик по
+     «Закрыть», и Esc посреди нырка, и попытку выбрать зону на выходе.
+     Кнопка физически перестаёт нажиматься только с приходом .leaving
+     (pointer-events: none), то есть на 1390-й мс; до тех пор её держит
+     этот охранник. */
+  const requestClose = useCallback(() => {
+    if (flyRef.current) return;
+    /* Нырять нечем или некуда: плоский план (там камеры нет вовсе,
+       и более долгий выход читался бы просто как задержка), план
+       из подвала, Esc из экономики или FAQ, ждущая крошка возврата —
+       все эти случаи вызывающий уже свёл в returnTo === null. */
+    if (!returnTo || mode !== 'solid') {
+      onClose('dismiss');
+      return;
+    }
+    returningRef.current = true;
+    flyRef.current = returnTo;
+    setFlyTo(returnTo);
+    readyRef.current = true;
+    /* Потолок на случай, если сцена не доложит о фазе вовсе — потеря
+       WebGL-контекста в середине перелёта. Тот же, что у pick. */
+    timersRef.current.push(setTimeout(() => {
+      dueRef.current = true;
+      tryReveal();
+    }, REVEAL_CAP_MS));
+  }, [returnTo, mode, onClose, tryReveal]);
+
+  /* Esc внутри плана делает ровно то же, что кнопка «Закрыть», — так
+     просил заказчик: способ закрытия не должен менять поведение.
+
+     ЭФФЕКТ СТОИТ ЗДЕСЬ, А НЕ ВЫШЕ, и это не вкус: он зависит от
+     requestClose, а тот — от finish и tryReveal. Массив зависимостей
+     вычисляется в рендере, и ссылка на объявленный ниже const дала бы
+     ReferenceError по временной мёртвой зоне. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || sheetOpen) return;
+      e.preventDefault();
+      /* stopPropagation здесь несёт вторую службу, кроме «не пускать Esc
+         в офис»: на window в bubble-фазе висит тумблер, открывающий этот
+         же план (OfficeHub). Событие, остановленное в capture, до bubble
+         на том же window не доходит — значит Esc закроет план и не
+         откроет его тут же обратно. Уберёшь — получишь мигающий оверлей. */
+      e.stopPropagation();
+      requestClose();
+    };
+    // capture: пока план открыт, Esc принадлежит ему и до офиса не доходит
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [requestClose, sheetOpen]);
 
   const onShotReady = useCallback(() => {
     readyRef.current = true;
@@ -446,7 +519,7 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
             ref={closeRef}
             type="button"
             className={styles.close}
-            onClick={() => onClose('dismiss')}
+            onClick={requestClose}
           >
             Закрыть
           </button>
