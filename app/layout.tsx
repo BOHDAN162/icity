@@ -88,6 +88,39 @@ export default function RootLayout({
       lang="ru"
       className={`${literata.variable} ${golosText.variable} ${jetBrainsMono.variable}`}
     >
+      <head>
+        {/* ВЫСОТА ЭКРАНА МЕРЯЕТСЯ У БРАУЗЕРА ЧИСЛОМ, ПОТОМУ ЧТО НИ ОДНА
+            CSS-ЕДИНИЦА ЕЁ НЕ ДАЁТ. Замер в симуляторе iOS 26.5 (iPhone 17
+            Pro): физический экран 874 pt, `100lvh` — 754, `100dvh` и
+            `100svh` — 714, `env(safe-area-inset-bottom)` — ноль. То есть
+            САМАЯ БОЛЬШАЯ единица короче экрана на 120 pt, и всё, что
+            считалось в ней, обрывалось выше низа: под панелью Safari
+            вместо кадра оказывался фон страницы — та самая светлая полоса,
+            которую заказчик ловил шесть заходов подряд. Панель эту область
+            не закрашивает, она полупрозрачная, и полоса читается сквозь неё.
+
+            Единственное число, равное экрану, — screen.height. Скрипт
+            инлайновый и в <head>: он обязан отработать ДО первой отрисовки,
+            иначе первый кадр уедет по короткой единице и мигнёт.
+
+            ТОЛЬКО НА ТАЧ-УСТРОЙСТВАХ. На десктопе screen.height — это
+            высота монитора, а не окна; там переменная не ставится вовсе
+            и работает запасное значение 100lvh из tokens.css (на десктопе
+            оно равно окну). Предохранитель на 250 pt отсекает нелепые
+            значения, если движок отдаст что-то своё. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){var d=document.documentElement;"
+              + "if(!matchMedia('(hover: none) and (pointer: coarse)').matches)return;"
+              + "function s(){var p=innerHeight>=innerWidth;"
+              + "var f=Math.max(p?screen.height:screen.width,innerHeight);"
+              + "var e=f-innerHeight;if(e<0||e>250)f=innerHeight;"
+              + "d.style.setProperty('--screen-h',f+'px');}"
+              + "s();addEventListener('resize',s);addEventListener('orientationchange',s);})()",
+          }}
+        />
+      </head>
       <body>
         {/* Preloader живёт не здесь, а в app/(landing)/layout.tsx: он
             привязан к hero и не должен встречать зрителя на /privacy.

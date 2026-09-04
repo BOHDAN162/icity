@@ -425,7 +425,16 @@ export default function OfficeStop() {
     const remeasure = () => {
       const rect = wrap.getBoundingClientRect();
       wrapTop = rect.top + window.scrollY;
-      travel = rect.height - window.innerHeight;
+      /* Ход считается от ВЫСОТЫ ЛИПКОЙ СЦЕНЫ, а не от высоты окна.
+         Прежде они совпадали: и секция, и сцена мерились в svh. Теперь
+         сцена занимает всю коробку экрана (--screen-h), а на телефоне
+         это на высоту панели браузера больше окна — замер на iPhone 17
+         Pro: 874 против 714. Считай мы по окну, огибающая дошла бы до
+         единицы позже, чем сцена отлипает, и последняя четверть
+         хореографии — выдержка и шов — отыгрывала бы уже на уезжающей
+         вверх сцене. По высоте сцены ход и её липкий путь равны
+         тождественно, на любом устройстве. */
+      travel = rect.height - stage.getBoundingClientRect().height;
     };
 
     const measure = () => {
