@@ -321,10 +321,21 @@ export default function Contact() {
                 rows={2}
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}
+                aria-describedby="contact-comment-hint"
               />
               <label className={styles.floatLabel} htmlFor="contact-comment">
                 Комментарий
               </label>
+              {/* Подсказка стоит ПОСЛЕ лейбла, и это несущее: плавающий
+                  лейбл поднимается соседним селектором (.textarea:focus +
+                  .floatLabel). Встанет абзац между полем и лейблом —
+                  цепочка порвётся, и подпись перестанет всплывать.
+                  У двух полей выше ровно на этом месте строка ошибки.
+                  aria-describedby постоянный, а не условный: у комментария
+                  ошибок нет, и описывать поле больше нечем. */}
+              <p className={styles.hint} id="contact-comment-hint">
+                Например: Позвоните с 12:00 до 14:00 в понедельник
+              </p>
             </div>
 
             <button className={styles.submit} type="submit" disabled={status === 'loading'} aria-busy={status === 'loading'}>

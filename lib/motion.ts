@@ -317,10 +317,13 @@ export const SCROLL_TRIP_MAX_MS = 3000;
 export const requestSmoothScrollTo = (to: ScrollTarget): boolean =>
   scrollListener ? scrollListener(to) : false;
 
-/** «К самому низу». Число здесь не снимается нарочно: цель живая,
-    её пересчитывает слушатель на каждом кадре. */
-export const requestSmoothScrollToBottom = (): boolean =>
-  requestSmoothScrollTo(Number.POSITIVE_INFINITY);
+/* ЗДЕСЬ БЫЛ requestSmoothScrollToBottom. Он заводился под десктопную
+   ветку кнопки «Записаться на просмотр» — «вези в самый низ», — а ветки
+   не стало 5 сентября 2026: цель у кнопки одна на всех ширинах, сама
+   форма по центру экрана. Других вызывающих у него не было ни дня.
+   Понадобится «в самый низ» снова — это одна строка
+   requestSmoothScrollTo(Number.POSITIVE_INFINITY): слушатель клампит
+   цель максимумом прокрутки сам. */
 
 /* --- кривые CSS в JS -------------------------------------------------
    Часть движения на сайте гонит rAF, а не CSS: связка на карте, выезды
