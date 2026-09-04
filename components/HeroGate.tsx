@@ -39,7 +39,16 @@ export default function HeroGate({ children }: { children: ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const onLift = useCallback((lift: number) => {
-    contentRef.current?.style.setProperty('--hero-lift', lift.toFixed(4));
+    const el = contentRef.current;
+    if (!el) return;
+    el.style.setProperty('--hero-lift', lift.toFixed(4));
+    /* Контент показывается ровно в тот кадр, когда выезд действительно
+       пошёл. До этого он скрыт (visibility в .lifted) — иначе на iPhone
+       из-под первого экрана снизу торчит лента с кромкой офиса, и никакой
+       единицей высоты это не лечится, см. комментарий в HeroGate.module.css.
+       Мигания на старте нет: при lift чуть больше нуля контент ещё стоит
+       ниже кромки экрана. */
+    if (lift > 0 && el.style.visibility !== 'visible') el.style.visibility = 'visible';
   }, []);
 
   const onDone = useCallback(() => setStage('done'), []);
@@ -64,6 +73,7 @@ export default function HeroGate({ children }: { children: ReactNode }) {
          и «запомнить и вернуть» навсегда закрепил бы manual */
       window.history.scrollRestoration = 'auto';
       content?.style.removeProperty('--hero-lift');
+      content?.style.removeProperty('visibility');
       focusQuietly(content);
     };
   }, [stage]);
