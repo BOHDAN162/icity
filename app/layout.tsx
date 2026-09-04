@@ -107,16 +107,23 @@ export default function RootLayout({
             высота монитора, а не окна; там переменная не ставится вовсе
             и работает запасное значение 100lvh из tokens.css (на десктопе
             оно равно окну). Предохранитель на 250 pt отсекает нелепые
-            значения, если движок отдаст что-то своё. */}
+            значения, если движок отдаст что-то своё.
+
+            ЗНАЧЕНИЕ ЕДЕТ СВОИМ <style>, А НЕ СТИЛЕМ НА <html>. Атрибут
+            style на корне принадлежит React, и дописанный скриптом он
+            даёт расхождение при гидрации: сервер такого атрибута
+            не рендерил. Свой узел в <head> React не трогает, а правило
+            :root применяется ровно так же. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){var d=document.documentElement;"
+              "(function(){"
               + "if(!matchMedia('(hover: none) and (pointer: coarse)').matches)return;"
+              + "var el=document.createElement('style');document.head.appendChild(el);"
               + "function s(){var p=innerHeight>=innerWidth;"
               + "var f=Math.max(p?screen.height:screen.width,innerHeight);"
               + "var e=f-innerHeight;if(e<0||e>250)f=innerHeight;"
-              + "d.style.setProperty('--screen-h',f+'px');}"
+              + "el.textContent=':root{--screen-h:'+f+'px}';}"
               + "s();addEventListener('resize',s);addEventListener('orientationchange',s);})()",
           }}
         />

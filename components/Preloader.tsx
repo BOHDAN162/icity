@@ -47,7 +47,11 @@
    ЖЁСТКАЯ ПЕРЕЗАГРУЗКА ПОКАЗЫВАЕТ ЭКРАН СНОВА. sessionStorage помнит
    показ до конца вкладки, но Cmd/Ctrl+Shift+R должен пробивать эту
    память — это метит proxy.ts кукой icity-hard-reload (см. её комментарий
-   про Cache-Control: no-cache и оговорку про Safari). */
+   про Cache-Control: no-cache и оговорку про Safari).
+
+   НА ТЕЛЕФОНЕ ПАМЯТИ НЕТ ВОВСЕ: поездка играет на каждой загрузке,
+   и обычная перезагрузка тоже показывает её целиком. Разбор — у самой
+   ветки пропуска ниже. */
 
 import {
   useEffect, useRef, useState, useSyncExternalStore,
@@ -89,6 +93,10 @@ const HOLD_23_MS = 1000;
    ждать нечего и держать зрителя три секунды не за чем. Прежняя пауза,
    ровно столько, сколько нужно openCurtain() и .fade. */
 const REDUCED_MS = 1900;
+
+/* «Пальцем, а не мышью». Тот же запрос, которым в app/layout.tsx
+   выбирается высота экрана. */
+const TOUCH_QUERY = '(hover: none) and (pointer: coarse)';
 
 const MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const subscribeMotion = (onChange: () => void) => {
@@ -179,7 +187,24 @@ export default function Preloader() {
 
   useEffect(() => {
     const forcedByHardReload = hasHardReloadFlag();
-    if (!forcedByHardReload && sessionStorage.getItem(STORAGE_KEY)) {
+    /* НА ТЕЛЕФОНЕ КОРОТКОЙ ВЕТКИ НЕТ: поездка играет на каждой загрузке,
+       включая перезагрузку. Просьба заказчика 5 сентября 2026, и она же
+       чинит мигание. Пропуск показа гасит прелоадер микротаском, то есть
+       рассчитывает успеть до первой отрисовки; на десктопе успевает,
+       а на телефоне иногда нет — и экран загрузки показывался на первом-
+       втором этаже и пропадал.
+
+       Привязка лифта к байтам этому не мешает: у поездки есть пол MIN_MS
+       и потолок скорости RUSH_RATE, поэтому из кэша она всё равно едет
+       свои три секунды, а не мигает 1→23 за кадр.
+
+       Признак — тач, а не ширина: телефон в альбомной ориентации шире
+       767 px и по ширине попал бы в «десктоп». Тем же признаком в
+       app/layout.tsx выбирается высота экрана. matchMedia спрашивается
+       живьём, а не через React: на гидрации тот вернул бы серверный
+       снимок «мыши есть». */
+    const phone = matchMedia(TOUCH_QUERY).matches;
+    if (!forcedByHardReload && !phone && sessionStorage.getItem(STORAGE_KEY)) {
       /* Занавеса не будет вовсе — открываем его сразу, иначе копия
          первого экрана осталась бы на нуле непрозрачности навсегда. */
       openCurtain();
