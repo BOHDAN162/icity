@@ -79,6 +79,7 @@ import {
   PLAN_DRAG_SLOP, orbitFollow, orbitRelease, planOrbit, resetPlanOrbit,
 } from '@/lib/motion';
 import PlanOverlay from './PlanOverlay';
+import { ArrowDown } from './NextCue';
 import styles from './PlanDollhouse.module.css';
 
 /* three.js едет отдельным чанком и только сюда. На первый экран сайта
@@ -171,6 +172,13 @@ type Props = {
      стоит эта зона» знает только он: из подвала там форма записи,
      а не офис, и нырять некуда. */
   returnTo?: RenderKey | null;
+  /* «ДАЛЬШЕ» ВМЕСТО «ЗАКРЫТЬ» В КАПСУЛЕ. План перестаёт быть тупиком:
+     нажали — и панорама поднимается ПОВЕРХ него, жест вверх опускает
+     её обратно к плану. Устройство — в OfficeStop, здесь только кнопка.
+
+     undefined — плана из подвала и из чужих секций: шагать оттуда
+     некуда, и в капсуле остаётся обычное «Закрыть». */
+  onNext?: () => void;
 };
 
 /* Плоский план или объёмный — решается одним выражением, и читателей
@@ -213,6 +221,7 @@ export default function PlanDollhouse({
   onEnterZone,
   backFrom = null,
   returnTo = null,
+  onNext,
 }: Props) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [failed, setFailed] = useState(false);
@@ -595,7 +604,11 @@ export default function PlanDollhouse({
       onMouseMove={(e) => setChip({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setChip(null)}
     >
-      <div className={styles.bar}>
+      {/* data-flow — признак «в шапке есть Дальше», и читает его CSS:
+          на телефоне четыре элемента с капсулой съедают колонку
+          целиком, и заголовку места не остаётся. Атрибутом, а не
+          классом, — тот же приём, что у data-side в офисе. */}
+      <div className={styles.bar} data-flow={onNext ? '1' : undefined}>
         <p className={`label ${styles.title}`}>Планировка{NBSP}· 244,1{NBSP}м²</p>
         <div className={styles.tools}>
           {/* Растровый чертёж никуда не делся: объёмный план отвечает
@@ -614,14 +627,28 @@ export default function PlanDollhouse({
           >
             3D-тур
           </a>
+          {/* ЗАКРЫТИЕ ПЕРЕЕЗЖАЕТ В ТЕКСТ, КОГДА ЕСТЬ «ДАЛЬШЕ». Капсула
+              в углу одна, и занимает её главное действие; выход при
+              этом обязан остаться на виду — на телефоне Esc нажать
+              нечем, и без видимой кнопки план стал бы ловушкой.
+              Тот же вес, что у «Чертежа»: вход в соседнее окно. */}
           <button
             ref={closeRef}
             type="button"
-            className={styles.close}
+            className={onNext ? styles.sheetLink : styles.close}
             onClick={requestClose}
           >
             Закрыть
           </button>
+
+          {onNext && (
+            <button type="button" className={`${styles.close} ${styles.next}`} onClick={onNext}>
+              Дальше
+              {/* Та же стрелка, что у индикатора «дальше» в офисе
+                  и у кругов перехода: одно движение — один рисунок. */}
+              <ArrowDown size={15} />
+            </button>
+          )}
         </div>
       </div>
 

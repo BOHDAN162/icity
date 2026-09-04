@@ -55,7 +55,7 @@ import {
 } from '@/lib/interior';
 import {
   onZoneRequest, scrollToId, requestOfficeStep0, scrollToOffice, takeOfficeReturn,
-  officeReturnPending,
+  officeReturnPending, onPlanDismiss,
 } from '@/lib/officeZone';
 import {
   lockScroll, unlockScroll, scrollLockOwner, onScrollLockChange,
@@ -222,9 +222,19 @@ type Props = {
   active: boolean;
   /** имя следующего экрана — приходит от OfficeStop, он им и владеет */
   next: { title: string };
+  /* «Дальше» из шапки планировки: панорама поднимается ПОВЕРХ плана,
+     и шаг назад вернёт зрителя в него же. Шагами распоряжается
+     OfficeStop, поэтому кнопка только передаёт просьбу дальше. */
+  onPlanNext?: () => void;
+  /* План открыт или закрыт. Сцене нужны оба края: пока план наверху,
+     жесты принадлежат ему (пальцем там доворачивают модель), а с его
+     закрытием кончается и режим «панорама поверх плана». */
+  onPlanState: (open: boolean) => void;
 };
 
-export default function OfficeHub({ active, next }: Props) {
+export default function OfficeHub({
+  active, next, onPlanNext, onPlanState,
+}: Props) {
   const [zoneId, setZoneId] = useState<ZoneId>('reception');
   /* ОТКУДА ОТКРЫЛИ ПЛАН И КУДА ВОЗВРАЩАТЬ, а не просто «открыт ли он».
      null — план закрыт.
@@ -241,8 +251,9 @@ export default function OfficeHub({ active, next }: Props) {
      прыжком совсем в другое место. Считается один раз, при открытии:
      пока план открыт, страница заперта PLAN_LOCK, прокрутки нет,
      а рвёт крошку как раз прокрутка. */
-  const [planOpen, setPlanOpen] =
-    useState<null | { backFrom: ZoneId | null; returnTo: ZoneId | null }>(null);
+  const [planOpen, setPlanOpen] = useState<
+    null | { backFrom: ZoneId | null; returnTo: ZoneId | null; flow: boolean }
+  >(null);
 
   /* Куда открывать и куда возвращать — один расчёт на оба входа, чтобы
      Esc и кнопка не разъехались. `active` здесь несущий: Esc, нажатый
@@ -250,7 +261,17 @@ export default function OfficeHub({ active, next }: Props) {
      отъезжать не от чего и нырять обратно некуда. */
   const planTargets = useCallback(() => {
     const from = active ? zoneId : null;
-    return { backFrom: from, returnTo: from && !officeReturnPending() ? from : null };
+    return {
+      backFrom: from,
+      returnTo: from && !officeReturnPending() ? from : null,
+      /* ЕСТЬ ЛИ У ЭТОГО ПЛАНА «ДАЛЬШЕ». Считается один раз, при
+         открытии, и потом не пересматривается: `active` гаснет с первым
+         же шагом, и живая проверка убирала бы кнопку из шапки ровно
+         тогда, когда зритель ею и воспользовался. Условие то же, что
+         у нырков: под оверлеем должен стоять офис, а не подвал и
+         не FAQ — шагать из чужой секции некуда. */
+      flow: active,
+    };
   }, [active, zoneId]);
   /* Какие кадры уже стоят в стопке. Зона попадает сюда в момент перехода
      и больше не уходит: второй визит не должен ничего грузить. */
@@ -463,6 +484,27 @@ export default function OfficeHub({ active, next }: Props) {
     lockScroll(PLAN_LOCK);
     return () => unlockScroll(PLAN_LOCK);
   }, [planOpen]);
+
+  /* СЦЕНЕ ОФИСА — ОБА КРАЯ ЖИЗНИ ПЛАНА, одним эффектом на все пути.
+     Открытий два (кнопка и Esc), закрытий четыре (Esc, «Закрыть»,
+     выбор зоны, уход вниз), и разослать признак из каждого значило бы
+     однажды забыть про пятый: слой A остался бы погашенным, а зритель
+     смотрел бы на пустую сцену. Здесь же источник один — само
+     состояние planOpen. */
+  useEffect(() => { onPlanState(planOpen !== null); }, [planOpen, onPlanState]);
+
+  /* «СНИМИ ПЛАНИРОВКУ». Зовёт OfficeStop, когда зритель со второго
+     кадра ушёл вниз: план всё это время висел под панорамой, и дальше
+     по странице ему делать нечего — он бы накрыл собой Landing.
+
+     Мгновенно и молча, без нырка в зону: нырять некуда, зритель уходит
+     не в офис, а из него. Фокус не возвращаем по той же причине —
+     возвращать его в уезжающую вверх секцию значило бы утащить туда
+     же и страницу. */
+  useEffect(() => onPlanDismiss(() => {
+    setPlanOpen(null);
+    returnFocusRef.current = null;
+  }), []);
 
   /* Тот же переход, но по зову со стороны. Кукольный дом открывают
      ещё и кнопкой «3D-модель» в подвале, у формы записи, — там между
@@ -754,6 +796,10 @@ export default function OfficeHub({ active, next }: Props) {
           onEnterZone={enterZoneFromPlan}
           backFrom={planOpen.backFrom}
           returnTo={planOpen.returnTo}
+          /* «Дальше» появляется только у плана, открытого из живого
+             офиса: из подвала и из чужих секций шагать некуда, там
+             в шапке остаётся обычное «Закрыть». */
+          onNext={planOpen.flow ? onPlanNext : undefined}
         />
       )}
     </section>

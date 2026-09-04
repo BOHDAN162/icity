@@ -98,15 +98,16 @@
 
 import type { CSSProperties } from 'react';
 import {
-  useEffect, useRef, useState, useSyncExternalStore,
+  useCallback, useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
 import OfficeHub from './OfficeHub';
 import { cursorMode } from '@/lib/cursorMode';
 import { scatter } from '@/lib/scatter';
 import { SCROLL_GESTURE_GAP_MS } from '@/lib/motion';
-import { onNextStep, onOfficeStep0 } from '@/lib/officeZone';
+import { onNextStep, onOfficeStep0, requestPlanDismiss } from '@/lib/officeZone';
 import {
-  lockScroll, unlockScroll, scrollLockOwner, onScrollLockChange, OFFICE_STEP_LOCK,
+  lockScroll, unlockScroll, scrollLockOwner, onScrollLockChange,
+  OFFICE_STEP_LOCK, PLAN_LOCK,
 } from '@/lib/scrollLock';
 import styles from './OfficeStop.module.css';
 
@@ -274,6 +275,22 @@ export default function OfficeStop() {
     getMotionServerSnapshot,
   );
 
+  /* МОСТ К ПЛАНИРОВКЕ. Кнопка «Дальше» стоит в шапке плана, а шагами
+     распоряжается привод ниже — и живёт он в эффекте, со своими
+     локальными переменными. Ref, а не состояние: команда идёт в одну
+     сторону, перерисовывать по ней нечего.
+
+     Каналом, как «Дальше» из офиса, тут не обошлось бы: OfficeHub —
+     прямой ребёнок, а команд две и в разные стороны (план просит шаг,
+     закрытие плана снимает режим). Канал остался ровно на третью,
+     единственную дальнюю: requestPlanDismiss. */
+  const planApi = useRef<{ next: () => void; state: (open: boolean) => void }>({
+    next: () => {},
+    state: () => {},
+  });
+  const planNext = useCallback(() => planApi.current.next(), []);
+  const planState = useCallback((open: boolean) => planApi.current.state(open), []);
+
   const [step, setStep] = useState<Step>(0);
   /* Первый кадр вида монтируем, когда секция ближе полутора экранов. */
   const [photoNear, setPhotoNear] = useState(false);
@@ -353,6 +370,24 @@ export default function OfficeStop() {
     let handedOff = false;
     let acc = 0;
     let lastGestureAt = -Infinity;
+    /* ПОТОК «ПЛАН → ПАНОРАМА». Зритель нажал «Дальше» в шапке
+       планировки, и панорама поднялась ПОВЕРХ неё: пока флаг стоит,
+       под кадрами вида лежит не зона, а открытый план, и шаг назад
+       возвращает именно его.
+
+       Держится флагом, а не выводится из состояния плана: тот же шаг 1
+       бывает и обычным — приехал прокруткой из зоны, — и тогда наверх
+       возвращается зона, и трогать здесь нечего. Разницу знает только
+       то, КАК зритель сюда попал. */
+    let planFlow = false;
+    /* Открыт ли план ВООБЩЕ — отдельно от потока. Приходит от OfficeHub,
+       а не выводится из владельца замка: план не всегда успевает стать
+       владельцем (секция запирает себя сама, как только отпустит hero,
+       и тогда план запирает поверх занятого — в разработке это ещё
+       и кричит в консоль). Признак нужен ровно затем, чтобы жесты
+       НА САМОМ ПЛАНЕ не уходили в шаги: пальцем там доворачивают
+       модель, и каждый свайп поднимал бы панораму. */
+    let planUp = false;
 
     /* ШАГ — ЭТО СМЕНА ОДНОГО АТРИБУТА, а не покадровая анимация.
        Всё движение едет переходами в CSS, то есть на композиторе:
@@ -369,6 +404,22 @@ export default function OfficeStop() {
       stage.dataset.step = String(to);
     };
 
+    /* СЦЕНА НАД ПЛАНОМ. Оверлей планировки рисуется порталом в body
+       с z-index 80, липкая сцена лежит в потоке страницы — то есть
+       по умолчанию план накрывает панораму целиком, и её выезда
+       не видно вовсе. Признак поднимает сцену над ним и гасит слой A:
+       под кадром вида должен просвечивать план, а не зона.
+       Оба правила — в OfficeStop.module.css, у .stage[data-over-plan].
+
+       Обёртка HeroGate в этот момент контекста наложения не создаёт:
+       её z-index: 10 живёт в классе .lifted, а тот снимается на свапе
+       hero. Вернётся постоянный z-index на обёртке — поднимать сцену
+       станет нечем, и правило умрёт молча. */
+    const overPlan = (on: boolean) => {
+      if (on) stage.dataset.overPlan = '1';
+      else delete stage.dataset.overPlan;
+    };
+
     const runStep = (to: Step) => {
       if (busy || to === cur) return;
       const from = cur;
@@ -380,6 +431,12 @@ export default function OfficeStop() {
       /* Слои готовятся на время шага и распускаются после него —
          разбор в OfficeStop.module.css, у правил .stepping. */
       stage.dataset.stepping = '1';
+
+      /* Сцену поднимаем В ТОТ ЖЕ КАДР, что и старт выезда: кадром
+         позже панорама успела бы тронуться под планом. Опускаем
+         не здесь, а в таймере ниже — пока панорама уезжает вниз,
+         план обязан просвечивать под ней до самого конца хода. */
+      if (planFlow && to > 0) overPlan(true);
 
       /* ВТОРОЙ КАДР МОНТИРУЕТСЯ НЕ В НУЛЕВОЙ КАДР АНИМАЦИИ. Раньше
          setArmed2 стоял здесь же, в один коммит с началом шага, и
@@ -397,6 +454,11 @@ export default function OfficeStop() {
       stepTimer = window.setTimeout(() => {
         busy = false;
         delete stage.dataset.stepping;
+        /* Панорама доехала. Вернулась вниз (шаг 0) или план закрылся
+           посреди хода — сцена опускается обратно под оверлей и слой A
+           возвращается. Зритель этого не видит: план непрозрачен
+           и накрывает экран целиком. */
+        if (!planFlow || cur === 0) overPlan(false);
         /* Разметка под неподвижным курсором сменилась целиком: кнопка
            «Дальше» уехала вместе с интерфейсом офиса. Ни pointermove,
            ни scroll при этом не было, а цель кольца пересматривается
@@ -477,7 +539,26 @@ export default function OfficeStop() {
        иначе быстрый прокрут насквозь проскакивал бы оба экрана. */
     const arm = (dy: number, at: number) => {
       if (busy || !parked) return;
-      if (scrollLockOwner() !== OFFICE_STEP_LOCK) return;
+      /* ЧЕЙ ЗАМОК — ТОГО И ЖЕСТЫ, с одним исключением. Пока панорама
+         поднята поверх планировки, страницу держит замок ПЛАНА
+         (он открыт и никуда не делся), а шаги обязаны ходить: жест
+         вверх опускает панораму обратно к плану, вниз ведёт ко второму
+         кадру. Без этой щели зритель, поднявший панораму из плана,
+         не смог бы вернуться ничем, кроме Esc.
+
+         Исключение сужено до `cur > 0` НАРОЧНО. На самом плане жесты
+         не наши: пальцем там доворачивают модель, и каждый такой
+         свайп поднимал бы панораму. Из плана вперёд ведёт только
+         кнопка «Дальше». */
+      /* На плане жесты не наши — вперёд оттуда ведёт только кнопка
+         «Дальше». Как только панорама поднята, они снова наши: жест
+         вверх опускает её обратно к плану, вниз ведёт ко второму кадру. */
+      if (planUp && cur === 0) return;
+      const owner = scrollLockOwner();
+      /* Пока панорама стоит поверх плана, страницу держит ЕГО замок,
+         а шаги обязаны ходить. Без этой щели зритель, поднявший
+         панораму из плана, не вернулся бы ничем, кроме Esc. */
+      if (owner !== OFFICE_STEP_LOCK && !(planUp && owner === PLAN_LOCK)) return;
       if (at - lastGestureAt > SCROLL_GESTURE_GAP_MS) acc = 0;
       lastGestureAt = at;
       acc += dy;
@@ -490,7 +571,17 @@ export default function OfficeStop() {
            в фазе CAPTURE, то есть до того, как это же событие дойдёт
            до ScrollTrip: он увидит страницу уже отпертой и повезёт
            её сам, без потерянного жеста. */
-        else {
+        else if (planFlow) {
+          /* ...но не раньше, чем закроется планировка. Страницу держит
+             ЕЁ замок, releaseHere снимает только свой — отдать прокрутку
+             поверх чужого замка нечем. Поэтому первый жест вниз
+             закрывает план (он всё равно не виден, под панорамой),
+             а уводит страницу уже следующий: к тому времени замок
+             вернётся секции, её же подпиской на onScrollLockChange. */
+          planFlow = false;
+          overPlan(false);
+          requestPlanDismiss();
+        } else {
           handedOff = true;
           releaseHere();
         }
@@ -597,6 +688,29 @@ export default function OfficeStop() {
       if (parked) runStep(Math.min(cur + 1, 2) as Step);
     });
 
+    /* «Дальше» в шапке ПЛАНИРОВКИ. Тот же шаг, что у офисной кнопки,
+       плюс поднятый флаг: панорама поедет поверх плана, а не поверх
+       зоны, и шаг назад вернёт зрителя в план. */
+    planApi.current = {
+      next: () => {
+        if (busy || !parked || cur >= 2) return;
+        planFlow = true;
+        runStep((cur + 1) as Step);
+      },
+      /* План открылся или закрылся — чем угодно: кнопкой, Esc,
+         «Закрыть», уходом вниз. С закрытием режим кончается, и сцене
+         больше незачем стоять над оверлеем. Пока идёт шаг, признак
+         не трогаем: панорама ещё едет, и уйди сцена под план прямо
+         сейчас — кадр пропал бы посреди хода. Снимет его тот же
+         таймер, что снимает `busy`. */
+      state: (open: boolean) => {
+        planUp = open;
+        if (open) return;
+        planFlow = false;
+        if (!busy) overPlan(false);
+      },
+    };
+
     return () => {
       io.disconnect();
       stop();
@@ -621,7 +735,15 @@ export default function OfficeStop() {
           className={`${styles.office} ${officeLive ? '' : styles.officeOff}`}
           inert={!officeLive}
         >
-          <OfficeHub active={officeLive} next={NEXT_STOP} />
+          <OfficeHub
+            active={officeLive}
+            next={NEXT_STOP}
+            /* Под prefers-reduced-motion шагов нет вовсе — привод
+               не запускается, и просить его не о чем. Кнопки «Дальше»
+               в плане там не будет, останется обычное «Закрыть». */
+            onPlanNext={reduced ? undefined : planNext}
+            onPlanState={planState}
+          />
         </div>
 
         {/* слой B — кадр вида. id нужен индикатору «дальше»: под

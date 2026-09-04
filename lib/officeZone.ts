@@ -96,6 +96,36 @@ export function requestNextStep(): void {
   for (const notify of cueListeners) notify();
 }
 
+/* --- четвёртый канал: «закрой планировку» ----------------------------
+   ЗАЧЕМ. Планировка научилась быть ступенью потока: кнопка «Дальше»
+   в её шапке поднимает панораму ПОВЕРХ плана, а жест вверх опускает
+   панораму обратно и открывает план снова. Пока это длится, оверлей
+   плана висит под сценой офиса и держит свой замок прокрутки.
+
+   Отсюда и канал. Ушёл зритель со второго кадра вниз — план обязан
+   закрыться, иначе он останется висеть в position: fixed поверх
+   Landing и всей остальной страницы. Знает про уход OfficeStop
+   (у него жесты и шаги), а закрывает план OfficeHub (у него состояние
+   planOpen) — между ними ровно одна команда, и это она.
+
+   Тот же вид, что у onOfficeStep0 и onNextStep: команда, а не
+   состояние, поэтому набор слушателей, а не снимок. */
+
+const planCloseListeners = new Set<StepListener>();
+
+/** OfficeHub подписывается на монтировании. */
+export function onPlanDismiss(fn: StepListener): () => void {
+  planCloseListeners.add(fn);
+  return () => {
+    planCloseListeners.delete(fn);
+  };
+}
+
+/** «Сними планировку»: мгновенно, без нырка — её всё равно не видно. */
+export function requestPlanDismiss(): void {
+  for (const notify of planCloseListeners) notify();
+}
+
 /** id секции офиса; она же якорь прокрутки. Дублируется в OfficeStop.tsx. */
 export const OFFICE_ID = 'office';
 

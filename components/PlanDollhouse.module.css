@@ -132,7 +132,40 @@ a.sheetLink {
   transition-duration: var(--t-micro);
 }
 
-/* --- поле плана ------------------------------------------------------- */
+/* «ДАЛЬШЕ» — ГЛАВНОЕ ДЕЙСТВИЕ ШАПКИ, и оно должно звать сильнее
+   остальных. Той же капсулой, что было «Закрыть», но с рамкой --ink
+   вместо --alu: среди трёх тихих входов рядом этого хватает, чтобы
+   она читалась первой, а красной заливки основной кнопки здесь
+   не нужно — план не форма записи, и одно действие в шапке
+   не главнее просмотра самого этажа.
+
+   Стрелка ровно та же, что у индикатора «дальше» в офисе: одно
+   движение вниз — один рисунок на весь сайт. */
+.next {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  border-color: var(--ink);
+}
+
+.next svg {
+  /* Стрелка тише подписи: она указывает, а не называет. На наведении
+     подтягивается вместе с цветом — тот же приём, что у стрелок
+     возврата в офисе. */
+  color: var(--ink-60);
+  transition: transform var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .next:hover { background: var(--white); border-color: var(--ink); }
+  .next:hover svg { color: var(--ink); transform: translateY(2px); }
+}
+
+.next:active { background: var(--white); }
+.next:active svg { color: var(--ink); transform: translateY(2px); }
+
+/* --- поле плана ------------------------------------------------------- *//* --- поле плана ------------------------------------------------------- */
 
 .view {
   position: relative;
@@ -539,6 +572,13 @@ a.sheetLink {
   }
   .tools { flex: 0 0 auto; }
   .close { padding: 0 var(--s-4); }
+
+  /* С «Дальше» в шапке заголовок снимается совсем. Замер на 390 px:
+     четыре входа с капсулой занимают 332 px из 350 доступных, а сам
+     заголовок к тому моменту и так схлопнут многоточием в ноль —
+     держать нулевую коробку и её отбивку незачем. */
+  .bar[data-flow] .title { display: none; }
+  .bar[data-flow] .tools { gap: var(--s-2); }
 
   .flat { padding: var(--s-4) var(--s-4) var(--s-4); }
 
