@@ -365,15 +365,22 @@
    ПОЧЕМУ ИМЕННО :focus-visible. Он и означает «зритель пришёл сюда
    с клавиатуры». Программный перенос под него не подпадает — при
    условии, что вызывающий сказал focusVisible: false, чем и занимается
-   lib/focus.ts. Мышь сюда тоже не попадает: на клик :focus-visible
-   не срабатывает, и клик остаётся тише наведения.
+   lib/focus.ts.
+
+   А ВОТ «МЫШЬ СЮДА НЕ ПОПАДАЕТ» БЫЛО НЕВЕРНО, и держится это теперь
+   на :not([data-focus-quiet]), а не на самом :focus-visible. На клик
+   он и правда не срабатывает — но Chrome поднимает его у УЖЕ
+   сфокусированного элемента на ЛЮБОМ следующем нажатии клавиши.
+   То есть кликнул мышью, нажал Esc (тумблер планировки, жать его
+   нормально) — и кнопка вставала в «нажатый» вид без единого Tab-а.
+   Маркер вешает components/FocusRing.tsx в момент прихода фокуса.
 
    ЗАМЕНА КОЛЬЦУ, А НЕ ПРОСТО СНЯТИЕ. «outline: none без замены»
    на сайте запрещён (AGENTS.md, «Доступность»), и это не формальность:
    без замены человек с клавиатуры перестаёт понимать, где он. Здесь
    замена идёт тремя каналами разом — фон в --white, рамка в --ink,
    надпись в --frit-deep. Снимаешь любой из трёх — верни кольцо. */
-.planLink:focus-visible {
+.planLink:focus-visible:not([data-focus-quiet]) {
   outline: none;
   background: var(--white);
   border-color: var(--ink);
@@ -407,7 +414,7 @@
   .planWrap:hover .planBadge { transform: translateX(var(--s-2)) scale(1.08); }
 }
 
-.planLink:focus-visible .planBadge { transform: translateX(var(--s-2)) scale(1.08); }
+.planLink:focus-visible:not([data-focus-quiet]) .planBadge { transform: translateX(var(--s-2)) scale(1.08); }
 
 /* Подпись переехала ВНУТРЬ капсулы второй строкой и больше не
    проявляется по наведению. Прежде это был reveal, и «Пять зон ·
@@ -452,7 +459,7 @@
   }
 }
 
-.infoRight .planLink:focus-visible .planBadge {
+.infoRight .planLink:focus-visible:not([data-focus-quiet]) .planBadge {
   transform: translateX(calc(-1 * var(--s-2))) scale(1.08);
 }
 
@@ -542,7 +549,7 @@
 }
 
 .move:hover .moveLabel,
-.move:focus-visible .moveLabel {
+.move:focus-visible:not([data-focus-quiet]) .moveLabel {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }

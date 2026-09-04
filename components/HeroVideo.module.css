@@ -448,7 +448,7 @@ button.enterBtn:hover {
 
 @media (hover: hover) and (pointer: fine) {
   .mute:hover .muteLabel::after,
-  .mute:focus-visible .muteLabel::after {
+  .mute:focus-visible:not([data-focus-quiet]) .muteLabel::after {
     animation: muteSweep var(--t-mute-sweep) var(--ease-standard);
   }
 }
@@ -456,7 +456,7 @@ button.enterBtn:hover {
 /* Прогон — украшение, и под reduce он не нужен: линия просто стоит. */
 @media (prefers-reduced-motion: reduce) {
   .mute:hover .muteLabel::after,
-  .mute:focus-visible .muteLabel::after {
+  .mute:focus-visible:not([data-focus-quiet]) .muteLabel::after {
     animation: none;
   }
 }

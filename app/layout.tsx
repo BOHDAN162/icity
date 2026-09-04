@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Literata, Golos_Text, JetBrains_Mono } from "next/font/google";
 import Cursor from "@/components/Cursor";
+import FocusRing from "@/components/FocusRing";
 import ScrollTrip from "@/components/ScrollTrip";
 import "./globals.css";
 
@@ -113,6 +114,12 @@ export default function RootLayout({
             Ничего не рисует и на тач-устройстве не делает ничего:
             touch-события модуль не слушает вовсе. */}
         <ScrollTrip />
+        {/* Кольцо фокуса следует способу прихода фокуса, а не последней
+            нажатой клавише: Chrome поднимает :focus-visible у уже
+            сфокусированного мышью элемента на любом нажатии, и Escape
+            обводил чёрной рамкой то, по чему только что кликнули.
+            Ничего не рисует и ни одной клавиши не отбирает. */}
+        <FocusRing />
       </body>
     </html>
   );

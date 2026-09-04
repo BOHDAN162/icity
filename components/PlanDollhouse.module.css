@@ -186,7 +186,7 @@ a.sheetLink {
    как ошибка отрисовки, а не как фокус. */
 .flatZone:focus { outline: none; }
 
-.flatZone:focus-visible {
+.flatZone:focus-visible:not([data-focus-quiet]) {
   outline: none;
   stroke: var(--ink);
   stroke-width: 0.12;

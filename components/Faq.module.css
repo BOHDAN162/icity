@@ -53,7 +53,7 @@
   display: none;
 }
 
-.summary:focus-visible {
+.summary:focus-visible:not([data-focus-quiet]) {
   outline: 2px solid var(--frit-deep);
   outline-offset: 4px;
 }
