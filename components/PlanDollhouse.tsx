@@ -138,6 +138,33 @@ type Props = {
   returnTo?: RenderKey | null;
 };
 
+/* Плоский план или объёмный — решается одним выражением, и читателей
+   у него два: сам компонент при монтировании и прогрев ниже. Держать
+   два списка условий нельзя: разойдутся, и прогрев будет качать не тот
+   чанк, который потом отрисуется. */
+function decideMode() {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const coarse = window.matchMedia('(max-width: 767px), (pointer: coarse)').matches;
+  return {
+    // Медленная сеть, нет WebGL или просьба убрать движение — плоский план.
+    mode: !reduced && !isSlowNetwork() && hasWebGL() ? ('solid' as const) : ('flat' as const),
+    calm: coarse || reduced,
+  };
+}
+
+/* ПРОГРЕВ ЧАНКА СЦЕНЫ. Зовут снаружи — из офиса, когда зритель до него
+   доехал (OfficeHub, warmPlan). Смысл в том, чтобы к моменту нажатия
+   «Открыть планировку» уже лежал в кэше не только этот модуль, но и то,
+   что он потом затребует сам: без прогрева за PlanScene едет three.js,
+   и первый показ плана ждёт его.
+
+   Ошибку глотаем молча: это предзагрузка, а не показ. Не приехало —
+   dynamic() затребует то же самое ещё раз, уже по клику. */
+export function preloadPlanScene(): void {
+  const { mode } = decideMode();
+  void (mode === 'solid' ? import('./PlanScene') : import('./PlanFlat')).catch(() => {});
+}
+
 /* Пропа `open` нет: смонтирован — значит открыт. Так чанк с three.js
    уезжает из первого экрана сам собой, а закрытие гарантированно
    отпускает WebGL-контекст, а не оставляет его висеть невидимым. */
@@ -186,15 +213,7 @@ export default function PlanDollhouse({
      инициализатор, а не эффект: пересчитывать его на каждый рендер значит
      поймать смену WebGL-контекста в середине перелёта. SSR тут не мешает —
      компонент приезжает через dynamic({ ssr: false }). */
-  const [{ mode, calm }] = useState(() => {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const coarse = window.matchMedia('(max-width: 767px), (pointer: coarse)').matches;
-    return {
-      // Медленная сеть, нет WebGL или просьба убрать движение — плоский план.
-      mode: !reduced && !isSlowNetwork() && hasWebGL() ? ('solid' as const) : ('flat' as const),
-      calm: coarse || reduced,
-    };
-  });
+  const [{ mode, calm }] = useState(decideMode);
 
   useEffect(() => {
     let alive = true;
