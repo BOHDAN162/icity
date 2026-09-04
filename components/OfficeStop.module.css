@@ -189,6 +189,165 @@
 .stage[data-step='1'] .photo,
 .stage[data-step='2'] .photo { transform: translateY(0); }
 
+/* --- приглашение листать ---------------------------------------------
+   Кнопка внизу кадра вида, по центру. Разбор приёма — у ScrollCue
+   в OfficeStop.tsx; здесь только геометрия и состояния.
+
+   СТОИТ НИЖЕ ПОДПИСЕЙ. «Панорама» и «23 ЭТАЖ» разведены по краям
+   (.caption — flex space-between), центр между ними свободен, поэтому
+   по горизонтали они не спорят; по вертикали кнопка садится ближе
+   к кромке, чем подпись. От самой кромки её отбивает --screen-under —
+   то же слагаемое, что и у подписи: на телефоне низ коробки уходит
+   под панель браузера, и без него кнопка оказалась бы за экраном.
+
+   Контраст берётся с вуали: .veil идёт во всю ширину низа, и центр
+   накрыт ею так же, как края. */
+.cue {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--s-4) + var(--screen-under));
+  transform: translateX(-50%);
+  z-index: 2;
+
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: var(--s-2) var(--s-3);
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  color: var(--ink);
+  cursor: pointer;
+
+  /* Гаснет ЦЕЛИКОМ, а не прозрачностью: погашенная прозрачностью
+     кнопка осталась бы в табуляции и в дереве доступности — Tab
+     попадал бы на невидимое приглашение посреди кадра. */
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity var(--t-reveal) var(--ease-out),
+    visibility 0s linear var(--t-reveal);
+}
+
+/* КОГДА ВИДНА. Первая — только у того, кто пришёл на кадр кнопкой
+   «Дальше» из планировки (data-over-plan). Вторая — только у того, кто
+   нажал первую (data-cue): пришёл на второй кадр жестом — значит листает
+   сам, и звать его незачем. */
+/* Кнопка второго кадра лежит поверх всей сцены, выше полосы шва
+   (z-index 4): внутри слоя кадра её накрывал бы растр. */
+.cueC { z-index: 5; }
+
+.stage[data-over-plan][data-step='1'] .cueB,
+.stage[data-cue][data-step='2'] .cueC {
+  visibility: visible;
+  opacity: 1;
+  transition:
+    opacity var(--t-reveal) var(--ease-out) calc(var(--t-view-step) * 0.6),
+    visibility 0s;
+}
+
+/* СОБСТВЕННАЯ ВУАЛЬ — ТОЛЬКО У ВТОРОГО КАДРА. Под первым уже лежит
+   общая .veil во всю ширину низа, и вторая подложка только высветлила бы
+   его. У второго кадра вуали нет вовсе — её сняли вместе с подписью,
+   потому что держать ей было нечего; теперь текст там снова есть,
+   и подложка возвращается ровно под него.
+
+   Замер по реальным пикселям view2 в полосе под надписью: без вуали
+   контраст --ink 1,00:1 — надпись нечитаема совсем; при альфе у кромки
+   0,68 (профиль .veil, один в один) худший 6,96, средний 8,74.
+
+   Приём штатный (design-system.md, «Вуаль»): растёт от кромки кадра,
+   только --paper с разной альфой, не выше и не шире, чем нужно тексту,
+   маска режет её по горизонтали в обе стороны — иначе полоса протянулась
+   бы через весь кадр. Отрицательные отступы — ровно те поля, которыми
+   кнопка отставлена от кромки. */
+.cueC::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  bottom: calc(-1 * (var(--s-4) + var(--screen-under)));
+  top: calc(-1 * var(--s-7));
+  left: calc(-1 * var(--s-9));
+  right: calc(-1 * var(--s-9));
+  background: linear-gradient(
+    to top,
+    rgba(242, 244, 245, 0.68) 0%,
+    rgba(242, 244, 245, 0.64) 45%,
+    rgba(242, 244, 245, 0.54) 70%,
+    rgba(242, 244, 245, 0.20) 88%,
+    rgba(242, 244, 245, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 28%,
+    #000 72%,
+    transparent 100%
+  );
+}
+
+/* Содержимое поднимается над вуалью порядком отрисовки: позиционированные
+   элементы рисуются поверх ::before, объявленного раньше. Тот же приём,
+   что у индикатора в зонах; z-index не нужен и вреден. */
+.cue > * { position: relative; }
+
+.cueLabel {
+  position: relative;
+  color: var(--ink);
+  transition: font-weight var(--t-micro) var(--ease-out);
+}
+
+/* Подчёркивание — ПРЯМАЯ ЛИНИЯ, а не точечный растр: растр разрешён
+   в четырёх местах сайта, и это не одно из них. Волосяная линия в 1 px
+   на чистой фритте — ровно тот случай, для которого --frit и оставлен. */
+.cueLabel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 1px;
+  background: var(--frit);
+  opacity: 0;
+  transition: opacity var(--t-micro) var(--ease-out);
+}
+
+/* Маятник: движение вдоль оси прокрутки, вниз и обратно. Амплитуда
+   маленькая нарочно — кнопка стоит поверх фотографии, и размашистое
+   качание читалось бы как баннер. */
+@keyframes cueSwing {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(6px); }
+}
+
+.cueArrow {
+  display: grid;
+  place-items: center;
+  color: var(--ink-60);
+  animation: cueSwing 1600ms ease-in-out infinite;
+  transition:
+    transform var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out);
+}
+
+/* Под курсором стрелка ЗАМИРАЕТ В НИЖНЕЙ ТОЧКЕ — маятник останавливается
+   там, куда зовёт. Снимаем анимацию целиком и ставим её же нижнее
+   значение: с animation-play-state стрелка застывала бы в случайной
+   фазе, в том числе на полпути вверх. */
+@media (hover: hover) and (pointer: fine) {
+  .cue:hover .cueLabel { font-weight: 700; }
+  .cue:hover .cueLabel::after { opacity: 1; }
+  .cue:hover .cueArrow {
+    animation: none;
+    transform: translateY(6px);
+    color: var(--ink);
+  }
+}
+
+.cue:active .cueLabel { font-weight: 700; }
+.cue:active .cueLabel::after { opacity: 1; }
+.cue:active .cueArrow { animation: none; transform: translateY(6px); color: var(--ink); }
+
 /* Слой C — второй кадр. Устройство ровно то же, что у слоя B, включая
    запрет масштаба на самом слое; отличий два, и оба содержательные:
    свой шаг и пустота внутри — ни вуали, ни подписи. */
@@ -589,6 +748,10 @@
 /* глобальный reduce-блок в tokens.css оставляет транзишенам 140ms —
    здесь состояние обязано переключаться мгновенно */
 @media (prefers-reduced-motion: reduce) {
+  /* Маятник — движение ради движения, под этой настройкой его нет.
+     Сама кнопка остаётся: она орган управления, а не анимация. */
+  .cueArrow { animation: none; }
+
   .title::after,
   .figValue::after {
     transition: none !important;
@@ -695,6 +858,14 @@
      стояли числа: высота блока схлопнулась с двух строк до одной. */
   .caption {
     bottom: calc(clamp(16px, 3.5vh, 36px) + var(--screen-under));
+  }
+
+  /* С приглашением листать подпись поднимается на его высоту: на узкой
+     колонке между низом «Панорамы» и верхом кнопки оставалось 6 px,
+     и три надписи читались одной кашей. На десктопе разводить нечего —
+     там между ними 15 px и вдвое больше воздуха по бокам. */
+  .stage[data-over-plan] .caption {
+    bottom: calc(clamp(16px, 3.5vh, 36px) + var(--screen-under) + 44px);
   }
   /* Подпись стоит колонкой и занимает вдвое больше высоты, чем на
      десктопе: заголовок, числа под ним. Профиль общий,

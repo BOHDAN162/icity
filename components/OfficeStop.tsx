@@ -101,9 +101,10 @@ import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
 import OfficeHub from './OfficeHub';
+import { ArrowDown } from './NextCue';
 import { cursorMode } from '@/lib/cursorMode';
 import { scatter } from '@/lib/scatter';
-import { SCROLL_GESTURE_GAP_MS } from '@/lib/motion';
+import { SCROLL_GESTURE_GAP_MS, requestSmoothScrollTo } from '@/lib/motion';
 import { onNextStep, onOfficeStep0, requestPlanDismiss } from '@/lib/officeZone';
 import {
   lockScroll, unlockScroll, scrollLockOwner, onScrollLockChange,
@@ -254,6 +255,29 @@ function ViewShot({ view }: { view: ViewKey }) {
   );
 }
 
+/* ПРИГЛАШЕНИЕ ЛИСТАТЬ — кнопка внизу кадра вида, по центру.
+   Появляется только у того, кто пришёл сюда кнопкой «Дальше» из
+   планировки: он двигался по сайту кнопками, и оставить его на кадре
+   без единого органа управления значило бы оборвать этот путь.
+
+   Слово то же, что у индикатора в зонах (NextCue): одно действие —
+   одна формулировка. Кегль --label против --display-m у «Панорамы»
+   рядом: подпись обязана быть значительно тише кадра, ради которого
+   экран и сделан.
+
+   Стрелка ПОД словом и качается маятником — движение вдоль той же оси,
+   по которой зритель и должен пойти. Под курсором она замирает внизу,
+   а слово тяжелеет и подчёркивается волосяной линией --frit: чистая
+   фритта живёт как раз в линиях 1–2 px (design-system.md §1). */
+function ScrollCue({ onClick, cls }: { onClick: () => void; cls: string }) {
+  return (
+    <button type="button" className={`${styles.cue} ${cls}`} onClick={onClick}>
+      <span className={`label ${styles.cueLabel}`}>Листайте вниз</span>
+      <span className={styles.cueArrow} aria-hidden="true"><ArrowDown size={18} /></span>
+    </button>
+  );
+}
+
 const MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const subscribeMotion = (onChange: () => void) => {
   const mq = window.matchMedia(MOTION_QUERY);
@@ -284,12 +308,26 @@ export default function OfficeStop() {
      прямой ребёнок, а команд две и в разные стороны (план просит шаг,
      закрытие плана снимает режим). Канал остался ровно на третью,
      единственную дальнюю: requestPlanDismiss. */
-  const planApi = useRef<{ next: () => void; state: (open: boolean) => void }>({
+  const planApi = useRef<{
+    next: () => void;
+    state: (open: boolean) => void;
+    /* Кнопка «Листайте вниз» на первом кадре вида: тот же шаг вперёд,
+       что и жест, плюс признак «сюда пришли кликом» — по нему такая же
+       кнопка появляется и на втором кадре. */
+    cueNext: () => void;
+    /* Она же на втором кадре: там ход кончается, и кнопка увозит
+       страницу к следующей секции — плавно, поездкой ScrollTrip. */
+    cueLeave: () => void;
+  }>({
     next: () => {},
     state: () => {},
+    cueNext: () => {},
+    cueLeave: () => {},
   });
   const planNext = useCallback(() => planApi.current.next(), []);
   const planState = useCallback((open: boolean) => planApi.current.state(open), []);
+  const cueNext = useCallback(() => planApi.current.cueNext(), []);
+  const cueLeave = useCallback(() => planApi.current.cueLeave(), []);
 
   const [step, setStep] = useState<Step>(0);
   /* Первый кадр вида монтируем, когда секция ближе полутора экранов. */
@@ -459,6 +497,8 @@ export default function OfficeStop() {
            возвращается. Зритель этого не видит: план непрозрачен
            и накрывает экран целиком. */
         if (!planFlow || cur === 0) overPlan(false);
+        // Вернулись в офис — цепочка кнопок кончилась вместе с ней.
+        if (cur === 0) delete stage.dataset.cue;
         /* Разметка под неподвижным курсором сменилась целиком: кнопка
            «Дальше» уехала вместе с интерфейсом офиса. Ни pointermove,
            ни scroll при этом не было, а цель кольца пересматривается
@@ -565,6 +605,13 @@ export default function OfficeStop() {
       if (Math.abs(acc) < STEP_ARM_PX) return;
       const down = acc > 0;
       acc = 0;
+      /* ЖЕСТ ОБРЫВАЕТ ЦЕПОЧКУ КНОПОК. `data-cue` означает «зритель
+         пришёл сюда кликом и ждёт следующей кнопки»; стоит ему разок
+         крутануть колесо — и он уже листает сам, а приглашение на
+         втором кадре становится лишним. Без сброса признак жил бы
+         до конца страницы и всплывал бы на кадре 2 у того, кто
+         добрался туда пальцем. */
+      delete stage.dataset.cue;
       if (down) {
         if (cur < 2) runStep((cur + 1) as Step);
         /* Последний кадр пройден — отдаём прокрутку. Замок снимается
@@ -678,6 +725,7 @@ export default function OfficeStop() {
       window.clearTimeout(stepTimer);
       busy = false;
       delete stage.dataset.stepping;
+      delete stage.dataset.cue;
       cur = 0;
       setStep(0);
       applyStep(0);
@@ -708,6 +756,50 @@ export default function OfficeStop() {
         if (open) return;
         planFlow = false;
         if (!busy) overPlan(false);
+      },
+
+      /* КНОПКА НА ПЕРВОМ КАДРЕ. Шаг тот же, что от жеста вниз, но она
+         ещё и поднимает `data-cue`: по нему такая же кнопка появляется
+         на втором кадре. Пришёл туда жестом — кнопки там нет, потому
+         что и приглашения листать зритель не просил. */
+      cueNext: () => {
+        if (busy || !parked || cur !== 1) return;
+        stage.dataset.cue = '1';
+        runStep(2);
+      },
+
+      /* КНОПКА НА ВТОРОМ КАДРЕ. Ход по шагам кончился, дальше страница
+         обычная — и кнопка увозит к следующей секции поездкой
+         ScrollTrip, а не прыжком.
+
+         ПОРЯДОК ЗДЕСЬ НЕСУЩИЙ, и каждый шаг закрывает свою беду:
+           1. `handedOff` ДО всего: снятие чужого замка уведомляет
+              подписчиков, и наша же подписка вернула бы замок секции
+              обратно, не будь флага;
+           2. план, если он ещё открыт, снимаем сами — страницу держит
+              ЕГО замок, а releaseHere() снимает только свой;
+           3. поездку заводим следующим кадром: PLAN_LOCK снимается
+              эффектом React, то есть уже после этого обработчика,
+              а при overflow: hidden прокрутка программно не двигается.
+
+         Цель ЖИВАЯ, функцией: страница ниже растёт по дороге
+         (картинки, кадр комплекса), и снятая на клике точка оказалась бы
+         выше настоящего низа секции. Тот же приём, что у кнопки
+         «Записаться на просмотр». */
+      cueLeave: () => {
+        if (busy || cur !== 2) return;
+        handedOff = true;
+        if (planFlow) {
+          planFlow = false;
+          overPlan(false);
+          requestPlanDismiss();
+        }
+        requestAnimationFrame(() => {
+          releaseHere();
+          const to = () => wrap.getBoundingClientRect().bottom + window.scrollY;
+          // Поездки нет под prefers-reduced-motion — там уезжаем сразу.
+          if (!requestSmoothScrollTo(to)) window.scrollTo(0, to());
+        });
       },
     };
 
@@ -784,6 +876,12 @@ export default function OfficeStop() {
               ))}
             </dl>
           </div>
+
+          {/* Кнопку рисуем всегда, а видимость решает CSS по паре
+              признаков на сцене: узла нет — появление пришлось бы
+              вешать на монтирование, а гаснуть ей нужно и на уходе
+              назад, в офис. */}
+          <ScrollCue onClick={cueNext} cls={styles.cueB} />
         </div>
 
         {/* слой C — второй кадр вида. Ни вуали, ни подписи: заказчик
@@ -800,6 +898,17 @@ export default function OfficeStop() {
             кверху редеют. Когда липкость отпустит, снизу приедет Landing
             со стандартной полосой 48 px — она и заменяет собой шов. */}
         <div ref={bandRef} className={styles.band} aria-hidden="true" />
+
+        {/* Та же кнопка на втором кадре, но здесь ход по шагам кончился:
+            она увозит к следующей секции поездкой, а не поднимает третий
+            кадр. Видна только тому, кто пришёл сюда кликом по первой.
+
+            ЛЕЖИТ НЕ В СЛОЕ КАДРА, А ПОВЕРХ ВСЕЙ СЦЕНЫ, и это вынужденно:
+            низ второго кадра занимает полоса шва (растр фритты, z-index 4),
+            и кнопка внутри слоя оказывалась ПОД точками — надпись читалась
+            сквозь растр. Здесь она выше полосы, а её собственная вуаль
+            заодно приглушает растр ровно под текстом. */}
+        <ScrollCue onClick={cueLeave} cls={styles.cueC} />
       </div>
     </section>
   );

@@ -108,9 +108,14 @@ export default function NextCue({ next, progress }: Props) {
          React, а не переменная сцены; CSS-модулем такое не задать. */
       style={{ '--cue': progress } as CSSProperties}
       onClick={goDown}
-      aria-label={`Дальше: ${next.title}`}
+      aria-label={`Листайте вниз: ${next.title}`}
     >
-      <span className={`label ${styles.railLabel}`}>Дальше</span>
+      {/* «ЛИСТАЙТЕ ВНИЗ» вместо прежнего «ДАЛЬШЕ» (5 сентября 2026).
+          Индикатор теперь приходит не сразу, а по порогу в три зоны,
+          и к этому моменту он не столько называет следующий экран,
+          сколько говорит, ЧТО СДЕЛАТЬ. Тем же словом подписана кнопка
+          на самом кадре вида — одно действие, одна формулировка. */}
+      <span className={`label ${styles.railLabel}`}>Листайте вниз</span>
       <span className={styles.rail} aria-hidden="true">
         <span className={styles.railFill} />
       </span>
