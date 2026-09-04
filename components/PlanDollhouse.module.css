@@ -338,13 +338,6 @@ a.sheetLink {
   color: var(--ink);
 }
 
-.facade {
-  margin: 0;
-  font: var(--small);
-  color: var(--ink-60);
-  max-width: 34rem;
-}
-
 /* --- переходы с клавиатуры -------------------------------------------- */
 
 /* Мышью зону берут прямо с плана. С клавиатуры полигон не поймать,
@@ -429,8 +422,6 @@ a.sheetLink {
     bottom: var(--s-4);
     max-width: none;
   }
-  /* На телефоне строка про фасад упиралась в 34rem и уезжала за экран */
-  .facade { max-width: 100%; }
   .factValue { font: 500 19px/1 var(--mono); letter-spacing: var(--tr-num); }
   /* Подпись за курсором на тапе бесполезна: пальца на экране уже нет */
   .chip { display: none; }

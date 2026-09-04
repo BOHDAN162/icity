@@ -105,7 +105,6 @@ const FACTS: readonly { value: string; caption: string }[] = [
   { value: '23', caption: 'Этаж из 61' },
 ];
 
-const FACADE_NOTE = 'Панорамный фасад по трём сторонам, скошенный угол в зоне отдыха.';
 
 type Props = {
   /* ПОЧЕМУ ЗАКРЫЛИСЬ — вызывающему это нужно знать, и вот зачем.
@@ -532,7 +531,6 @@ export default function PlanDollhouse({ onClose, onEnterZone, backFrom = null }:
               </div>
             ))}
           </dl>
-          <p className={styles.facade}>{FACADE_NOTE}</p>
         </div>
 
         {/* Клавиатура. Список видим, когда в нём есть фокус: мышью зоны

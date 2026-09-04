@@ -713,7 +713,14 @@
      обе величины остались ступенями шкалы, промежуточных значений
      не заведено. */
   .bottom { gap: var(--s-3); }
-  .info, .infoRight { justify-self: stretch; max-width: none; }
+  /* СТРОКИ СЕТКИ ЗАДАНЫ ЯВНО, и это не украшение. Индикатор «Дальше»
+     кладётся в ту же строку, что и блок зоны (grid-row: 1 в
+     NextCue.module.css), чтобы встать справа от счётчика. Элемент
+     с явной строкой раскладывается ДО автоматических, поэтому без этих
+     двух строк .info уезжал во вторую строку, а индикатор оказывался
+     над ним — замер показал кнопку на 404 px при счётчике на 688. */
+  .info, .infoRight { justify-self: stretch; max-width: none; grid-row: 1; grid-column: 1; }
+  .nav { grid-row: 2; grid-column: 1; }
   .zoneName { font: var(--heading); letter-spacing: var(--tr-head); margin-bottom: var(--s-3); }
   .zoneNameBare { margin-bottom: var(--s-6); }
   .line { font: var(--body); }
