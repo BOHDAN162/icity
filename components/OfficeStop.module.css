@@ -72,8 +72,14 @@
   --office-scale: 1;
   position: sticky;
   top: 0;
-  /* 100svh, не 100vh: адресная строка iOS иначе режет низ */
-  height: 100svh;
+  /* ТА ЖЕ КОРОБКА, ЧТО У ПЕРВОГО ЭКРАНА. Здесь стояло 100svh —
+     наименьшая из возможных высот, — и на телефоне кадр офиса не доходил
+     до низа: под ним оставалась полоса в высоту панели браузера, и в ней
+     светился фон страницы. Теперь сцена доходит до самого низа, как
+     и ролик. Всё, что обязано остаться на виду, отбито от нижней кромки
+     на --screen-under: подпись кадра вида здесь, интерфейс офиса —
+     в OfficeHub.module.css. */
+  height: var(--screen-h);
   overflow: hidden;
 }
 
@@ -309,7 +315,7 @@
   /* Вдвое ближе к нижней кромке, чем было (было clamp(48,9vh,104)).
      Подпись и вуаль ужаты одной парой: обе ровно вдвое, иначе текст
      вылез бы из плотной части градиента. */
-  bottom: clamp(24px, 4.5vh, 52px);
+  bottom: calc(clamp(24px, 4.5vh, 52px) + var(--screen-under));
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -649,7 +655,7 @@
        выравниваем по левому краю */
     flex-direction: column;
     align-items: flex-start;
-    bottom: clamp(16px, 3.5vh, 36px);
+    bottom: calc(clamp(16px, 3.5vh, 36px) + var(--screen-under));
   }
   .figures { margin-top: var(--s-4); }
   /* Подпись стоит колонкой и занимает вдвое больше высоты, чем на
