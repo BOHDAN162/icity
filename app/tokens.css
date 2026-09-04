@@ -348,7 +348,13 @@ body {
   color: var(--ink);
   font: var(--body);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior-y: none;
+  /* ЗДЕСЬ СТОЯЛО overscroll-behavior-y: none, и снято оно 5 сентября
+     2026 не ради pull-to-refresh. На iOS это свойство держит нижнюю
+     панель Safari развёрнутой: страница объявляет себя «приложением»,
+     и браузер перестаёт убирать панель на прокрутке. Отсюда светлая
+     полоса внизу, которая не пропадала НИКОГДА, — тогда как на обычных
+     сайтах панель сворачивается в пилюлю и кадр открывается до самого
+     низа. Цена — pull-to-refresh снова работает. */
 }
 
 h1 { font: var(--display-xl); letter-spacing: var(--tr-xl);   margin: 0; }

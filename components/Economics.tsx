@@ -12,9 +12,16 @@
 
    Движение — one-shot по входу шкалы в кадр (IntersectionObserver,
    threshold 0.5, отписка после срабатывания). Вместе с ним от нуля
-   прокручиваются и сами числа — ставка на маркере, границы рынка
-   и строка «СТАВКА» в полосе фактов (lib/countUp.ts). Заголовок
-   и абзацы статичны, это сознательно.
+   прокручиваются числа САМОЙ ШКАЛЫ — ставка на маркере и границы
+   рынка (lib/countUp.ts). Заголовок, абзацы и полоса фактов внизу
+   статичны, это сознательно.
+
+   ПОЛОСА ФАКТОВ НЕ АНИМИРУЕТСЯ ВОВСЕ. Счёт «1 300 000 ₽ / мес»
+   от нуля здесь стоял и снят 4 сентября 2026 по просьбе заказчика:
+   движение в секции держит шкала, а ряд под ней — итоговая справка
+   в конце экрана, и вторая волна цифр её из справки превращала
+   в ещё один аттракцион. Не заводить заново, не спросив. Ховер
+   с утолщением веса — не анимация появления и остаётся на месте.
 
    Три фазы:
    idle   — состояние SSR и prefers-reduced-motion: всё в финальном
@@ -40,14 +47,12 @@ import styles from './Economics.module.css';
    U+202F теряется при переносе файла между редакторами. Тот же приём,
    что у NBSP в PlanDollhouse.tsx.
 
-   `count: true` — значение прокручивается счётчиком. Помечена одна
-   ставка: в «эксплуатация · НДС» считать нечего, а «2 месяца · от 11
-   месяцев» — условия договора, а не величина, и мельтешение цифр
-   в них читалось бы как ошибка. */
+   Поля `count` здесь нет ни у одной строки и заводить его не нужно:
+   полоса фактов не считается вовсе — см. правило в шапке файла. */
 const NNBSP = '\u202F';
 
 const FACTS = [
-  { key: 'СТАВКА', value: `1${NNBSP}300${NNBSP}000 ₽ / мес`, count: true },
+  { key: 'СТАВКА', value: `1${NNBSP}300${NNBSP}000 ₽ / мес` },
   { key: 'ВКЛЮЧЕНО В СТАВКУ', value: 'эксплуатация · НДС' },
   { key: 'ДЕПОЗИТ · СРОК', value: '2 месяца · от 11 месяцев' },
 ];
@@ -73,14 +78,11 @@ type Phase = 'idle' | 'armed' | 'played';
 
 export default function Economics() {
   const scaleRef = useRef<HTMLDivElement>(null);
-  const factsRef = useRef<HTMLDListElement>(null);
   const [phase, setPhase] = useState<Phase>('idle');
 
-  /* Два счётчика, а не один на секцию: шкала и полоса фактов разъезжаются
-     по экрану на добрую его половину, и общий наблюдатель запускал бы
-     нижние числа задолго до того, как их видно. Каждый ждёт своего. */
+  /* Счётчик ровно один и живёт на шкале. Второй, на полосе фактов,
+     снят вместе со счётом «1 300 000 ₽ / мес» — см. шапку файла. */
   useCountUpOnView(scaleRef, { duration: COUNT_MS, delay: SCALE_COUNT_DELAY });
-  useCountUpOnView(factsRef, { duration: COUNT_MS });
 
   useEffect(() => {
     /* reduce: остаёмся в idle — финальный вид без движения,
@@ -200,13 +202,11 @@ export default function Economics() {
           готово.
         </p>
 
-        <dl ref={factsRef} className={styles.facts}>
+        <dl className={styles.facts}>
           {FACTS.map((f) => (
             <div key={f.key} className={styles.fact}>
               <dt className={styles.factKey}>{f.key}</dt>
-              <dd className={styles.factValue} data-count={f.count ? f.value : undefined}>
-                {f.value}
-              </dd>
+              <dd className={styles.factValue}>{f.value}</dd>
             </div>
           ))}
         </dl>
