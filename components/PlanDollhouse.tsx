@@ -96,6 +96,41 @@ const NBSP = '\u00A0';
 
 const FACADE_NOTE = '\u041F\u0430\u043D\u043E\u0440\u0430\u043C\u043D\u044B\u0439 \u0444\u0430\u0441\u0430\u0434 \u043F\u043E \u0442\u0440\u0451\u043C \u0441\u0442\u043E\u0440\u043E\u043D\u0430\u043C.';
 
+/* ПОДСКАЗКА «ПО ЗОНАМ МОЖНО ХОДИТЬ». Белая модель читается как
+   картинка: зритель доворачивает её курсором, видит подпись зоны
+   и не догадывается, что клик перенесёт внутрь. Круги переходов
+   остались в офисе, под оверлеем, — здесь на них не сошлёшься.
+
+   Гаснет НАВСЕГДА и по первому признаку понимания: мышь навелась
+   на зону, палец выбрал её. Дальше подсказка мешала бы — она
+   объясняет ровно то, что зритель уже сделал. Признаки разные,
+   потому что hover на тач-экране приходит от простого доворота
+   пальцем: там гасит только сам выбор.
+
+   `hintShown` живёт в модуле, а не в состоянии: план открывают
+   и закрывают десятками раз (Esc — тумблер), и объяснять при каждом
+   открытии значит превратить подсказку в назойливую плашку.
+   sessionStorage тут не нужен — памяти на одну загрузку страницы
+   достаточно, а перезагрузка обычно означает нового зрителя. */
+const HINT_LEAD = 'Как смотреть';
+const HINT_FINE = 'Наведите на зону и кликните — окажетесь внутри.';
+const HINT_TOUCH = 'Коснитесь зоны на плане — окажетесь внутри.';
+/* Пара к --t-reveal в tokens.css: там красится уход подсказки, здесь
+   по этому же числу узел снимается из разметки. Снимается он затем,
+   чтобы скринридер не читал невидимое: держать погасший элемент
+   на opacity: 0 значит оставить его в дереве доступности. */
+const HINT_OUT_MS = 380;
+/* КОГДА ПОДСКАЗКА УЖЕ НА ЭКРАНЕ ЦЕЛИКОМ: задержка появления плюс само
+   появление (700 + 380 в .hint, PlanDollhouse.module.css). До этого
+   момента уход не анимируется, а узел снимается молча, и вот почему:
+   класс ухода заменяет собой анимацию появления, а его первый кадр —
+   непрозрачность 1. Замер до правки: подсказку гасили на 250-й мс,
+   когда она ещё не начала проявляться (opacity 0), — и следующий же
+   кадр давал 1, то есть вместо ухода зритель получал вспышку.
+   Правишь одно из трёх чисел — сверяйся с остальными. */
+const HINT_LIVE_MS = 1080;
+let hintShown = false;
+
 /* Числа — из docs/facts.md, других источников у сайта нет.
    Метраж скошенного угла сюда не попал сознательно: в facts.md его нет,
    а по геометрии выходит 8,82 м по плите и 9,56 м по линии остекления —
@@ -149,6 +184,11 @@ function decideMode() {
     // Медленная сеть, нет WebGL или просьба убрать движение — плоский план.
     mode: !reduced && !isSlowNetwork() && hasWebGL() ? ('solid' as const) : ('flat' as const),
     calm: coarse || reduced,
+    /* Мышь есть — подсказка «как смотреть» говорит про наведение и клик,
+       иначе про касание. Спрашиваем живьём и отдельно, а не выводим
+       из `calm`: тот поднимается и на десктопе с prefers-reduced-motion,
+       и предложение «коснитесь» приехало бы к человеку с мышью. */
+    fine: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
   };
 }
 
@@ -213,7 +253,25 @@ export default function PlanDollhouse({
      инициализатор, а не эффект: пересчитывать его на каждый рендер значит
      поймать смену WebGL-контекста в середине перелёта. SSR тут не мешает —
      компонент приезжает через dynamic({ ssr: false }). */
-  const [{ mode, calm }] = useState(decideMode);
+  const [{ mode, calm, fine }] = useState(decideMode);
+
+  /* Подсказка «по зонам можно ходить» — см. шапку у HINT_LEAD.
+     Состояний два: `off` красит уход, `gone` снимает узел совсем. */
+  const [hintOff, setHintOff] = useState(hintShown);
+  const [hintGone, setHintGone] = useState(hintShown);
+
+  /* Дошла ли подсказка до полной непрозрачности. Ref, а не состояние:
+     от него ничего не перерисовывается, он только выбирает способ ухода. */
+  const hintLiveRef = useRef(false);
+
+  const hideHint = useCallback(() => {
+    if (hintShown) return;
+    hintShown = true;
+    // Ещё не показалась — это не уход, а отмена показа. Молча.
+    if (!hintLiveRef.current) { setHintGone(true); return; }
+    setHintOff(true);
+    timersRef.current.push(setTimeout(() => setHintGone(true), HINT_OUT_MS));
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -223,6 +281,14 @@ export default function PlanDollhouse({
     );
     return () => { alive = false; };
   }, []);
+
+  /* Узел подсказки появляется вместе с планом — от этого мгновения
+     и считается её выход на полную непрозрачность. */
+  useEffect(() => {
+    if (!plan || hintShown) return;
+    const t = setTimeout(() => { hintLiveRef.current = true; }, HINT_LIVE_MS);
+    return () => clearTimeout(t);
+  }, [plan]);
 
   // таймеры шва живут не дольше оверлея
   useEffect(() => () => { timersRef.current.forEach(clearTimeout); timersRef.current = []; }, []);
@@ -279,6 +345,7 @@ export default function PlanDollhouse({
      а не камера. Всё остальное у обоих режимов общее. */
   const pick = useCallback((key: RenderKey) => {
     if (flyRef.current) return;
+    hideHint();
     flyRef.current = key;
     setFlyTo(key);
     setArriving(key);
@@ -304,7 +371,7 @@ export default function PlanDollhouse({
       readyRef.current = true;
       tryReveal();
     }, REVEAL_CAP_MS));
-  }, [mode, onEnterZone, tryReveal]);
+  }, [hideHint, mode, onEnterZone, tryReveal]);
 
   /* ЗАКРЫТИЕ ПО ПРОСЬБЕ ЗРИТЕЛЯ — «Закрыть» и Esc, один путь на оба.
      Это зеркало pick(): камера ныряет в ракурс зоны, оверлей
@@ -387,6 +454,19 @@ export default function PlanDollhouse({
   const probeRef = useCallback((el: HTMLImageElement | null) => {
     if (el?.complete) onShotReady();
   }, [onShotReady]);
+
+  /* Наведение ведём через обёртку, а не отдаём setHovered напрямую:
+     мышь, дошедшая до зоны, — это и есть признак, что подсказку про
+     клик читать больше незачем. Гасим прямо в событии; эффектом на
+     `hovered` было бы то же самое, но лишним каскадом рендеров.
+
+     Признак только для мыши. На тач-экране `hovered` поднимается
+     и от доворота пальцем по плану, а это ещё не понимание — там
+     подсказку гасит один лишь выбор зоны, из pick(). */
+  const noteHover = useCallback((key: ZoneKey | null) => {
+    setHovered(key);
+    if (fine && key) hideHint();
+  }, [fine, hideHint]);
 
   /* Слежение за указателем и перетаскивание. Оба живут на поле плана
      целиком; на плоском SVG не нужны — там доворачивать нечего. */
@@ -561,7 +641,7 @@ export default function PlanDollhouse({
           <PlanScene
             plan={plan}
             hovered={hovered}
-            onHover={setHovered}
+            onHover={noteHover}
             onPick={pick}
             flyTo={flyTo}
             backFrom={backFrom}
@@ -572,7 +652,24 @@ export default function PlanDollhouse({
         )}
 
         {plan && mode === 'flat' && (
-          <PlanFlat plan={plan} hovered={hovered} onHover={setHovered} onPick={pick} />
+          <PlanFlat plan={plan} hovered={hovered} onHover={noteHover} onPick={pick} />
+        )}
+
+        {/* Подсказка. Знак слева — точная миниатюра курсора сайта
+            (кольцо --ink-60 и точка --frit-deep, отношение 0,23 как
+            в Cursor.module.css): подсказка про клик обязана начинаться
+            тем же знаком, которым зритель по плану и водит.
+            pointer-events: none — плашка стоит над полем плана, а поле
+            слушает доворот; ловить указатель ей нечем и незачем. */}
+        {plan && !hintGone && (
+          <aside
+            className={`${styles.hint} ${hintOff ? styles.hintOut : ''}`}
+            aria-label="Как смотреть план"
+          >
+            <span className={styles.hintMark} aria-hidden="true" />
+            <p className={`label ${styles.hintLead}`}>{HINT_LEAD}</p>
+            <p className={styles.hintText}>{fine ? HINT_FINE : HINT_TOUCH}</p>
+          </aside>
         )}
 
         {/* ЗОНД ЗАГРУЗКИ, А НЕ КАРТИНКА. Виден он не бывает никогда:
@@ -636,7 +733,7 @@ export default function PlanDollhouse({
               key={z.key}
               type="button"
               className={styles.door}
-              onFocus={() => setHovered(z.key)}
+              onFocus={() => noteHover(z.key)}
               onBlur={() => setHovered(null)}
               onClick={() => z.target && pick(z.target)}
             >
