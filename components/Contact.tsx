@@ -334,7 +334,7 @@ export default function Contact() {
                   aria-describedby постоянный, а не условный: у комментария
                   ошибок нет, и описывать поле больше нечем. */}
               <p className={styles.hint} id="contact-comment-hint">
-                Например: Позвоните с 12:00 до 14:00 в понедельник
+                Например: позвоните с 12:00 до 14:00 в понедельник
               </p>
             </div>
 
