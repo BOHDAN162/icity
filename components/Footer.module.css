@@ -40,7 +40,18 @@
   text-underline-offset: 3px;
 }
 
-.link:hover {
+/* Ховер — только под указателем: на iOS он залипает после тапа
+   и достаётся элементу под точкой касания. Отклик на нажатие
+   даёт :active, он живёт только пока палец на кнопке.
+   Разбор — AGENTS.md, раздел «Доступность». */
+@media (hover: hover) and (pointer: fine) {
+  .link:hover {
+    color: var(--ink);
+    text-decoration-color: var(--frit-deep);
+  }
+}
+
+.link:active {
   color: var(--ink);
   text-decoration-color: var(--frit-deep);
 }

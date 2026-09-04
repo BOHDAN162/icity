@@ -229,8 +229,19 @@
     color var(--motion-fast) var(--ease-standard);
 }
 
-.stubBtn:hover {
+/* Ховер — только под указателем: на iOS он залипает после тапа
+   и достаётся элементу под точкой касания. Отклик на нажатие
+   даёт :active, он живёт только пока палец на кнопке.
+   Разбор — AGENTS.md, раздел «Доступность». */
+@media (hover: hover) and (pointer: fine) {
+  .stubBtn:hover {
+    border-color: var(--ink);
+  }
+}
+
+.stubBtn:active:not(:disabled) {
   border-color: var(--ink);
+  transition-duration: var(--t-micro);
 }
 
 .stubBtn:disabled {
@@ -258,7 +269,13 @@
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
 
-.mapsLink:hover {
+@media (hover: hover) and (pointer: fine) {
+  .mapsLink:hover {
+    border-color: var(--frit-deep);
+  }
+}
+
+.mapsLink:active {
   border-color: var(--frit-deep);
 }
 
@@ -294,9 +311,17 @@
     background var(--motion-fast) var(--ease-standard);
 }
 
-.zoomBtn:hover {
+@media (hover: hover) and (pointer: fine) {
+  .zoomBtn:hover {
+    border-color: var(--ink);
+    background: var(--white);
+  }
+}
+
+.zoomBtn:active {
   border-color: var(--ink);
   background: var(--white);
+  transition-duration: var(--t-micro);
 }
 
 /* --- метки поверх карты -----------------------------------------------

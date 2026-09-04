@@ -88,7 +88,15 @@ a.sheetLink {
   text-decoration: none;
 }
 
-.sheetLink:hover { border-bottom-color: var(--ink); }
+/* Ховер — только под указателем: на iOS он залипает после тапа
+   и достаётся элементу под точкой касания. Отклик на нажатие
+   даёт :active, он живёт только пока палец на кнопке.
+   Разбор — AGENTS.md, раздел «Доступность». */
+@media (hover: hover) and (pointer: fine) {
+  .sheetLink:hover { border-bottom-color: var(--ink); }
+}
+
+.sheetLink:active { border-bottom-color: var(--ink); }
 
 .close {
   height: 44px;
@@ -102,7 +110,15 @@ a.sheetLink {
   transition: background var(--t-micro) var(--ease-out), border-color var(--t-micro) var(--ease-out);
 }
 
-.close:hover { background: var(--white); border-color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .close:hover { background: var(--white); border-color: var(--ink); }
+}
+
+.close:active {
+  background: var(--white);
+  border-color: var(--ink);
+  transition-duration: var(--t-micro);
+}
 
 /* --- поле плана ------------------------------------------------------- */
 
@@ -362,7 +378,15 @@ a.sheetLink {
   cursor: pointer;
 }
 
-.door:hover { background: var(--white); border-color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .door:hover { background: var(--white); border-color: var(--ink); }
+}
+
+.door:active {
+  background: var(--white);
+  border-color: var(--ink);
+  transition-duration: var(--t-micro);
+}
 
 /* --- адаптив ---------------------------------------------------------- */
 

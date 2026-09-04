@@ -516,14 +516,38 @@
   transition: opacity var(--motion-base) var(--ease-soft);
 }
 
-.move:hover {
+/* ВЕСЬ ХОВЕР КРУГА — ТОЛЬКО ТАМ, ГДЕ ЕСТЬ УКАЗАТЕЛЬ, И ЭТО НЕ ФОРМАЛЬНОСТЬ.
+   На iOS ховер после тапа не снимается: Safari держит его на элементе под
+   точкой касания, пока не тапнут в другом месте. Круги перехода живут
+   в перерисовываемом списке — зона сменилась, кнопки другие, а ховер
+   достаётся НОВОЙ кнопке в той же точке экрана. Заказчик поймал это
+   5 сентября 2026: нажал «Коридор» — в коридоре горит «Кухня-лаунж»,
+   потому что она встала на место нажатой кнопки.
+
+   Отклик на само нажатие даёт :active ниже: он живёт только пока палец
+   на кнопке и залипнуть не может по устройству. */
+@media (hover: hover) and (pointer: fine) {
+  .move:hover {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--white);
+    transform: scale(1.25);
+  }
+
+  .move:hover::after { opacity: 1; }
+}
+
+/* Отклик на нажатие. Тише ховера (1.12 против 1.25) и без подписи:
+   под пальцем её всё равно не видно, а переход в зону происходит сразу.
+   Длительность --t-micro: на --motion-base быстрый тап не успевает
+   показать отклик вовсе. */
+.move:active {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--white);
-  transform: scale(1.25);
+  transform: scale(1.12);
+  transition-duration: var(--t-micro);
 }
-
-.move:hover::after { opacity: 1; }
 
 /* Возврат туда, откуда только что пришли, — тише прямых ходов только
    в состоянии покоя; на ховере/фокусе сливается с обычным переходом
@@ -551,10 +575,16 @@
     transform var(--motion-base) var(--ease-soft);
 }
 
-.move:hover .moveLabel,
 .move:focus-visible:not([data-focus-quiet]) .moveLabel {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .move:hover .moveLabel {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 /* Маска — круг ровно по границе заливки (inset: 0 от .move), отдельный
@@ -590,7 +620,16 @@
   transition: transform var(--motion-base) var(--ease-soft);
 }
 
-.move:hover .arrowIcon { transform: translateY(-6px); }
+@media (hover: hover) and (pointer: fine) {
+  .move:hover .arrowIcon { transform: translateY(-6px); }
+}
+
+/* Стрелка отзывается и на нажатие, но короче: ход вдвое меньше ховерного,
+   потому что и сам круг растёт меньше. */
+.move:active .arrowIcon {
+  transform: translateY(-3px);
+  transition-duration: var(--t-micro);
+}
 
 /* --- мелкий шрифт ----------------------------------------------------- */
 

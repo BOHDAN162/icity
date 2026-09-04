@@ -269,7 +269,15 @@ button.enterBtn {
    пропадал бы весь приём: круг рос бы по готовому красному фону.
    Замер до правки: getComputedStyle(btn).backgroundColor на ховере —
    rgb(168, 16, 22). */
-button.enterBtn:hover {
+@media (hover: hover) and (pointer: fine) {
+  button.enterBtn:hover {
+    background: transparent;
+  }
+}
+
+/* И то же для нажатия: .btn:active из tokens.css залил бы кнопку
+   плашкой на тач-экране, где заливка от курсора не работает вовсе. */
+button.enterBtn:active {
   background: transparent;
 }
 

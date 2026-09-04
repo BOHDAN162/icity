@@ -104,7 +104,17 @@
   transition: text-decoration-color var(--motion-fast) var(--ease-standard);
 }
 
-.dottedLink:hover {
+/* Ховер — только под указателем: на iOS он залипает после тапа
+   и достаётся элементу под точкой касания. Отклик на нажатие
+   даёт :active, он живёт только пока палец на кнопке.
+   Разбор — AGENTS.md, раздел «Доступность». */
+@media (hover: hover) and (pointer: fine) {
+  .dottedLink:hover {
+    text-decoration-color: var(--frit-deep);
+  }
+}
+
+.dottedLink:active {
   text-decoration-color: var(--frit-deep);
 }
 
@@ -213,8 +223,15 @@
   transition: background var(--motion-fast) var(--ease-standard);
 }
 
-.submit:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .submit:hover:not(:disabled) {
+    background: #B80018;
+  }
+}
+
+.submit:active:not(:disabled) {
   background: #B80018;
+  transition-duration: var(--t-micro);
 }
 
 .submit:disabled {

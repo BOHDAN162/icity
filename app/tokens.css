@@ -411,14 +411,27 @@ h1, h2 { font-optical-sizing: auto; }
   cursor: pointer;
   transition: background var(--t-micro) var(--ease-out);
 }
-.btn:hover { background: var(--frit-press); }
+/* ХОВЕР ТОЛЬКО ПОД УКАЗАТЕЛЕМ, ОТКЛИК НА ТАЧ — :active. На iOS ховер
+   после тапа не снимается: браузер держит его на элементе под точкой
+   касания, пока не тапнут в другом месте, и если разметка там сменилась —
+   отдаёт его новому элементу. Правило общее для всего проекта, см.
+   AGENTS.md, раздел «Доступность». */
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { background: var(--frit-press); }
+}
+
+.btn:active { background: var(--frit-press); }
 
 .btn-secondary {
   background: transparent;
   color: var(--ink);
   border: 1px solid var(--alu);
 }
-.btn-secondary:hover { background: var(--white); border-color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-secondary:hover { background: var(--white); border-color: var(--ink); }
+}
+
+.btn-secondary:active { background: var(--white); border-color: var(--ink); }
 
 .field {
   height: 54px;
