@@ -97,25 +97,24 @@ const NBSP = '\u00A0';
 
 const FACADE_NOTE = '\u041F\u0430\u043D\u043E\u0440\u0430\u043C\u043D\u044B\u0439 \u0444\u0430\u0441\u0430\u0434 \u043F\u043E \u0442\u0440\u0451\u043C \u0441\u0442\u043E\u0440\u043E\u043D\u0430\u043C.';
 
-/* ПОДСКАЗКА «ПО ЗОНАМ МОЖНО ХОДИТЬ». Белая модель читается как
-   картинка: зритель доворачивает её курсором, видит подпись зоны
-   и не догадывается, что клик перенесёт внутрь. Круги переходов
-   остались в офисе, под оверлеем, — здесь на них не сошлёшься.
+/* ОДИН ФЛАГ НА ДВА СЛЕДСТВИЯ: «зритель хоть раз ушёл из плана в зону».
+   Пока он ложен, зритель ещё не знает, что по зонам можно ходить, —
+   и в углу висит подсказка. Как только истинен, объяснять больше
+   нечего, зато появляется смысл вести дальше: в правом нижнем углу
+   встаёт «Дальше». Одно состояние, потому что событие одно и то же.
 
-   Гаснет НАВСЕГДА и по первому признаку понимания: мышь навелась
-   на зону, палец выбрал её. Дальше подсказка мешала бы — она
-   объясняет ровно то, что зритель уже сделал. Признаки разные,
-   потому что hover на тач-экране приходит от простого доворота
-   пальцем: там гасит только сам выбор.
+   Ставится в pick() — единственном пути в зону, — и живёт в МОДУЛЕ,
+   а не в состоянии: план открывают и закрывают десятками раз (Esc —
+   тумблер), и он размонтируется вместе со своим состоянием.
+   sessionStorage тут не нужен: памяти на одну загрузку страницы
+   достаточно, а перезагрузка обычно означает нового зрителя.
 
-   `hintShown` живёт в модуле, а не в состоянии: план открывают
-   и закрывают десятками раз (Esc — тумблер), и объяснять при каждом
-   открытии значит превратить подсказку в назойливую плашку.
-   sessionStorage тут не нужен — памяти на одну загрузку страницы
-   достаточно, а перезагрузка обычно означает нового зрителя. */
-const HINT_LEAD = 'Как смотреть';
-const HINT_FINE = 'Наведите на зону и кликните — окажетесь внутри.';
-const HINT_TOUCH = 'Коснитесь зоны на плане — окажетесь внутри.';
+   ПОДСКАЗКА ГАСНЕТ ТОЛЬКО ОТ ПЕРЕХОДА, а не от наведения. Наведение
+   стояло здесь до 5 сентября 2026 и оказалось неверным признаком:
+   зритель, просто ведущий мышь через план, гасил подсказку, ни разу
+   ею не воспользовавшись, — а объяснение исчезало навсегда. */
+const HINT_FINE = 'Наведите на зону 3D-плана и кликните, чтобы переместиться.';
+const HINT_TOUCH = 'Коснитесь зоны 3D-плана, чтобы переместиться.';
 /* Пара к --t-reveal в tokens.css: там красится уход подсказки, здесь
    по этому же числу узел снимается из разметки. Снимается он затем,
    чтобы скринридер не читал невидимое: держать погасший элемент
@@ -130,7 +129,7 @@ const HINT_OUT_MS = 380;
    кадр давал 1, то есть вместо ухода зритель получал вспышку.
    Правишь одно из трёх чисел — сверяйся с остальными. */
 const HINT_LIVE_MS = 1080;
-let hintShown = false;
+let zoneEntered = false;
 
 /* Числа — из docs/facts.md, других источников у сайта нет.
    Метраж скошенного угла сюда не попал сознательно: в facts.md его нет,
@@ -252,7 +251,12 @@ export default function PlanDollhouse({
   const viewRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ x: number; y: number } | null>(null);
 
-  const closeRef = useRef<HTMLButtonElement>(null);
+  /* Куда встаёт фокус при открытии. Раньше это была кнопка «Закрыть»,
+     но с мышью её больше нет — фокус принимает сам корень окна.
+     Так Tab начинает обход с начала диалога, а голосовой доступ
+     читает его aria-label; tabIndex={-1} нужен ровно затем, чтобы
+     div вообще мог принять фокус, в обход клавиатуры не попадая. */
+  const rootRef = useRef<HTMLDivElement>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   /* Куда летим — держим ещё и в ref: фазы приходят из кадра сцены,
      а вызывать побочный эффект из апдейтера состояния нельзя. */
@@ -264,18 +268,26 @@ export default function PlanDollhouse({
      компонент приезжает через dynamic({ ssr: false }). */
   const [{ mode, calm, fine }] = useState(decideMode);
 
-  /* Подсказка «по зонам можно ходить» — см. шапку у HINT_LEAD.
+  /* Подсказка «по зонам можно ходить» — см. шапку у HINT_FINE.
      Состояний два: `off` красит уход, `gone` снимает узел совсем. */
-  const [hintOff, setHintOff] = useState(hintShown);
-  const [hintGone, setHintGone] = useState(hintShown);
+  const [hintOff, setHintOff] = useState(zoneEntered);
+  const [hintGone, setHintGone] = useState(zoneEntered);
+
+  /* «Дальше» показываем тому, кто уже сходил в зону и вернулся в план.
+     СНИМОК ПРИ МОНТИРОВАНИИ, а не живое чтение флага: pick() ставит его
+     в момент клика, а план после этого живёт ещё полторы секунды —
+     нырок камеры, — и живое чтение проявило бы кнопку прямо посреди
+     ухода. Отсюда и «вернулся»: кнопка приходит со следующего
+     открытия плана. */
+  const [wentInside] = useState(() => zoneEntered);
 
   /* Дошла ли подсказка до полной непрозрачности. Ref, а не состояние:
      от него ничего не перерисовывается, он только выбирает способ ухода. */
   const hintLiveRef = useRef(false);
 
   const hideHint = useCallback(() => {
-    if (hintShown) return;
-    hintShown = true;
+    if (zoneEntered) return;
+    zoneEntered = true;
     // Ещё не показалась — это не уход, а отмена показа. Молча.
     if (!hintLiveRef.current) { setHintGone(true); return; }
     setHintOff(true);
@@ -294,7 +306,7 @@ export default function PlanDollhouse({
   /* Узел подсказки появляется вместе с планом — от этого мгновения
      и считается её выход на полную непрозрачность. */
   useEffect(() => {
-    if (!plan || hintShown) return;
+    if (!plan || zoneEntered) return;
     const t = setTimeout(() => { hintLiveRef.current = true; }, HINT_LIVE_MS);
     return () => clearTimeout(t);
   }, [plan]);
@@ -302,7 +314,7 @@ export default function PlanDollhouse({
   // таймеры шва живут не дольше оверлея
   useEffect(() => () => { timersRef.current.forEach(clearTimeout); timersRef.current = []; }, []);
 
-  useEffect(() => { focusQuietly(closeRef.current); }, []);
+  useEffect(() => { focusQuietly(rootRef.current); }, []);
 
   /* КУДА ВЕДЁТ НЫРОК — в выбранную зону или обратно в ту, откуда пришли.
      Ref, а не состояние: читается он в конце перелёта, из таймера, и
@@ -464,19 +476,6 @@ export default function PlanDollhouse({
     if (el?.complete) onShotReady();
   }, [onShotReady]);
 
-  /* Наведение ведём через обёртку, а не отдаём setHovered напрямую:
-     мышь, дошедшая до зоны, — это и есть признак, что подсказку про
-     клик читать больше незачем. Гасим прямо в событии; эффектом на
-     `hovered` было бы то же самое, но лишним каскадом рендеров.
-
-     Признак только для мыши. На тач-экране `hovered` поднимается
-     и от доворота пальцем по плану, а это ещё не понимание — там
-     подсказку гасит один лишь выбор зоны, из pick(). */
-  const noteHover = useCallback((key: ZoneKey | null) => {
-    setHovered(key);
-    if (fine && key) hideHint();
-  }, [fine, hideHint]);
-
   /* Слежение за указателем и перетаскивание. Оба живут на поле плана
      целиком; на плоском SVG не нужны — там доворачивать нечего. */
   useEffect(() => {
@@ -590,6 +589,8 @@ export default function PlanDollhouse({
      не рендерится вовсе. */
   return createPortal(
     <div
+      ref={rootRef}
+      tabIndex={-1}
       className={[
         styles.root,
         /* Класс ставится только у объёмного плана: у плоского камеры нет
@@ -604,11 +605,7 @@ export default function PlanDollhouse({
       onMouseMove={(e) => setChip({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setChip(null)}
     >
-      {/* data-flow — признак «в шапке есть Дальше», и читает его CSS:
-          на телефоне четыре элемента с капсулой съедают колонку
-          целиком, и заголовку места не остаётся. Атрибутом, а не
-          классом, — тот же приём, что у data-side в офисе. */}
-      <div className={styles.bar} data-flow={onNext ? '1' : undefined}>
+      <div className={styles.bar}>
         <p className={`label ${styles.title}`}>Планировка{NBSP}· 244,1{NBSP}м²</p>
         <div className={styles.tools}>
           {/* Растровый чертёж никуда не делся: объёмный план отвечает
@@ -627,26 +624,19 @@ export default function PlanDollhouse({
           >
             3D-тур
           </a>
-          {/* ЗАКРЫТИЕ ПЕРЕЕЗЖАЕТ В ТЕКСТ, КОГДА ЕСТЬ «ДАЛЬШЕ». Капсула
-              в углу одна, и занимает её главное действие; выход при
-              этом обязан остаться на виду — на телефоне Esc нажать
-              нечем, и без видимой кнопки план стал бы ловушкой.
-              Тот же вес, что у «Чертежа»: вход в соседнее окно. */}
-          <button
-            ref={closeRef}
-            type="button"
-            className={onNext ? styles.sheetLink : styles.close}
-            onClick={requestClose}
-          >
-            Закрыть
-          </button>
-
-          {onNext && (
-            <button type="button" className={`${styles.close} ${styles.next}`} onClick={onNext}>
-              Дальше
-              {/* Та же стрелка, что у индикатора «дальше» в офисе
-                  и у кругов перехода: одно движение — один рисунок. */}
-              <ArrowDown size={15} />
+          {/* «ЗАКРЫТЬ» ОСТАЛОСЬ ТОЛЬКО ТАМ, ГДЕ НЕТ ESC. С мышью план
+              закрывают Esc-ом — тумблером, которым его и открыли, —
+              и кнопка в углу лишь повторяла его, отнимая место
+              у самого этажа (просьба заказчика, 5 сентября 2026).
+              На тач-экране Esc нажать нечем: сними её и там —
+              и план станет ловушкой, из которой один выход, в зону. */}
+          {!fine && (
+            <button
+              type="button"
+              className={styles.close}
+              onClick={requestClose}
+            >
+              Закрыть
             </button>
           )}
         </div>
@@ -655,7 +645,16 @@ export default function PlanDollhouse({
       {/* Курсора «схватить» здесь больше нет: мышью план не таскают,
           он и так идёт за ней. Палец тащит откуда угодно, но ему курсор
           не нужен. */}
-      <div ref={viewRef} className={styles.view}>
+      {/* data-next — признак «в углу стоит Дальше», и читает его CSS:
+          на телефоне кнопка занимает свою строку между лентой зон
+          и числами, и без признака числа прыгали бы у тех, у кого
+          кнопки ещё нет. Атрибутом, а не классом, — тот же приём,
+          что у data-side в офисе. */}
+      <div
+        ref={viewRef}
+        className={styles.view}
+        data-next={onNext && wentInside ? '1' : undefined}
+      >
         {failed && (
           <p className={`label ${styles.loading}`}>План не загрузился. Обновите страницу.</p>
         )}
@@ -668,7 +667,7 @@ export default function PlanDollhouse({
           <PlanScene
             plan={plan}
             hovered={hovered}
-            onHover={noteHover}
+            onHover={setHovered}
             onPick={pick}
             flyTo={flyTo}
             backFrom={backFrom}
@@ -679,24 +678,19 @@ export default function PlanDollhouse({
         )}
 
         {plan && mode === 'flat' && (
-          <PlanFlat plan={plan} hovered={hovered} onHover={noteHover} onPick={pick} />
+          <PlanFlat plan={plan} hovered={hovered} onHover={setHovered} onPick={pick} />
         )}
 
-        {/* Подсказка. Знак слева — точная миниатюра курсора сайта
-            (кольцо --ink-60 и точка --frit-deep, отношение 0,23 как
-            в Cursor.module.css): подсказка про клик обязана начинаться
-            тем же знаком, которым зритель по плану и водит.
+        {/* Подсказка. Одна строка без заголовка и без знака курсора:
+            прежняя карточка с лейблом «Как смотреть» и миниатюрой
+            курсора весила как самостоятельный блок и спорила с планом,
+            ради которого экран и открыт (5 сентября 2026).
             pointer-events: none — плашка стоит над полем плана, а поле
             слушает доворот; ловить указатель ей нечем и незачем. */}
         {plan && !hintGone && (
-          <aside
-            className={`${styles.hint} ${hintOff ? styles.hintOut : ''}`}
-            aria-label="Как смотреть план"
-          >
-            <span className={styles.hintMark} aria-hidden="true" />
-            <p className={`label ${styles.hintLead}`}>{HINT_LEAD}</p>
-            <p className={styles.hintText}>{fine ? HINT_FINE : HINT_TOUCH}</p>
-          </aside>
+          <p className={`${styles.hint} ${hintOff ? styles.hintOut : ''}`}>
+            {fine ? HINT_FINE : HINT_TOUCH}
+          </p>
         )}
 
         {/* ЗОНД ЗАГРУЗКИ, А НЕ КАРТИНКА. Виден он не бывает никогда:
@@ -752,6 +746,23 @@ export default function PlanDollhouse({
           <p className={styles.facade}>{FACADE_NOTE}</p>
         </div>
 
+        {/* «ДАЛЬШЕ» СТОИТ У НИЖНЕЙ КРОМКИ, НА ЛИНИИ С ЧИСЛАМИ, и
+            приходит не сразу: только к тому, кто уже сходил из плана
+            в зону и вернулся (см. `wentInside`). Порядок такой же,
+            как у всего сайта — сначала показать, потом звать дальше.
+
+            В шапке ей не место: там три входа в соседние окна, а это
+            ход вперёд по самой странице, и стоять он должен там же,
+            где стоит вся сводка об этаже. */}
+        {onNext && wentInside && (
+          <button type="button" className={`${styles.close} ${styles.next}`} onClick={onNext}>
+            Дальше
+            {/* Та же стрелка, что у индикатора «дальше» в офисе
+                и у кругов перехода: одно движение — один рисунок. */}
+            <ArrowDown size={15} />
+          </button>
+        )}
+
         {/* Клавиатура. Список видим, когда в нём есть фокус: мышью зоны
             берут прямо с плана, а с клавиатуры полигон не поймать. */}
         <nav className={styles.doors} aria-label="Перейти в зону">
@@ -760,7 +771,7 @@ export default function PlanDollhouse({
               key={z.key}
               type="button"
               className={styles.door}
-              onFocus={() => noteHover(z.key)}
+              onFocus={() => setHovered(z.key)}
               onBlur={() => setHovered(null)}
               onClick={() => z.target && pick(z.target)}
             >
