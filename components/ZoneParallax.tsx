@@ -203,7 +203,9 @@ const upload = (
 
    Три причины отказать те же, что и у кукольного дома, плюс WebGL2:
    просьба убрать движение, медленная сеть, отсутствие контекста. */
-export default function ZoneParallax({ zone }: { zone: RenderKey }) {
+export default function ZoneParallax(
+  { zone, shown }: { zone: RenderKey; shown: boolean },
+) {
   const [allowed] = useState(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
     if (isSlowNetwork()) return false;
@@ -211,10 +213,10 @@ export default function ZoneParallax({ zone }: { zone: RenderKey }) {
   });
 
   if (!allowed) return null;
-  return <ParallaxCanvas zone={zone} />;
+  return <ParallaxCanvas zone={zone} shown={shown} />;
 }
 
-function ParallaxCanvas({ zone }: { zone: RenderKey }) {
+function ParallaxCanvas({ zone, shown }: { zone: RenderKey; shown: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<GL | null>(null);
 
@@ -222,6 +224,23 @@ function ParallaxCanvas({ zone }: { zone: RenderKey }) {
      зоны live гаснет сам, вычислением при отрисовке, и не нужен setState
      в начале эффекта — а он там означал бы лишний каскад рендеров. */
   const [loaded, setLoaded] = useState<RenderKey | null>(null);
+  /* ХОЛСТ НЕ ПОДМЕНЯЕТСЯ ВООБЩЕ. `live` зависит только от загрузки:
+     раз проявившись, холст остаётся видимым, пока жив офис.
+
+     Так было не всегда, и обе прежние версии заказчик отверг живьём.
+     Сперва компонент размонтировался вместе с уходом из офиса — разница
+     между холстом и картинкой под ним схлопывалась в один кадр и читалась
+     как рывок. Разница эта не маленькая: выборка текстуры поджата
+     на амплитуду по той оси, где object-fit: cover не оставил запаса
+     (см. cx/cy ниже), то есть холст показывает кадр КРУПНЕЕ на 2–3 % —
+     14 px на каждую кромку. Потом холст стал гаснуть переходом за 620 мс:
+     рывок ушёл, но подмена осталась, просто растянулась, и заказчик
+     увидел её снова (4 сентября 2026).
+
+     Теперь подменять нечего. Кадр вида лежит на z-index 2, офис — на 1
+     (OfficeStop.module.css): кадр накрывает офис сверху, и параллакс
+     просто уезжает под него живым. Вернёшь сюда зависимость от `shown` —
+     вернёшь подмену. */
   const live = loaded === zone;
 
   /* Всё, что меняется каждый кадр, живёт в ref: класть указатель
@@ -399,7 +418,10 @@ function ParallaxCanvas({ zone }: { zone: RenderKey }) {
 
   /* --- ввод ---------------------------------------------------------- */
   useEffect(() => {
-    if (!live) return;
+    /* `shown` гасит не холст, а ВВОД: пока офис не активен, следить
+       за указателем незачем — картинку всё равно накрыли сверху.
+       Кадры при этом не считаются вовсе, как раньше при размонтировании. */
+    if (!live || !shown) return;
 
     /* Кадры считаем, только пока картинка догоняет указатель. Догнала —
        цикл останавливается сам, и телефон перестаёт греться на неподвижном
@@ -485,8 +507,16 @@ function ParallaxCanvas({ zone }: { zone: RenderKey }) {
       window.removeEventListener('pointerdown', onFirstTouch);
       window.removeEventListener('deviceorientation', onTilt);
       if (raf) cancelAnimationFrame(raf);
+      /* Цель в ноль на выход. Холст в это время гаснет и остаётся
+         замороженным на последнем смещении — само по себе безвредно,
+         но при возврате он проявился бы там, где стоял указатель
+         полминуты назад, и поехал бы к курсору уже на глазах.
+         С обнулённой целью цикл на следующем заходе стартует
+         от середины и догоняет указатель под прозрачностью. */
+      target.current.x = 0;
+      target.current.y = 0;
     };
-  }, [live, draw]);
+  }, [live, shown, draw]);
 
   return (
     <canvas
