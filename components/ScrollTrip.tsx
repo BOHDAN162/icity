@@ -45,6 +45,7 @@ import {
   EASE_VIEW,
   bezier,
   onScrollRequest,
+  type ScrollTarget,
 } from '@/lib/motion';
 
 /* Та же --ease-view, что у выездов кадров вида и у счёта чисел:
@@ -66,7 +67,12 @@ export default function ScrollTrip() {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
 
     let raf = 0;
-    let trip: { from: number; to: number; t0: number; dur: number } | null = null;
+    let trip: { from: number; to: ScrollTarget; t0: number; dur: number } | null = null;
+
+    /* Цель приходит числом или функцией. Функцию зовём на каждом кадре:
+       так «форма по центру экрана» остаётся верной, даже если страница
+       по дороге выросла. */
+    const resolve = (to: ScrollTarget) => (typeof to === 'function' ? to() : to);
 
     const maxScroll = () =>
       Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -98,7 +104,7 @@ export default function ScrollTrip() {
          на клике, оказалась бы выше настоящего низа — и поездка
          заканчивалась бы посреди страницы. */
       const raw = (t - trip.t0) / trip.dur;
-      const goal = Math.min(maxScroll(), Math.max(0, trip.to));
+      const goal = Math.min(maxScroll(), Math.max(0, resolve(trip.to)));
       window.scrollTo(0, trip.from + (goal - trip.from) * easeTrip(Math.min(1, raw)));
 
       if (raw >= 1) {
@@ -108,10 +114,10 @@ export default function ScrollTrip() {
       raf = requestAnimationFrame(draw);
     };
 
-    const offScrollRequest = onScrollRequest((to: number): boolean => {
+    const offScrollRequest = onScrollRequest((to: ScrollTarget): boolean => {
       if (document.body.style.overflow === 'hidden') return false;
       const from = window.scrollY;
-      const goal = Math.min(maxScroll(), Math.max(0, to));
+      const goal = Math.min(maxScroll(), Math.max(0, resolve(to)));
       /* Ехать некуда — отказываемся, и вызывающий уходит штатным
          прыжком по якорю вместо того, чтобы не сделать ничего. */
       if (Math.abs(goal - from) < 2) return false;

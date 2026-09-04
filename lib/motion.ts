@@ -281,7 +281,15 @@ export const SCROLL_GESTURE_GAP_MS = 200;
    КАЖДЫЙ КАДР. «Низ страницы» — это не число, снятое в момент клика,
    а живой максимум прокрутки: вырастет страница по дороге — поездка
    доедет до нового низа. */
-type ScrollListener = (y: number) => boolean;
+/** Цель поездки: число или функция, которую слушатель зовёт КАЖДЫЙ КАДР.
+    Функция нужна там, где цель зависит от раскладки: «поставить форму
+    записи по центру экрана» — это её положение, а оно по дороге вниз
+    едет (кадр комплекса монтируется по IntersectionObserver, ниже
+    подъезжают картинки). Число, снятое на клике, промахнулось бы
+    ровно на то, насколько выросла страница. */
+export type ScrollTarget = number | (() => number);
+
+type ScrollListener = (to: ScrollTarget) => boolean;
 
 let scrollListener: ScrollListener | null = null;
 
@@ -306,8 +314,8 @@ export const SCROLL_TRIP_MAX_MS = 3000;
     Ответ — взялся ли кто-то за поездку: страница может быть заперта,
     а под prefers-reduced-motion слушателя нет вовсе. Вызывающий по
     этому ответу решает, отменять ли штатный переход по якорю. */
-export const requestSmoothScrollTo = (y: number): boolean =>
-  scrollListener ? scrollListener(y) : false;
+export const requestSmoothScrollTo = (to: ScrollTarget): boolean =>
+  scrollListener ? scrollListener(to) : false;
 
 /** «К самому низу». Число здесь не снимается нарочно: цель живая,
     её пересчитывает слушатель на каждом кадре. */
