@@ -61,6 +61,7 @@ import {
   getCurtainServerSnapshot, getCurtainSnapshot, openCurtain, subscribeCurtain,
 } from '@/lib/curtain';
 import { setCursorVideo } from '@/lib/cursorMode';
+import { audioDiag } from '@/lib/audioDiag';
 import { scatter } from '@/lib/scatter';
 import {
   currentHeroVariant, heroPreloadServerSnapshot, heroPreloadSnapshot,
@@ -128,56 +129,66 @@ const AUDIO_TAIL_MS = 4000;
    проверяться живьём на десктопе. Ветка «а на этом движке по-старому»
    означала бы, что мобильный код никто никогда не видел.
 
-   ГРАФ СТРОИТСЯ СИНХРОННО В ЖЕСТЕ (см. enter). Вне жеста AudioContext
-   стартует suspended, и звука не будет вовсе. */
+   КОНТЕКСТ СОЗДАЁТСЯ И БУДИТСЯ СИНХРОННО В ЖЕСТЕ (см. enter): вне жеста
+   iOS не выполнит resume(), и звука не будет вовсе. А вот подключение
+   элемента к графу ждёт, пока контекст действительно проснётся, —
+   почему именно так, разобрано у openAmbienceGain. */
 type AmbienceGain = { ctx: AudioContext; gain: GainNode };
 
-/* Увод элемента в граф НЕОБРАТИМ: после createMediaElementSource его
-   собственный выход отключён навсегда, и если контекст не заиграет —
-   получим полную тишину вместо звука. Поэтому решение принимается ДО
-   того, как что-то подключено: контекст, созданный внутри жеста, обязан
-   быть 'running' сразу; не 'running' — закрываем и живём на a.volume. */
-const openAmbienceGain = (a: HTMLAudioElement): AmbienceGain | null => {
+/* ГРАФ ПРИЕЗЖАЕТ АСИНХРОННО, И ЭТО НЕ ЛЕНЬ, А iOS. Первая версия
+   требовала `state === 'running'` СИНХРОННО, сразу после конструктора,
+   и на iPhone это не выполняется никогда: контекст там стартует
+   `suspended` даже внутри жеста и просыпается только от `resume()`.
+   Проверка отбраковывала граф, всё падало обратно на `a.volume` — мёртвый
+   на iOS, — и починка не работала ровно там, ради чего затевалась.
+   Замер: 5 сентября 2026 заказчик поймал на iPhone прежний баг целиком,
+   уже на новой сборке.
+
+   Увод элемента в граф при этом НЕОБРАТИМ: после
+   `createMediaElementSource` собственный выход элемента отключён
+   навсегда, и не заигравший контекст означал бы не тихий звук, а полную
+   тишину. Поэтому порядок такой: сначала будим контекст, и только когда
+   он ДЕЙСТВИТЕЛЬНО `running` — подключаем. Не проснулся, бросил, нет
+   конструктора — контекст закрывается, ничего не подключено, элемент
+   играет сам, как играл.
+
+   `resume()` зовётся синхронно в жесте (см. enter) — вне жеста iOS
+   его не выполнит. Само подключение жеста уже не требует. */
+const openAmbienceGain = (a: HTMLAudioElement, onReady: (g: AmbienceGain) => void) => {
   const Ctor = window.AudioContext;
-  if (!Ctor) return null;
+  if (!Ctor) return;
   let ctx: AudioContext;
   try {
     ctx = new Ctor();
   } catch {
-    return null;
+    return;
   }
-  if (ctx.state !== 'running') {
-    ctx.close().catch(() => {});
-    return null;
-  }
-  try {
-    const gain = ctx.createGain();
-    ctx.createMediaElementSource(a).connect(gain).connect(ctx.destination);
-    return { ctx, gain };
-  } catch {
-    ctx.close().catch(() => {});
-    return null;
-  }
+  const drop = () => { ctx.close().catch(() => {}); };
+  const route = () => {
+    if (ctx.state !== 'running') { drop(); return; }
+    try {
+      const gain = ctx.createGain();
+      gain.gain.value = AMBIENCE_VOLUME;
+      ctx.createMediaElementSource(a).connect(gain).connect(ctx.destination);
+      /* ГРОМКОСТЬ ЭЛЕМЕНТА ВОЗВРАЩАЕТСЯ К ЕДИНИЦЕ, И ЭТО НЕ ПРИБОРКА.
+         На движках, где volume действительно работает, он применяется
+         ДО входа в граф — то есть перемножился бы с gain: 0,17 × 0,17,
+         вшестеро тише задуманного. Замер поймал это на десктопе сразу.
+         Дальше громкостью распоряжается только gain. */
+      a.volume = 1;
+      onReady({ ctx, gain });
+    } catch {
+      drop();
+    }
+  };
+  if (ctx.state === 'running') route();
+  else ctx.resume().then(route, drop);
 };
 
 /** Одна точка записи громкости: есть граф — пишем в него, нет — в элемент. */
 const setAmbienceLevel = (a: HTMLAudioElement, g: AmbienceGain | null, v: number) => {
   if (g) g.gain.gain.value = v;
   else a.volume = v;
-};
-
-/* Управляется ли громкость элемента вообще. Проверяется ПОВЕДЕНИЕМ,
-   а не по названию браузера: на iOS присваивание не проходит, и вернётся
-   единица. Нужно ровно в одном месте — решить, можно ли зацикливать
-   хвост, когда граф построить не удалось (см. startAmbienceTail). */
-let volumeCtl: boolean | null = null;
-const volumeSettable = () => {
-  if (volumeCtl === null) {
-    const probe = new Audio();
-    probe.volume = 0.5;
-    volumeCtl = probe.volume === 0.5;
-  }
-  return volumeCtl;
 };
 
 /* Хвост амбиента после свапа.
@@ -205,11 +216,19 @@ const startAmbienceTail = (a: HTMLAudioElement, g: AmbienceGain | null) => {
 
      И ВОТ ПОЭТОМУ ЗАЦИКЛИВАНИЕ УСЛОВНОЕ. «Под затуханием» — обязательная
      часть: к моменту шва громкость 3,5 % от базовой, и склейки не слышно.
-     Там, где затухания нет (громкость не управляется вовсе), шов звучит
-     в полную силу — тихое начало трека и новый подъём, ровно тот баг
-     с iPhone, ради которого и заведён граф выше. Нет затухания — нет
-     и зацикливания: трек доигрывает своё тихое окончание и снимается. */
-  const fades = g !== null || volumeSettable();
+     Там, где затухания нет, шов звучит в полную силу — тихое начало трека
+     и новый подъём, ровно тот баг с iPhone, ради которого заведён граф.
+     Нет затухания — нет и зацикливания: трек доигрывает своё тихое
+     окончание и снимается.
+
+     УСЛОВИЕ — ТОЛЬКО НАЛИЧИЕ ГРАФА, и проверять что-то ещё нельзя.
+     Здесь стояло «граф ИЛИ громкость элемента управляется», и вторая
+     половина оказалась ложью: спросить `volume` бесполезно — движок
+     обязан хранить присвоенное значение и вернуть его при чтении, даже
+     если на выход оно не идёт. Проба возвращала «управляется», хвост
+     зацикливался, шов звучал. Единственное затухание, за которое можно
+     ручаться, — то, что идёт через gain. */
+  const fades = g !== null;
   a.loop = fades;
   document.body.appendChild(a);
   const from = g ? g.gain.gain.value : a.volume;
@@ -538,15 +557,19 @@ export default function HeroVideo({ onLift, onDone }: Props) {
        лучше сорванного полёта. В цепочку отказов видео звук не входит. */
     const a = audioRef.current;
     if (withSound && a) {
-      /* Граф громкости строится ЗДЕСЬ ЖЕ и по той же причине, что и
-         play(): AudioContext, созданный вне жеста, стартует suspended.
-         На iOS это единственный способ вообще управлять громкостью —
-         a.volume там не пишется (см. openAmbienceGain). Не удалось —
-         gainRef остаётся null, и всё идёт через a.volume, как прежде. */
-      gainRef.current = openAmbienceGain(a);
-      setAmbienceLevel(a, gainRef.current, AMBIENCE_VOLUME);
+      /* Базовая громкость на самом элементе — для тех, у кого графа
+         не будет: на iOS присвоение уйдёт в никуда, но там его подхватит
+         gain. Те же 17 % достаются и коротышу между play() и
+         подключением графа (пара миллисекунд, у трека там вход 0,25 с). */
+      a.volume = AMBIENCE_VOLUME;
       a.currentTime = 0;
       a.play().catch(() => {});
+      /* Контекст создаётся и будится ЗДЕСЬ ЖЕ и по той же причине, что
+         и play(): вне жеста iOS не выполнит ни то, ни другое. Граф
+         приезжает в ref, когда контекст действительно проснулся —
+         разбор в openAmbienceGain. */
+      openAmbienceGain(a, (g) => { gainRef.current = g; });
+      audioDiag(a, () => gainRef.current);
     }
 
     const v = videoRef.current;
