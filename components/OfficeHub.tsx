@@ -61,7 +61,8 @@ import {
   lockScroll, unlockScroll, scrollLockOwner, onScrollLockChange,
   PLAN_LOCK, OFFICE_STEP_LOCK,
 } from '@/lib/scrollLock';
-import NextCue from './NextCue';
+import NextCue, { goToNextStop } from './NextCue';
+import ScrollCue from './ScrollCue';
 import { focusQuietly } from '@/lib/focus';
 import styles from './OfficeHub.module.css';
 
@@ -310,8 +311,17 @@ export default function OfficeHub({
 
      Одноразовая и без сброса: уход в план не считается уходом из офиса,
      план стоит поверх него. */
+  /* ЗРИТЕЛЬ ЗАКРЫЛ ПЛАН КНОПКОЙ — значит с планом он закончил, и под
+     капсулой появляется то же приглашение листать, что встречает его
+     на панораме. Просьба заказчика 5 сентября 2026.
+
+     Порога у него нет: закрыл — увидел, сколько бы зон ни посмотрел.
+     И оно ОТМЕНЯЕТ угловой индикатор: два одинаковых приглашения
+     на одном экране — это не настойчивее, а бестолковее. */
+  const [closedPlan, setClosedPlan] = useState(false);
+
   const [late, setLate] = useState(false);
-  const cueReady = seen.size >= READY_ZONES || late;
+  const cueReady = (seen.size >= READY_ZONES || late) && !closedPlan;
   /* «Дальше» в плане приходит на зону позже индикатора — см. пороги. */
   const planReady = seen.size >= PLAN_READY_ZONES || late;
 
@@ -347,8 +357,9 @@ export default function OfficeHub({
      Сбросов на ресепшн на сайте не осталось ни одного; заведёшь новый —
      он выстрелит и здесь, потому что Esc теперь открывает и закрывает
      план десятками раз за просмотр. */
-  const closePlan = useCallback((reason: 'dismiss' | 'entered') => {
+  const closePlan = useCallback((reason: 'dismiss' | 'entered', byButton = false) => {
     setPlanOpen(null);
+    if (byButton) setClosedPlan(true);
 
     /* ВОЗВРАТ К ФОРМЕ. Зритель, попавший в офис из подвала кнопкой
        «3D-модель», уезжает обратно к форме записи — один раз, крошкой
@@ -844,6 +855,19 @@ export default function OfficeHub({
                 </span>
             </button>
           </div>
+
+          {/* ПРИГЛАШЕНИЕ ЛИСТАТЬ ПОД КАПСУЛОЙ. Приходит к тому, кто
+              закрыл планировку кнопкой: он посмотрел этаж, вышел сам
+              и стоит на распутье — сказать ему, что дальше вниз, здесь
+              уместнее всего. Вид общий с кадром панорамы (ScrollCue),
+              и угловой индикатор при нём не показывается. */}
+          {closedPlan && (
+            <ScrollCue
+              onClick={goToNextStop}
+              className={styles.planCue}
+              label={`Листайте вниз: ${next.title}`}
+            />
+          )}
 
 
           {/* ЗДЕСЬ СТОЯЛИ КРУГИ ПЕРЕХОДА МЕЖДУ ЗОНАМИ — «стрелочки».

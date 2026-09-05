@@ -1,0 +1,78 @@
+/* Путь в проекте: components/ScrollCue.module.css
+   Разбор приёма — в шапке ScrollCue.tsx. Здесь только сам вид:
+   где кнопка стоит и когда видна, решает место, которое её вставило. */
+
+.cue {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: var(--s-2) var(--s-3);
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.label {
+  position: relative;
+  color: var(--ink);
+  transition: font-weight var(--t-micro) var(--ease-out);
+}
+
+/* Подчёркивание — ПРЯМАЯ ЛИНИЯ, а не точечный растр: растр разрешён
+   в четырёх местах сайта, и это не одно из них. Волосяная линия в 1 px
+   на чистой фритте — ровно тот случай, для которого --frit и оставлен. */
+.label::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 1px;
+  background: var(--frit);
+  opacity: 0;
+  transition: opacity var(--t-micro) var(--ease-out);
+}
+
+/* Маятник: движение вдоль оси прокрутки, вниз и обратно. Амплитуда
+   маленькая нарочно — кнопка стоит поверх фотографии, и размашистое
+   качание читалось бы как баннер. */
+@keyframes cueSwing {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(6px); }
+}
+
+.arrow {
+  display: grid;
+  place-items: center;
+  color: var(--ink-60);
+  animation: cueSwing 1600ms ease-in-out infinite;
+  transition: color var(--t-micro) var(--ease-out);
+}
+
+/* Белый тон — для кадра, под которым нет вуали. */
+.white .label,
+.white .arrow { color: var(--white); }
+
+.white .label::after { background: var(--white); }
+
+/* Ховер — только под указателем: на iOS он залипает после тапа
+   и достаётся элементу под точкой касания. Отклик на нажатие даёт
+   :active, он живёт только пока палец на кнопке.
+   Разбор — AGENTS.md, раздел «Доступность». */
+@media (hover: hover) and (pointer: fine) {
+  .cue:hover .label { font-weight: 700; }
+  .cue:hover .label::after { opacity: 1; }
+  .cue:hover .arrow { color: var(--ink); }
+  .white:hover .arrow { color: var(--white); }
+}
+
+.cue:active .label { font-weight: 700; }
+.cue:active .label::after { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Маятник — движение ради движения, под этой настройкой его нет.
+     Сама кнопка остаётся: она орган управления, а не анимация. */
+  .arrow { animation: none; }
+}

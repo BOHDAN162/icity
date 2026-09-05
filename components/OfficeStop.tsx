@@ -101,7 +101,7 @@ import {
   useCallback, useEffect, useRef, useState, useSyncExternalStore,
 } from 'react';
 import OfficeHub from './OfficeHub';
-import { ArrowDown } from './NextCue';
+import ScrollCue from './ScrollCue';
 import { cursorMode } from '@/lib/cursorMode';
 import { scatter } from '@/lib/scatter';
 import { SCROLL_GESTURE_GAP_MS, requestSmoothScrollTo } from '@/lib/motion';
@@ -252,29 +252,6 @@ function ViewShot({ view }: { view: ViewKey }) {
         fetchPriority="low"
       />
     </picture>
-  );
-}
-
-/* ПРИГЛАШЕНИЕ ЛИСТАТЬ — кнопка внизу кадра вида, по центру.
-   Появляется только у того, кто пришёл сюда кнопкой «Дальше» из
-   планировки: он двигался по сайту кнопками, и оставить его на кадре
-   без единого органа управления значило бы оборвать этот путь.
-
-   Слово то же, что у индикатора в зонах (NextCue): одно действие —
-   одна формулировка. Кегль --label против --display-m у «Панорамы»
-   рядом: подпись обязана быть значительно тише кадра, ради которого
-   экран и сделан.
-
-   Стрелка ПОД словом и качается маятником — движение вдоль той же оси,
-   по которой зритель и должен пойти. Под курсором она замирает внизу,
-   а слово тяжелеет и подчёркивается волосяной линией --frit: чистая
-   фритта живёт как раз в линиях 1–2 px (design-system.md §1). */
-function ScrollCue({ onClick, cls }: { onClick: () => void; cls: string }) {
-  return (
-    <button type="button" className={`${styles.cue} ${cls}`} onClick={onClick}>
-      <span className={`label ${styles.cueLabel}`}>Листайте вниз</span>
-      <span className={styles.cueArrow} aria-hidden="true"><ArrowDown size={18} /></span>
-    </button>
   );
 }
 
@@ -887,7 +864,7 @@ export default function OfficeStop() {
               признаков на сцене: узла нет — появление пришлось бы
               вешать на монтирование, а гаснуть ей нужно и на уходе
               назад, в офис. */}
-          <ScrollCue onClick={cueNext} cls={styles.cueB} />
+          <ScrollCue onClick={cueNext} className={styles.cueB} label={`Листайте вниз: ${NEXT_STOP.title}`} />
         </div>
 
         {/* слой C — второй кадр вида. Ни вуали, ни подписи: заказчик
@@ -914,7 +891,7 @@ export default function OfficeStop() {
             и кнопка внутри слоя оказывалась ПОД точками — надпись читалась
             сквозь растр. Здесь она выше полосы, а её собственная вуаль
             заодно приглушает растр ровно под текстом. */}
-        <ScrollCue onClick={cueLeave} cls={styles.cueC} />
+        <ScrollCue onClick={cueLeave} className={styles.cueC} tone="white" label="Листайте вниз: экономика сделки" />
       </div>
     </section>
   );

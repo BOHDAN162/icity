@@ -81,24 +81,27 @@ export function ArrowDown({ size = 17 }: { size?: number }) {
   );
 }
 
+/* ХОД К СЛЕДУЮЩЕМУ ЭКРАНУ — ОДИН НА ДВЕ КНОПКИ. Просят его и индикатор
+   в углу, и приглашение под капсулой, которое приходит после закрытия
+   плана; расходиться им нельзя, поэтому функция общая.
+
+   Под prefers-reduced-motion шагов нет вовсе: офис и оба кадра —
+   обычные экраны в потоке, и запирать нечего. Целимся прямо в кадр,
+   мгновенно: ScrollTrip под этой настройкой не монтируется.
+
+   Иначе — тот же шаг, что жест колеса, и у того же хозяина, секции
+   офиса. Своей прокрутки у кнопки нет: прежде она целилась в долю
+   хода (VIEW_HOLD_P), а долей хода у шагов не существует. */
+export function goToNextStop(): void {
+  if (matchMedia(REDUCED).matches) {
+    document.getElementById('view')?.scrollIntoView();
+    return;
+  }
+  requestNextStep();
+}
+
 export default function NextCue({ next, progress }: Props) {
   const done = progress >= 1;
-
-  const goDown = () => {
-    /* Под prefers-reduced-motion шагов нет вовсе: офис и оба кадра —
-       обычные экраны в потоке, и запирать нечего. Целимся прямо в кадр,
-       мгновенно: ScrollTrip под этой настройкой не монтируется. */
-    if (matchMedia(REDUCED).matches) {
-      document.getElementById('view')?.scrollIntoView();
-      return;
-    }
-
-    /* Кнопка просит ровно тот же шаг, что жест колеса, и просит его
-       у того же хозяина — секции офиса. Своей прокрутки у неё больше
-       нет: прежде она целилась в долю хода (VIEW_HOLD_P), а долей
-       хода у шагов не существует. */
-    requestNextStep();
-  };
 
   return (
     <button
@@ -107,7 +110,7 @@ export default function NextCue({ next, progress }: Props) {
       /* Доля заливки. Инлайновым стилем, потому что источник — состояние
          React, а не переменная сцены; CSS-модулем такое не задать. */
       style={{ '--cue': progress } as CSSProperties}
-      onClick={goDown}
+      onClick={goToNextStop}
       aria-label={`Листайте вниз: ${next.title}`}
     >
       {/* «ЛИСТАЙТЕ ВНИЗ» вместо прежнего «ДАЛЬШЕ» (5 сентября 2026).

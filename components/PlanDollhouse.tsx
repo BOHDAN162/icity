@@ -153,8 +153,15 @@ type Props = {
      увозить его к форме было бы прямо против его действия.
 
        dismiss — Esc или кнопка «Закрыть»
-       entered — finish(), закрытие само собой после выбора зоны */
-  onClose: (reason: 'dismiss' | 'entered') => void;
+       entered — finish(), закрытие само собой после выбора зоны
+
+     ВТОРОЙ АРГУМЕНТ — «закрыли именно КНОПКОЙ». Офис по нему показывает
+     под капсулой приглашение листать: зритель посмотрел план, вышел
+     из него сам и стоит на распутье. Esc сюда не считается — так просил
+     заказчик 5 сентября 2026, и довод есть: Esc на этом сайте
+     тумблер, им гоняют план туда-обратно, а кнопку нажимают, когда
+     закончили. */
+  onClose: (reason: 'dismiss' | 'entered', byButton?: boolean) => void;
   /** офис переключается на эту зону, пока оверлей ещё закрывает экран */
   onEnterZone: (key: RenderKey) => void;
   /* ОБРАТНЫЙ НЫРОК НА ВХОДЕ. Зона, из которой открыли план: камера
@@ -344,6 +351,9 @@ export default function PlanDollhouse({
      Ref, а не состояние: читается он в конце перелёта, из таймера, и
      ре-рендер ради него был бы холостым. */
   const returningRef = useRef(false);
+  /* Закрыли кнопкой, а не Esc: причина доезжает до вызывающего через
+     finish(), то есть после нырка, — поэтому её и приходится помнить. */
+  const byButtonRef = useRef(false);
 
   /* finish() зовётся только в конце растворения. При выборе зоны офис
      уже на неё переключён (onEnterZone отработал ещё в pick), при
@@ -362,7 +372,7 @@ export default function PlanDollhouse({
     setArriving(null);
     setLeaving(false);
     setHovered(null);
-    onClose(returningRef.current ? 'dismiss' : 'entered');
+    onClose(returningRef.current ? 'dismiss' : 'entered', byButtonRef.current);
   }, [onClose]);
 
   /* Растворение стартует по совпадению ДВУХ условий, и ни одно нельзя
@@ -439,14 +449,15 @@ export default function PlanDollhouse({
      Кнопка физически перестаёт нажиматься только с приходом .leaving
      (pointer-events: none), то есть на 1390-й мс; до тех пор её держит
      этот охранник. */
-  const requestClose = useCallback(() => {
+  const requestClose = useCallback((byButton = false) => {
     if (flyRef.current) return;
+    byButtonRef.current = byButton;
     /* Нырять нечем или некуда: плоский план (там камеры нет вовсе,
        и более долгий выход читался бы просто как задержка), план
        из подвала, Esc из экономики или FAQ, ждущая крошка возврата —
        все эти случаи вызывающий уже свёл в returnTo === null. */
     if (!returnTo || mode !== 'solid') {
-      onClose('dismiss');
+      onClose('dismiss', byButton);
       return;
     }
     returningRef.current = true;
@@ -478,6 +489,7 @@ export default function PlanDollhouse({
          на том же window не доходит — значит Esc закроет план и не
          откроет его тут же обратно. Уберёшь — получишь мигающий оверлей. */
       e.stopPropagation();
+      // Без признака кнопки: Esc — тумблер, а не «я закончил».
       requestClose();
     };
     // capture: пока план открыт, Esc принадлежит ему и до офиса не доходит
@@ -663,15 +675,18 @@ export default function PlanDollhouse({
               у самого этажа (просьба заказчика, 5 сентября 2026).
               На тач-экране Esc нажать нечем: сними её и там —
               и план станет ловушкой, из которой один выход, в зону. */}
-          {(!fine || !tools) && (
-            <button
-              type="button"
-              className={styles.close}
-              onClick={requestClose}
-            >
-              Закрыть
-            </button>
-          )}
+          {/* «ЗАКРЫТЬ» СТОИТ ВСЕГДА, справа от входов в соседние окна.
+              Снималось с мыши 5 сентября 2026 (там есть Esc) и в тот же
+              день возвращено: кнопка не просто дублирует Esc, а служит
+              признаком «зритель закончил с планом» — по ней офис
+              показывает приглашение листать. */}
+          <button
+            type="button"
+            className={styles.close}
+            onClick={() => requestClose(true)}
+          >
+            Закрыть
+          </button>
         </div>
       </div>
 
