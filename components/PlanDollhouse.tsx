@@ -653,7 +653,13 @@ export default function PlanDollhouse({
       onMouseLeave={() => setChip(null)}
     >
       <div className={styles.bar}>
-        <p className={`label ${styles.title}`}>Планировка{NBSP}· 244,1{NBSP}м²</p>
+        {/* Метраж — отдельным узлом: на телефоне его нет вовсе (просьба
+            заказчика 5 сентября 2026). Там он и так не помещался —
+            заголовок ужимался многоточием, — а число это стоит внизу
+            того же экрана, в ряду «ПЛОЩАДЬ · 244,1 м²». */}
+        <p className={`label ${styles.title}`}>
+          Планировка<span className={styles.titleArea}>{NBSP}· 244,1{NBSP}м²</span>
+        </p>
         <div className={styles.tools}>
           {/* Растровый чертёж никуда не делся: объёмный план отвечает
               на «как тут ходят», чертёж — на «покажите размеры».
