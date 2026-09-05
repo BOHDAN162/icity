@@ -742,8 +742,13 @@ export default function OfficeHub({
         <ZoneParallax zone={zoneId} shown={active} />
       </div>
 
-      {/* Вуали. Не декор: держат контраст текста поверх светлого рендера. */}
-      <div className={styles.scrimTop} aria-hidden="true" />
+      {/* Вуали. Не декор: держат контраст текста поверх светлого рендера.
+
+          ВЕРХНЕЙ БОЛЬШЕ НЕТ. Она держала кнопку «К башне» в левом
+          верхнем углу, а та ушла вместе со скролл-секвенцией: наверху
+          кадра давно пусто, и вуаль там осветляла кадр впустую.
+          Снята 5 сентября 2026, когда заказчик попросил убавить
+          свечение во всех зонах. */}
       <div
         className={`${styles.scrimInfo} ${zone.side === 'right' ? styles.scrimInfoRight : styles.scrimInfoLeft}`}
         aria-hidden="true"
