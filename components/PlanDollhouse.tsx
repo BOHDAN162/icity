@@ -162,6 +162,14 @@ type Props = {
      тумблер, им гоняют план туда-обратно, а кнопку нажимают, когда
      закончили. */
   onClose: (reason: 'dismiss' | 'entered', byButton?: boolean) => void;
+  /* «ЗАКРЫТЬ» НАЖАЛИ — СИГНАЛ В МОМЕНТ КЛИКА, а не в конце. Между
+     нажатием и onClose проходит полторы секунды нырка и полсекунды
+     растворения, и последние 480 мс офис виден сквозь уходящий оверлей:
+     перестройся он по onClose, зритель увидел бы, как индикатор
+     в углу гаснет, а приглашение по центру приходит — уже на открытом
+     экране. Тот же приём, что у onEnterZone: офису говорят сразу,
+     он отыгрывает под прикрытием. */
+  onCloseStart?: () => void;
   /** офис переключается на эту зону, пока оверлей ещё закрывает экран */
   onEnterZone: (key: RenderKey) => void;
   /* ОБРАТНЫЙ НЫРОК НА ВХОДЕ. Зона, из которой открыли план: камера
@@ -252,6 +260,7 @@ export default function PlanDollhouse({
   onNext,
   nextReady = false,
   tools = true,
+  onCloseStart,
 }: Props) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [failed, setFailed] = useState(false);
@@ -452,6 +461,8 @@ export default function PlanDollhouse({
   const requestClose = useCallback((byButton = false) => {
     if (flyRef.current) return;
     byButtonRef.current = byButton;
+    // Офису — сразу, пока экран ещё закрыт планом. См. шапку пропа.
+    if (byButton) onCloseStart?.();
     /* Нырять нечем или некуда: плоский план (там камеры нет вовсе,
        и более долгий выход читался бы просто как задержка), план
        из подвала, Esc из экономики или FAQ, ждущая крошка возврата —
@@ -470,7 +481,7 @@ export default function PlanDollhouse({
       dueRef.current = true;
       tryReveal();
     }, REVEAL_CAP_MS));
-  }, [returnTo, mode, onClose, tryReveal]);
+  }, [returnTo, mode, onClose, onCloseStart, tryReveal]);
 
   /* Esc внутри плана делает ровно то же, что кнопка «Закрыть», — так
      просил заказчик: способ закрытия не должен менять поведение.
