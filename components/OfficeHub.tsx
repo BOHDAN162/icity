@@ -318,43 +318,8 @@ export default function OfficeHub({
      на одном экране — это не настойчивее, а бестолковее. */
   const [closedPlan, setClosedPlan] = useState(false);
 
-  /* ЗРИТЕЛЬ УЖЕ УХОДИЛ НИЖЕ ОФИСА — и приглашения листать ему больше
-     не нужны, ни центральное, ни угловое. Он был там, куда они зовут:
-     повторное «листайте вниз» на возврате читалось бы как настойчивость
-     сайта, который не заметил, что его уже послушались.
-
-     Признак ставится ГЕОМЕТРИЕЙ, а не шагом сцены: уехать можно
-     и прокруткой мимо шагов (под prefers-reduced-motion их нет вовсе),
-     и кнопкой со второго кадра. Наблюдатель ловит именно
-     ПОСЛЕДОВАТЕЛЬНОСТЬ «видел → не видит»: на первом экране секция
-     офиса лежит ниже вьюпорта и не пересекает его, и без памяти
-     о том, что её однажды видели, флаг встал бы сразу при загрузке. */
-  const [wentPast, setWentPast] = useState(false);
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el || wentPast) return undefined;
-    let seenOnce = false;
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { seenOnce = true; return; }
-      if (seenOnce) setWentPast(true);
-    }, {
-      /* ОБЛАСТЬ СУЖЕНА СВЕРХУ НА ПИКСЕЛЬ, и это не придирка. Кнопка
-         со второго кадра увозит ровно к низу секции офиса: его нижняя
-         кромка совпадает с верхом вьюпорта, доля пересечения ноль,
-         а `isIntersecting` при обычной области всё ещё true — то есть
-         НИЧЕГО НЕ МЕНЯЕТСЯ и наблюдатель молчит. Замер: на 1710
-         ratio 0 при isIntersecting true, и флаг не вставал в самом
-         частом сценарии ухода. Пиксель сверху делает это касание
-         честным «не вижу». */
-      rootMargin: '-1px 0px 0px 0px',
-      threshold: 0,
-    });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [wentPast]);
-
   const [late, setLate] = useState(false);
-  const cueReady = (seen.size >= READY_ZONES || late) && !closedPlan && !wentPast;
+  const cueReady = (seen.size >= READY_ZONES || late) && !closedPlan;
   /* «Дальше» в плане приходит на зону позже индикатора — см. пороги. */
   const planReady = seen.size >= PLAN_READY_ZONES || late;
 
@@ -899,7 +864,7 @@ export default function OfficeHub({
               и стоит на распутье — сказать ему, что дальше вниз, здесь
               уместнее всего. Вид общий с кадром панорамы (ScrollCue),
               и угловой индикатор при нём не показывается. */}
-          {closedPlan && !wentPast && (
+          {closedPlan && (
             <ScrollCue
               onClick={goToNextStop}
               className={styles.planCue}
