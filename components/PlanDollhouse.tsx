@@ -214,7 +214,14 @@ function decideMode() {
    dynamic() затребует то же самое ещё раз, уже по клику. */
 export function preloadPlanScene(): void {
   const { mode } = decideMode();
-  void (mode === 'solid' ? import('./PlanScene') : import('./PlanFlat')).catch(() => {});
+  if (mode !== 'solid') {
+    void import('./PlanFlat').catch(() => {});
+    return;
+  }
+  /* Чанк — половина дела: за ним модель, которую ещё нужно разобрать.
+     Просим сцену прогреть её сразу же, тем же кэшем useLoader, из
+     которого она потом и возьмёт готовое. */
+  void import('./PlanScene').then((m) => m.preloadGlb()).catch(() => {});
 }
 
 /* Пропа `open` нет: смонтирован — значит открыт. Так чанк с three.js
@@ -616,19 +623,28 @@ export default function PlanDollhouse({
         <div className={styles.tools}>
           {/* Растровый чертёж никуда не делся: объёмный план отвечает
               на «как тут ходят», чертёж — на «покажите размеры». */}
-          <button type="button" className={styles.sheetLink} onClick={() => setSheetOpen(true)}>
-            Чертёж
+          {/* data-label — призрак ширины под жирное начертание ховера,
+              см. .sheetLink в модуле: без него капсула на наведении
+              становилась шире и толкала соседнюю. */}
+          <button
+            type="button"
+            className={styles.sheetLink}
+            data-label="Чертёж"
+            onClick={() => setSheetOpen(true)}
+          >
+            <span className={styles.sheetLabel}>Чертёж</span>
           </button>
           {/* Панорамный тур лежит на стороне Kuula — уводить туда текущую
               вкладку нельзя, зритель не вернётся к плану. rel обязателен:
               без noopener чужая страница получает доступ к window.opener. */}
           <a
             className={styles.sheetLink}
+            data-label="3D-тур"
             href={TOUR_URL}
             target="_blank"
             rel="noopener noreferrer"
           >
-            3D-тур
+            <span className={styles.sheetLabel}>3D-тур</span>
           </a>
           {/* «ЗАКРЫТЬ» ОСТАЛОСЬ ТОЛЬКО ТАМ, ГДЕ НЕТ ESC. С мышью план
               закрывают Esc-ом — тумблером, которым его и открыли, —

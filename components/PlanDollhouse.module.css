@@ -75,29 +75,66 @@
   gap: var(--s-3);
 }
 
-/* Чертёж — вход в соседнее окно, а не действие. Текст с волосяной
-   линией, как .planLink в офисе. */
+/* ЧЕРТЁЖ И 3D-ТУР — КАПСУЛЫ, как и всё управление в этой шапке.
+   Прежде это был текст с волосяной линией: на светлом поле плана он
+   читался как подпись, а не как вход, и заказчик 5 сентября 2026
+   попросил дать им форму кнопки. Форма ровно та же, что была
+   у «Закрыть», — вторичная кнопка из design-system.md §4.
+
+   ХОВЕР НЕСУТ ДВЕ ВЕЩИ: подпись тяжелеет до 700 и по нижней кромке
+   загорается красная линия в 2 px. Чистая фритта здесь законна — она
+   живёт в растре и в линиях 1–2 px (§1); в покое та же линия стоит
+   волосяной --alu, чтобы кромка не появлялась из ниоткуда. */
 .sheetLink {
+  position: relative;
   appearance: none;
-  border: 0;
-  border-bottom: 1px solid var(--alu);
-  background: none;
-  min-height: 44px;
-  padding: 0 var(--s-1) 3px;
+  display: grid;
+  place-items: center;
+  height: 44px;
+  padding: 0 var(--s-5);
+  border: 1px solid var(--alu);
+  border-radius: var(--radius);
+  background: var(--paper);
   color: var(--ink);
-  font: 500 15px/1.2 var(--sans);
+  font: 500 15px/1 var(--sans);
+  text-decoration: none;
   cursor: pointer;
-  transition: border-color var(--t-micro) var(--ease-out);
+  transition:
+    background var(--t-micro) var(--ease-out),
+    border-color var(--t-micro) var(--ease-out);
 }
 
-/* Ссылка на тур делит стиль с кнопкой «Чертёж»: это два входа одного веса.
-   У <a> своя раскладка — inline и подчёркивание браузера, — поэтому
-   выравнивание и text-decoration задаются явно, иначе 44 px высоты
-   не наберётся и под волосяной линией встанет вторая, родная. */
-a.sheetLink {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
+/* ПРИЗРАК ШИРИНЫ. Golos не моноширинный: 500 → 700 растит «Чертёж»
+   на пару пикселей, и на наведении капсула толкала бы соседнюю.
+   Невидимый дубль в жирном начертании держит ширину постоянной —
+   тот же приём, что у .numGhost в Landing. Текст берётся из
+   data-label, поэтому подпись у кнопки ровно одна, для доступности. */
+.sheetLink::before {
+  content: attr(data-label);
+  grid-area: 1 / 1;
+  font-weight: 700;
+  visibility: hidden;
+}
+
+.sheetLabel {
+  grid-area: 1 / 1;
+  transition: font-weight var(--t-micro) var(--ease-out);
+}
+
+/* Линия по нижней кромке капсулы: в покое волосяная --alu, на ховере
+   красная и вдвое толще. Отрицательные отступы кладут её ровно
+   на границу, а не внутрь поля. */
+.sheetLink::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  height: 1px;
+  background: var(--alu);
+  transition:
+    height var(--t-micro) var(--ease-out),
+    background var(--t-micro) var(--ease-out);
 }
 
 /* Ховер — только под указателем: на iOS он залипает после тапа
@@ -105,10 +142,14 @@ a.sheetLink {
    даёт :active, он живёт только пока палец на кнопке.
    Разбор — AGENTS.md, раздел «Доступность». */
 @media (hover: hover) and (pointer: fine) {
-  .sheetLink:hover { border-bottom-color: var(--ink); }
+  .sheetLink:hover { background: var(--white); border-color: var(--ink); }
+  .sheetLink:hover .sheetLabel { font-weight: 700; }
+  .sheetLink:hover::after { height: 2px; background: var(--frit); }
 }
 
-.sheetLink:active { border-bottom-color: var(--ink); }
+.sheetLink:active { background: var(--white); border-color: var(--ink); }
+.sheetLink:active .sheetLabel { font-weight: 700; }
+.sheetLink:active::after { height: 2px; background: var(--frit); }
 
 .close {
   height: 44px;
@@ -181,9 +222,26 @@ a.sheetLink {
   place-items: center;
 }
 
+/* «СОБИРАЕМ ПЛАН…» ПРИХОДИТ С ЗАДЕРЖКОЙ, И ЭТО НЕ УКРАШЕНИЕ. Модель
+   и чанк сцены греются заранее — с того мига, как офис вышел из-под
+   hero, — но три.js всё равно тратит около 650 мс на WebGL-контекст,
+   компиляцию шейдеров и первый кадр (замер в Chrome на прогретом
+   кэше). Надпись, показанная сразу, мигала на этом месте и читалась
+   как «сайт тормозит»; показанная через полсекунды — она достаётся
+   только тем, у кого сцена действительно собирается долго.
+
+   Задержка больше самого частого случая и меньше терпения зрителя:
+   на прогретом кэше её никто не увидит, на холодном она придёт
+   вовремя. */
 .loading {
   margin: 0;
   color: var(--ink-60);
+  animation: loadingIn var(--t-reveal) var(--ease-out) 500ms both;
+}
+
+@keyframes loadingIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* Никакого центрирования: и холст, и SVG занимают клетку целиком и
@@ -537,7 +595,10 @@ a.sheetLink {
     white-space: nowrap;
   }
   .tools { flex: 0 0 auto; }
-  .close { padding: 0 var(--s-4); }
+  /* Три капсулы в одну строку на 390 px: поля ужимаем, иначе ряд
+     не помещается в колонку. Замер после правки — в AGENTS.md. */
+  .close,
+  .sheetLink { padding: 0 var(--s-3); }
 
 
   .flat { padding: var(--s-4) var(--s-4) var(--s-4); }

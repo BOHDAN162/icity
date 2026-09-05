@@ -183,13 +183,20 @@ export const loadPlan = (): Promise<Plan> => {
   return planPromise;
 };
 
-/** Греем ассеты по наведению на кнопку — к клику всё уже в кэше. */
+/** Греем ассеты, как только офис вышел из-под hero — к клику всё в кэше. */
 export const prefetchPlan = () => {
   void loadPlan().catch(() => {});
   if (typeof document === 'undefined') return;
   if (document.head.querySelector(`link[href="${GLB_URL}"]`)) return;
   const link = document.createElement('link');
-  link.rel = 'prefetch';
+  /* PRELOAD, А НЕ PREFETCH. Prefetch — «пригодится когда-нибудь»:
+     браузер ставит его в самый хвост очереди и на медленной сети может
+     не начать вовсе, пока страница чем-то занята. Зритель ловил это как
+     мелькающее «Собираем план…» при первом открытии. Preload — «нужно
+     этой странице», приоритет обычный. Момент прогрева при этом не
+     ранний: он приходится на снятие hero, когда видео уже скачано
+     и полоса свободна. */
+  link.rel = 'preload';
   link.href = GLB_URL;
   link.as = 'fetch';
   link.crossOrigin = 'anonymous';
