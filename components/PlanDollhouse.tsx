@@ -183,6 +183,16 @@ type Props = {
      звать дальше того, кто видел один ресепшн, значит торопить его
      мимо самого помещения. */
   nextReady?: boolean;
+  /* ЕСТЬ ЛИ В ШАПКЕ СОСЕДНИЕ ОКНА. Из офиса плану положены оба входа —
+     чертёж и панорамный тур; из подвала, где его открывают кнопкой
+     «3D-модель» рядом с формой, они лишние: там те же входы уже стоят
+     в самой секции, прямо под кнопкой, и в шапке повторялись бы
+     вторым набором. Просьба заказчика 5 сентября 2026.
+
+     Там же и единственный выход: раз соседних окон нет, «Закрыть»
+     занимает их место и показывается независимо от того, есть Esc
+     под рукой или нет. */
+  tools?: boolean;
 };
 
 /* Плоский план или объёмный — решается одним выражением, и читателей
@@ -234,6 +244,7 @@ export default function PlanDollhouse({
   returnTo = null,
   onNext,
   nextReady = false,
+  tools = true,
 }: Props) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [failed, setFailed] = useState(false);
@@ -622,37 +633,37 @@ export default function PlanDollhouse({
         <p className={`label ${styles.title}`}>Планировка{NBSP}· 244,1{NBSP}м²</p>
         <div className={styles.tools}>
           {/* Растровый чертёж никуда не делся: объёмный план отвечает
-              на «как тут ходят», чертёж — на «покажите размеры». */}
-          {/* data-label — призрак ширины под жирное начертание ховера,
-              см. .sheetLink в модуле: без него капсула на наведении
-              становилась шире и толкала соседнюю. */}
-          <button
-            type="button"
-            className={styles.sheetLink}
-            data-label="Чертёж"
-            onClick={() => setSheetOpen(true)}
-          >
-            <span className={styles.sheetLabel}>Чертёж</span>
-          </button>
+              на «как тут ходят», чертёж — на «покажите размеры».
+              Из подвала обоих входов в шапке нет — см. проп `tools`. */}
+          {tools && (
+            <button
+              type="button"
+              className={styles.sheetLink}
+              onClick={() => setSheetOpen(true)}
+            >
+              <span className={styles.sheetLabel}>Чертёж</span>
+            </button>
+          )}
           {/* Панорамный тур лежит на стороне Kuula — уводить туда текущую
               вкладку нельзя, зритель не вернётся к плану. rel обязателен:
               без noopener чужая страница получает доступ к window.opener. */}
-          <a
-            className={styles.sheetLink}
-            data-label="3D-тур"
-            href={TOUR_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span className={styles.sheetLabel}>3D-тур</span>
-          </a>
+          {tools && (
+            <a
+              className={styles.sheetLink}
+              href={TOUR_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className={styles.sheetLabel}>3D-тур</span>
+            </a>
+          )}
           {/* «ЗАКРЫТЬ» ОСТАЛОСЬ ТОЛЬКО ТАМ, ГДЕ НЕТ ESC. С мышью план
               закрывают Esc-ом — тумблером, которым его и открыли, —
               и кнопка в углу лишь повторяла его, отнимая место
               у самого этажа (просьба заказчика, 5 сентября 2026).
               На тач-экране Esc нажать нечем: сними её и там —
               и план станет ловушкой, из которой один выход, в зону. */}
-          {!fine && (
+          {(!fine || !tools) && (
             <button
               type="button"
               className={styles.close}

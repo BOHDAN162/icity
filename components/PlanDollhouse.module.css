@@ -81,22 +81,26 @@
    попросил дать им форму кнопки. Форма ровно та же, что была
    у «Закрыть», — вторичная кнопка из design-system.md §4.
 
-   ХОВЕР НЕСУТ ДВЕ ВЕЩИ: подпись тяжелеет до 700 и по нижней кромке
-   загорается красная линия в 2 px. Чистая фритта здесь законна — она
-   живёт в растре и в линиях 1–2 px (§1); в покое та же линия стоит
-   волосяной --alu, чтобы кромка не появлялась из ниоткуда. */
+   ПОДПИСЬ ЖИРНАЯ И ПОДЧЁРКНУТА КРАСНЫМ СРАЗУ, а не по наведению
+   (правка того же дня). Линия идёт под самим текстом, а не по кромке
+   капсулы: подчёркнут вход, а не коробка. Чистая фритта здесь
+   законна — она живёт в растре и в линиях 1–2 px (§1).
+
+   Ховер добирает то, чего в покое нет: белый фон, тёмная рамка
+   и линия вдвое толще. Вес при этом не меняется — потому и не нужен
+   призрак ширины, который держал капсулу от рывка. */
 .sheetLink {
   position: relative;
   appearance: none;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
   height: 44px;
   padding: 0 var(--s-5);
   border: 1px solid var(--alu);
   border-radius: var(--radius);
   background: var(--paper);
   color: var(--ink);
-  font: 500 15px/1 var(--sans);
+  font: 700 15px/1 var(--sans);
   text-decoration: none;
   cursor: pointer;
   transition:
@@ -104,37 +108,23 @@
     border-color var(--t-micro) var(--ease-out);
 }
 
-/* ПРИЗРАК ШИРИНЫ. Golos не моноширинный: 500 → 700 растит «Чертёж»
-   на пару пикселей, и на наведении капсула толкала бы соседнюю.
-   Невидимый дубль в жирном начертании держит ширину постоянной —
-   тот же приём, что у .numGhost в Landing. Текст берётся из
-   data-label, поэтому подпись у кнопки ровно одна, для доступности. */
-.sheetLink::before {
-  content: attr(data-label);
-  grid-area: 1 / 1;
-  font-weight: 700;
-  visibility: hidden;
-}
-
+/* Линия под ТЕКСТОМ: псевдоэлемент висит на подписи, поэтому её ширина
+   равна ширине слова, а не капсулы. Отбита на 3 px — на кегле 15 px
+   этого хватает, чтобы не задевать нижние выносные («р» в «Чертёж»). */
 .sheetLabel {
-  grid-area: 1 / 1;
-  transition: font-weight var(--t-micro) var(--ease-out);
+  position: relative;
+  display: inline-block;
 }
 
-/* Линия по нижней кромке капсулы: в покое волосяная --alu, на ховере
-   красная и вдвое толще. Отрицательные отступы кладут её ровно
-   на границу, а не внутрь поля. */
-.sheetLink::after {
+.sheetLabel::after {
   content: '';
   position: absolute;
-  left: -1px;
-  right: -1px;
-  bottom: -1px;
+  left: 0;
+  right: 0;
+  bottom: -3px;
   height: 1px;
-  background: var(--alu);
-  transition:
-    height var(--t-micro) var(--ease-out),
-    background var(--t-micro) var(--ease-out);
+  background: var(--frit);
+  transition: height var(--t-micro) var(--ease-out);
 }
 
 /* Ховер — только под указателем: на iOS он залипает после тапа
@@ -143,13 +133,11 @@
    Разбор — AGENTS.md, раздел «Доступность». */
 @media (hover: hover) and (pointer: fine) {
   .sheetLink:hover { background: var(--white); border-color: var(--ink); }
-  .sheetLink:hover .sheetLabel { font-weight: 700; }
-  .sheetLink:hover::after { height: 2px; background: var(--frit); }
+  .sheetLink:hover .sheetLabel::after { height: 2px; }
 }
 
 .sheetLink:active { background: var(--white); border-color: var(--ink); }
-.sheetLink:active .sheetLabel { font-weight: 700; }
-.sheetLink:active::after { height: 2px; background: var(--frit); }
+.sheetLink:active .sheetLabel::after { height: 2px; }
 
 .close {
   height: 44px;

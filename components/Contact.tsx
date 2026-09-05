@@ -460,8 +460,11 @@ export default function Contact() {
           уже утащил бы свой код на первый экран. Поэтому оба стоят
           за условием, и у PlanOverlay `open` всегда true. */}
       {overlay === 'sheet' && <PlanOverlay open onClose={closeOverlay} />}
+      {/* Из подвала в шапке плана только «Закрыть»: чертёж и тур стоят
+          тут же, в самой секции, под этой же кнопкой — в шапке они были
+          бы вторым набором тех же входов (tools={false}). */}
       {overlay === 'model' && (
-        <PlanDollhouse onClose={closeOverlay} onEnterZone={enterZone} />
+        <PlanDollhouse onClose={closeOverlay} onEnterZone={enterZone} tools={false} />
       )}
     </section>
   );
