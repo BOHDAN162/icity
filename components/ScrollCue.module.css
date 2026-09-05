@@ -48,8 +48,17 @@
   place-items: center;
   color: var(--ink-60);
   animation: cueSwing 1600ms ease-in-out infinite;
-  transition: color var(--t-micro) var(--ease-out);
+  transition:
+    transform var(--t-micro) var(--ease-out),
+    color var(--t-micro) var(--ease-out);
 }
+
+/* СТРЕЛКА БЕЗ МАЯТНИКА — тому, кто ниже уже был и вернулся. Кнопка
+   остаётся, качание уходит: звать зрителя туда, где он побывал,
+   незачем. Движение не исчезает совсем, а переезжает на наведение —
+   под курсором стрелка плавно опускается на ту же амплитуду, что
+   была нижней точкой маятника. */
+.still .arrow { animation: none; }
 
 /* Белый тон — для кадра, под которым нет вуали. */
 .white .label,
@@ -66,10 +75,14 @@
   .cue:hover .label::after { opacity: 1; }
   .cue:hover .arrow { color: var(--ink); }
   .white:hover .arrow { color: var(--white); }
+  /* Только у спокойной: у качающейся сдвиг спорил бы с кейфреймами
+     (анимация перебивает transform, и ховер читался бы как рывок). */
+  .still:hover .arrow { transform: translateY(6px); }
 }
 
 .cue:active .label { font-weight: 700; }
 .cue:active .label::after { opacity: 1; }
+.still:active .arrow { transform: translateY(6px); }
 
 @media (prefers-reduced-motion: reduce) {
   /* Маятник — движение ради движения, под этой настройкой его нет.

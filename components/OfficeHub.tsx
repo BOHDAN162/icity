@@ -318,6 +318,42 @@ export default function OfficeHub({
      на одном экране — это не настойчивее, а бестолковее. */
   const [closedPlan, setClosedPlan] = useState(false);
 
+  /* ЗРИТЕЛЬ УЖЕ УХОДИЛ НИЖЕ ОФИСА И ВЕРНУЛСЯ. Приглашение листать
+     остаётся на месте — оно всё ещё орган управления, — но перестаёт
+     махать стрелкой: маятник зовёт туда, где зритель уже был, и на
+     возврате читается как настойчивость. Движение при этом никуда
+     не девается, просто ждёт наведения (см. `still` в ScrollCue).
+
+     Признак ставится ГЕОМЕТРИЕЙ, а не шагом сцены: уехать можно
+     и прокруткой мимо шагов (под prefers-reduced-motion их нет вовсе),
+     и кнопкой со второго кадра. Наблюдатель ловит именно
+     ПОСЛЕДОВАТЕЛЬНОСТЬ «видел → не вижу»: на первом экране секция
+     офиса лежит ниже вьюпорта и не пересекает его, и без памяти
+     о том, что её однажды видели, флаг встал бы сразу при загрузке. */
+  const [wentPast, setWentPast] = useState(false);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || wentPast) return undefined;
+    let seenOnce = false;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { seenOnce = true; return; }
+      if (seenOnce) setWentPast(true);
+    }, {
+      /* ОБЛАСТЬ СУЖЕНА СВЕРХУ НА ПИКСЕЛЬ, и это не придирка. Кнопка
+         со второго кадра увозит ровно к низу секции офиса: его нижняя
+         кромка совпадает с верхом вьюпорта, доля пересечения ноль,
+         а `isIntersecting` при обычной области всё ещё true — то есть
+         НИЧЕГО НЕ МЕНЯЕТСЯ и наблюдатель молчит. Замер: на 1710
+         ratio 0 при isIntersecting true, и флаг не вставал в самом
+         частом сценарии ухода. Пиксель сверху делает это касание
+         честным «не вижу». */
+      rootMargin: '-1px 0px 0px 0px',
+      threshold: 0,
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [wentPast]);
+
   const [late, setLate] = useState(false);
   const cueReady = (seen.size >= READY_ZONES || late) && !closedPlan;
   /* «Дальше» в плане приходит на зону позже индикатора — см. пороги. */
@@ -869,6 +905,7 @@ export default function OfficeHub({
               onClick={goToNextStop}
               className={styles.planCue}
               label={`Листайте вниз: ${next.title}`}
+              still={wentPast}
             />
           )}
 

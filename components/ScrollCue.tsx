@@ -35,13 +35,25 @@ type Props = {
   tone?: 'ink' | 'white';
   /** что назвать голосом: у офиса и кадров следующий экран разный */
   label?: string;
+  /* СТРЕЛКА БЕЗ МАЯТНИКА. Ставится тому, кто ниже уже был и вернулся:
+     звать его качанием туда, где он побывал, незачем, а сама кнопка
+     нужна. Движение при этом не исчезает — оно ждёт наведения:
+     под курсором стрелка плавно уходит вниз. */
+  still?: boolean;
 };
 
-export default function ScrollCue({ onClick, className = '', tone = 'ink', label }: Props) {
+export default function ScrollCue({
+  onClick, className = '', tone = 'ink', label, still = false,
+}: Props) {
   return (
     <button
       type="button"
-      className={`${styles.cue} ${tone === 'white' ? styles.white : ''} ${className}`}
+      className={[
+        styles.cue,
+        tone === 'white' ? styles.white : '',
+        still ? styles.still : '',
+        className,
+      ].filter(Boolean).join(' ')}
       onClick={onClick}
       aria-label={label}
     >
